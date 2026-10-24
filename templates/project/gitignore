@@ -1,0 +1,4 @@
+# ZIPs from and to the tenant: a package can be rebuilt from any commit (PROJEKTSTRUKTUR S-3)
+exchange/
+__pycache__/
+.DS_Store

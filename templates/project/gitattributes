@@ -1,0 +1,2 @@
+# No line ending conversion: exported files must stay byte-identical (ppp verify compares bytes).
+* -text

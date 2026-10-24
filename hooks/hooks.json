@@ -1,0 +1,41 @@
+{
+  "description": "ppp: session start with core rules and STATE.md, card guard and usage note, hint before compaction. Only in ppp projects.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" SessionStart",
+            "windows": "python -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" SessionStart",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" Stop",
+            "windows": "python -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" Stop",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact",
+            "windows": "python -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

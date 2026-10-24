@@ -1,0 +1,14 @@
+{
+  "name": "ppp",
+  "owner": {
+    "name": "ppp"
+  },
+  "description": "Releases of ppp: Power Platform solutions offline from solution exports.",
+  "plugins": [
+    {
+      "name": "ppp",
+      "source": "./",
+      "description": "ppp: builds Power Platform solutions (Power Automate, Power Apps, SharePoint, Power BI, Copilot Studio) offline from solution exports; the user carries out tenant steps guided by cards."
+    }
+  ]
+}
