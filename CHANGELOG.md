@@ -2,6 +2,9 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.2.1 (2026-10-25)
+- ppp-package step 1: after the confirmed proposal a one-line hint that GPT-6.1 Sol is enough for building (proposal and design often run on Claude Opus 5.5; no stopping point prompts the switch otherwise, A-9; Orga-Otto package 003).
+
 ## 0.2.0 (2026-10-25)
 - Structure A (PLUGIN PL-4, PL-5, PL-17, PL-18, changed 2026-10-25): the agent ppp comes with the plugin (com.github.copilot/agents/ppp.agent.md), a second manifest plugin.json after Agent Plugins 1.0 for VS Code, hooks for VS Code in com.github.copilot/hooks/hooks.json.
 - Hooks: each hook file names its tool (copilot, claude); SessionStart gives VS Code additionalContext at the top level (the agent host dropped hookSpecificOutput, installation retest 4) and keeps the tool call in ~/.ppp/tool-call.txt.
