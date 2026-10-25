@@ -2,6 +2,9 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.2.2 (2026-10-25)
+- README with a quick guide: what ppp is, requirements, installation in VS Code and Claude Code, first project, package cycle, updates, project layout (user, 2026-10-25).
+
 ## 0.2.1 (2026-10-25)
 - ppp-package step 1: after the confirmed proposal a one-line hint that GPT-6.1 Sol is enough for building (proposal and design often run on Claude Opus 5.5; no stopping point prompts the switch otherwise, A-9; Orga-Otto package 003).
 

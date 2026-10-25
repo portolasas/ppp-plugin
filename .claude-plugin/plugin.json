@@ -1,6 +1,6 @@
 {
   "name": "ppp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "ppp: builds Power Platform solutions (Power Automate, Power Apps, SharePoint, Power BI, Copilot Studio) offline from solution exports; the user carries out tenant steps guided by cards.",
   "author": {
     "name": "Pascal Naumann"
