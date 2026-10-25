@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" SessionStart",
-            "windows": "python -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" SessionStart",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" SessionStart claude",
+            "windows": "python -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" SessionStart claude",
             "timeout": 15
           }
         ]
@@ -18,8 +18,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" Stop",
-            "windows": "python -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" Stop",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" Stop claude",
+            "windows": "python -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" Stop claude",
             "timeout": 15
           }
         ]
@@ -30,8 +30,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact",
-            "windows": "python -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact claude",
+            "windows": "python -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact claude",
             "timeout": 15
           }
         ]

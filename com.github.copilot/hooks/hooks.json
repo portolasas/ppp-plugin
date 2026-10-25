@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" SessionStart copilot",
+        "windows": "python -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" SessionStart copilot",
+        "timeout": 15
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" Stop copilot",
+        "windows": "python -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" Stop copilot",
+        "timeout": 15
+      }
+    ],
+    "PreCompact": [
+      {
+        "type": "command",
+        "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact copilot",
+        "windows": "python -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact copilot",
+        "timeout": 15
+      }
+    ]
+  }
+}

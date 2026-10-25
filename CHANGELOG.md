@@ -2,6 +2,19 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.2.0 (2026-10-25)
+- Structure A (PLUGIN PL-4, PL-5, PL-17, PL-18, changed 2026-10-25): the agent ppp comes with the plugin (com.github.copilot/agents/ppp.agent.md), a second manifest plugin.json after Agent Plugins 1.0 for VS Code, hooks for VS Code in com.github.copilot/hooks/hooks.json.
+- Hooks: each hook file names its tool (copilot, claude); SessionStart gives VS Code additionalContext at the top level (the agent host dropped hookSpecificOutput, installation retest 4) and keeps the tool call in ~/.ppp/tool-call.txt.
+- Core rules: the tool call comes from the session context, without hooks from ~/.ppp/tool-call.txt or the newest tools/ppp.py under VS Code's agentPlugins; no placeholder.
+- ppp setup removes the agent copy of earlier versions (~/.copilot/agents/ppp.agent.md), which would hide the plugin agent, and shows the installation entries; ppp check reports such a copy; the version stands in four places.
+- Author Pascal Naumann in both manifests; icon .claude-plugin/icon.png from the Boehringer Ingelheim icon set.
+
+## 0.1.2 (2026-10-25)
+- Core rules and model recommendation: never GPT-6 Luna for ppp, it does not follow the agent text reliably (installation retest 4, 2026-10-25); on GPT-6 Luna the agent recommends GPT-6.1 Sol. Known misfire on patch edits no longer names Luna.
+
+## 0.1.1 (2026-10-25)
+- ppp check updates the ppp clone at the start of a session (git pull --ff-only when it is behind its upstream and has no local changes or commits) and renews the agent copy; otherwise it warns as before (AKTUALISIEREN.md).
+
 ## 0.1.0 (2026-10-24)
 - Transfer solution in mode large (user, 2026-10-24): role transfer in project.json, ppp unpack registers <prefix>Transfer, inventory, verify, pack and setupflow default to it; ppp-package step 2 sets its members, ppp-golive packs the main solution.
 - ppp tidy at package close: the imported package with its report goes to exchange/archive/, intermediate packages and older exports are deleted, other files are listed for a card (user, 2026-10-24).

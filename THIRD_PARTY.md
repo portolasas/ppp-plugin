@@ -10,7 +10,10 @@ ppp adopts single skills of other packages as templates and adapts them (PLUGIN 
 | same | `skills/engineering/diagnosing-bugs/SKILL.md` | `skills/ppp-diagnose` | feedback loop from exports, `wdl_sim` and reference calculations instead of tests against a running system; tenant evidence by cards |
 | same | `skills/engineering/prototype/SKILL.md`, `UI.md` | `skills/ppp-prototype` | one HTML file with JSON data for a planned app, structural variants in a bottom bar; no routes, no branches |
 | [Fission-AI/OpenSpec](https://github.com/Fission-AI/OpenSpec) @ `9111a7654d7800391459431fff4eaf66e33a3d2e` | workflow and file format (`openspec/changes/*/proposal.md`, `tasks.md`, `specs/*/spec.md`; `docs/workflows.md`) | `skills/ppp-package`, `templates/files/` (proposal, tasks, design, spec, spec delta) | files instead of the Node CLI; specs as one file per capability; package folders numbered `NNN-name`; critical scenarios added to the proposal |
-| [obra/superpowers](https://github.com/obra/superpowers) @ `bb92a77741419a4ab5f06e711a283343f1ada0c3` | `skills/verification-before-completion/SKILL.md` | `core/ppp.agent.md` (rule "evidence before claims") | shortened to one rule |
+| [obra/superpowers](https://github.com/obra/superpowers) @ `bb92a77741419a4ab5f06e711a283343f1ada0c3` | `skills/verification-before-completion/SKILL.md` | `com.github.copilot/agents/ppp.agent.md` (rule "evidence before claims") | shortened to one rule |
+
+## Icon
+`.claude-plugin/icon.png`: the icon `tools` of the Boehringer Ingelheim icon set (white variant, `Icons_white/tools.png`), on Dark Green `#08312A` of the Boehringer Ingelheim brand tokens, 512×512 px (author's choice, 2026-10-25). A brand asset of Boehringer Ingelheim, not under the licences below.
 
 ## Licences
 All three sources are under the MIT License with these copyright notices:

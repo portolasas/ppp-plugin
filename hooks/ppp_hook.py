@@ -1,13 +1,15 @@
 """Hooks of ppp (PLUGIN PL-12): SessionStart, Stop, PreCompact. Only in ppp projects (project.json).
-Claude Code runs them; VS Code runs them in the Agents view (agent host), where the IT allows them, and the Stop hook
-then reads the Copilot log. In the session target Local the policy ChatHooks switches them off (PL-16).
+Each tool has its own hook file that names it (PL-5, PL-18): hooks/hooks.json passes `claude` for Claude Code,
+com.github.copilot/hooks/hooks.json passes `copilot` for VS Code, which runs them in the Agents view (agent host);
+in the session target Local the policy ChatHooks switches them off (PL-16).
 
-SessionStart  core rules (only Claude Code; in VS Code the agent ppp brings them, PL-17), settings, tool call and
-              STATE.md as context (at most 10,000 characters, a limit of Claude Code).
+SessionStart  core rules (only Claude Code; in VS Code the plugin agent ppp brings them, PL-4), settings, tool call and
+              STATE.md as context (at most 10,000 characters, a limit of Claude Code): for VS Code as additionalContext
+              at the top level, for Claude Code in hookSpecificOutput. Keeps the tool call in ~/.ppp/tool-call.txt.
 Stop          card guard: a question in plain text sends the agent back once (A-10); usage note per session (PL-13).
 PreCompact    tells the user to save the state and start a new chat; the model gets nothing.
 A hook never blocks because of its own error: when in doubt it lets the turn pass.
-Call: python -I ppp_hook.py <event>, hook input as JSON on stdin.
+Call: python -I ppp_hook.py <event> <copilot|claude>, hook input as JSON on stdin (keys in snake_case or camelCase).
 """
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 
 LIMIT = 10_000
+TOOLS = {"copilot": "copilot", "claude": "claude-code"}  # argument of the hook file -> tool name in logs and cardguard
 
 
 def project_root(cwd: str):
@@ -35,19 +38,15 @@ def append(path: Path, record: dict) -> None:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def from_vscode(data: dict) -> bool:
-    """VS Code (agent host) sends camelCase keys such as sessionId; Claude Code sends session_id."""
-    return "sessionId" in data and "session_id" not in data
-
-
-def session_start(data: dict, root: Path) -> dict:
+def session_start(data: dict, root: Path, tool: str) -> dict:
     from ppplib import agent
+    agent.write_tool_call()
     settings = agent.read_settings()
     try:
         config = json.loads((root / "project.json").read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         config = {}
-    head = [] if from_vscode(data) else [agent.body()]
+    head = [] if tool == "copilot" else [agent.body()]
     head += ["## This session",
              f"- Project: {config.get('name', root.name)} in {root}",
              f"- Tool call: {agent.tool_command()} <command>"]
@@ -63,15 +62,17 @@ def session_start(data: dict, root: Path) -> dict:
         if len(content) > room:
             content = content[:max(room, 0)] + "\n[…] STATE.md is longer; read the rest from the file."
         text += "\n## STATE.md\n" + content
+    if tool == "copilot":  # the agent host drops hookSpecificOutput (Nachtest 4, 25.10.)
+        return {"additionalContext": text[:LIMIT]}
     return {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text[:LIMIT]}}
 
 
-def stop(data: dict, root: Path) -> dict | None:
+def stop(data: dict, root: Path, tool: str) -> dict | None:
     from ppplib import agent, cardguard
     home = agent.PPP_HOME
     session = data.get("session_id") or data.get("sessionId") or ""
     transcript = data.get("transcript_path") or data.get("transcriptPath") or ""
-    tool = cardguard.log_tool(transcript)  # VS Code runs these hooks in the agent host (PL-16)
+    tool = TOOLS[tool]
     usage = home / "usage.jsonl"
     seen = usage.read_text(encoding="utf-8", errors="replace") if usage.is_file() else ""
     if session and f'"{session}"' not in seen:
@@ -95,7 +96,7 @@ def stop(data: dict, root: Path) -> dict | None:
             "reason": cardguard.REMINDER.format(q=question[:160], tool=cardguard.QUESTION_TOOL.get(tool, "AskUserQuestion"))}
 
 
-def pre_compact(data: dict, root: Path) -> dict:
+def pre_compact(data: dict, root: Path, tool: str) -> dict:
     from ppplib import agent
     german = ((agent.read_settings() or {}).get("language") or "de").lower().startswith("de")
     message = ("ppp: Der Kontext wird gleich verdichtet. Besser: Stand sichern (Haltepunkt) und einen neuen Chat starten."
@@ -105,6 +106,7 @@ def pre_compact(data: dict, root: Path) -> dict:
 
 def main() -> int:
     event = sys.argv[1] if len(sys.argv) > 1 else ""
+    tool = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] in TOOLS else "claude"
     try:
         raw = sys.stdin.read() if not sys.stdin.isatty() else ""
         data = json.loads(raw) if raw.strip() else {}
@@ -112,7 +114,7 @@ def main() -> int:
         if root is None:
             return 0
         handler = {"SessionStart": session_start, "Stop": stop, "PreCompact": pre_compact}.get(event)
-        out = handler(data, root) if handler else None
+        out = handler(data, root, tool) if handler else None
         if out:
             sys.stdout.reconfigure(encoding="utf-8")
             print(json.dumps(out, ensure_ascii=False))

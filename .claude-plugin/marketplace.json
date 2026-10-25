@@ -1,7 +1,7 @@
 {
   "name": "ppp",
   "owner": {
-    "name": "ppp"
+    "name": "Pascal Naumann"
   },
   "description": "Releases of ppp: Power Platform solutions offline from solution exports.",
   "plugins": [

@@ -233,7 +233,8 @@ def cmd_settings(a) -> int:
 def cmd_check(a) -> int:
     from . import agent
     root = find_root(a.project)
-    rep = structure.check(root, agent.agent_note(), agent.clone_note())
+    update = agent.update_clone()
+    rep = structure.check(root, update, agent.agent_note())
     print(rep.text())
     return 1 if rep.errors else 0
 
@@ -423,12 +424,14 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--solution", default="", help="unique name of the main solution, if it exists already")
     c.set_defaults(func=cmd_init)
 
-    command("check", cmd_check, "Report deviations from the project structure (target: none), an outdated agent and a ppp "
-                                "clone behind its upstream; creates a missing exchange/.", False)
+    command("check", cmd_check, "Report deviations from the project structure (target: none) and an old agent copy "
+                                "that hides the agent of the plugin; updates the ppp clone (git pull --ff-only) when it "
+                                "is behind its upstream and clean; creates a missing exchange/.", False)
 
-    c = sub.add_parser("setup", help="Install the agent ppp for VS Code (~/.copilot/agents/ppp.agent.md) and show the plugin settings.",
-                       description="Install the agent ppp for VS Code (~/.copilot/agents/ppp.agent.md) with the tool call of this "
-                                   "computer, and show the settings for VS Code and Claude Code.", epilog=EPILOG)
+    c = sub.add_parser("setup", help="Remove an old agent copy (~/.copilot/agents/ppp.agent.md) and show the installation entries.",
+                       description="Remove the agent copy of ppp before 0.2.0 (~/.copilot/agents/ppp.agent.md), which hides "
+                                   "the agent of the plugin, keep the tool call in ~/.ppp/tool-call.txt and show the "
+                                   "installation entries for VS Code and Claude Code.", epilog=EPILOG)
     c.set_defaults(func=cmd_setup)
     c = sub.add_parser("settings", help="Show or save the personal settings (~/.ppp/settings.json).",
                        description="Show or save the personal settings in ~/.ppp/settings.json: language of chat and cards, "
