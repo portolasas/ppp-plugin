@@ -139,7 +139,7 @@ def read_settings() -> dict | None:
         return None
 
 
-def write_settings(language: str | None, guidance: str | None) -> dict:
+def write_settings(language: str | None, guidance: str | None, sessions: str | None = None) -> dict:
     current = read_settings() or {}
     if language:
         current["language"] = language
@@ -147,6 +147,11 @@ def write_settings(language: str | None, guidance: str | None) -> dict:
         if guidance not in GUIDANCE:
             raise ToolError(f"guidance must be one of {', '.join(GUIDANCE)}")
         current["guidance"] = guidance
+    if sessions:
+        folder = Path(sessions).expanduser().resolve()
+        if not folder.is_dir():
+            raise ToolError(f"Folder not found: {folder}")
+        current["sessionsRepo"] = str(folder)
     missing = [k for k in ("language", "guidance") if k not in current]
     if missing:
         raise ToolError("missing: " + ", ".join(f"--{k}" for k in missing))

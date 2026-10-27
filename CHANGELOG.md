@@ -2,6 +2,9 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.3.0 (2026-10-27)
+- Skill ppp-sessions and command ppp sessions (PLUGIN PL-20, user, 2026-10-27): on request, the Copilot session logs of ppp projects that changed since the last upload of this computer go to the clone of the user's private sessions repository (copy, commit, push); ppp settings --sessions <clone> keeps its folder, ~/.ppp/sessions.json the time of the last upload.
+
 ## 0.2.2 (2026-10-25)
 - README with a quick guide: what ppp is, requirements, installation in VS Code and Claude Code, first project, package cycle, updates, project layout (user, 2026-10-25).
 

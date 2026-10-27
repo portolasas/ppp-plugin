@@ -221,12 +221,12 @@ def cmd_setup(a) -> int:
 
 def cmd_settings(a) -> int:
     from . import agent
-    if not a.language and not a.guidance:
+    if not a.language and not a.guidance and not a.sessions:
         current = agent.read_settings()
         print(f"{agent.SETTINGS}: {current}" if current else f"{agent.SETTINGS} is missing. "
               "Set it with --language <code> --guidance beginner|standard|experienced.")
         return 0
-    print(f"Saved {agent.SETTINGS}: {agent.write_settings(a.language, a.guidance)}")
+    print(f"Saved {agent.SETTINGS}: {agent.write_settings(a.language, a.guidance, a.sessions)}")
     return 0
 
 
@@ -356,6 +356,19 @@ def cmd_usage(a) -> int:
     return 0
 
 
+def cmd_sessions(a) -> int:
+    from datetime import datetime
+
+    from . import agent, sessions
+    repo = a.repo or (agent.read_settings() or {}).get("sessionsRepo")
+    if not repo:
+        raise ToolError("No sessions repository set. Save the folder of its clone with ppp settings --sessions <folder>.")
+    since = datetime.fromisoformat(a.since).timestamp() if a.since else None
+    home = Path(a.home).expanduser() if a.home else Path.home()
+    print("\n".join(sessions.upload(Path(repo).expanduser(), home, since, a.dry_run)))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="ppp", description="ppp tools for Power Platform solutions.", epilog=EPILOG)
     p.add_argument("--version", action="version", version=f"ppp {VERSION}")
@@ -435,9 +448,10 @@ def build_parser() -> argparse.ArgumentParser:
     c.set_defaults(func=cmd_setup)
     c = sub.add_parser("settings", help="Show or save the personal settings (~/.ppp/settings.json).",
                        description="Show or save the personal settings in ~/.ppp/settings.json: language of chat and cards, "
-                                   "guidance level.", epilog=EPILOG)
+                                   "guidance level, folder of the sessions repository.", epilog=EPILOG)
     c.add_argument("--language", default="", help="language of chat and cards, e.g. de or en")
     c.add_argument("--guidance", default="", help="beginner, standard or experienced")
+    c.add_argument("--sessions", default="", help="folder of the clone of the private sessions repository (ppp sessions)")
     c.set_defaults(func=cmd_settings)
     command("migrate", cmd_migrate, "Bring the project to the current structure version.", False)
 
@@ -473,6 +487,17 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--json", action="store_true", help="one record per session as JSON")
     c.add_argument("--home", default="", help="home folder with .copilot and .claude (default: the user's)")
     c.set_defaults(func=cmd_usage)
+
+    c = sub.add_parser("sessions", help="Upload the session logs of ppp projects that changed since the last upload to the "
+                                        "sessions repository (for a learning session).",
+                       description="Copy the Copilot session logs of ppp projects (working folder with project.json) that "
+                                   "changed since the last upload of this computer into the clone of the sessions "
+                                   "repository (sessionsRepo in ~/.ppp/settings.json), commit and push.", epilog=EPILOG)
+    c.add_argument("--repo", default="", help="folder of the clone (default: sessionsRepo from the settings)")
+    c.add_argument("--since", default="", help="YYYY-MM-DD: take sessions changed on or after this day (default: the last upload)")
+    c.add_argument("--dry-run", action="store_true", help="only list the sessions, copy and push nothing")
+    c.add_argument("--home", default="", help="home folder with .copilot (default: the user's)")
+    c.set_defaults(func=cmd_sessions)
 
     # one call of ppp --help shows every command with its options
     usages = "\n".join(c.format_usage().replace("usage: ", "  ", 1).rstrip() for c in sub.choices.values())

@@ -6,9 +6,10 @@ It works **offline from solution exports**. The agent has no tenant access, no c
 
 ## What you get
 - **Agent `ppp`** with the core rules: questions as cards with a recommendation first, no silent assumptions, a commit after each confirmed step, stopping points with a model recommendation.
-- **13 skills**, loaded when a task needs them:
+- **14 skills**, loaded when a task needs them:
   - phases: `ppp-intake`, `ppp-clarify`, `ppp-prototype`, `ppp-plan`, `ppp-package`, `ppp-diagnose`, `ppp-docs`, `ppp-golive`;
-  - platform knowledge, each statement marked observed, documented, open or version-dependent: `ppp-power-automate`, `ppp-power-apps`, `ppp-sharepoint`, `ppp-power-bi`, `ppp-copilot-studio`.
+  - platform knowledge, each statement marked observed, documented, open or version-dependent: `ppp-power-automate`, `ppp-power-apps`, `ppp-sharepoint`, `ppp-power-bi`, `ppp-copilot-studio`;
+  - `ppp-sessions`: on your request, uploads the session logs of your ppp projects to a private repository of yours, to improve ppp from them.
 - **Command line `ppp`** (Python standard library only): unpack and pack solutions with `pac`, inventory flows, check flows before packing (`ppp verify`, checks C1–C14), check screen YAML before "paste code" (`ppp canvas`), convert App.Formulas to de-DE, simulate flows, create project files from templates, record usage. `ppp --help` lists every command.
 - **Hooks** for session start, turn end and compaction. They run only in ppp projects and never block.
 
@@ -75,7 +76,7 @@ inputs/, docs/, ...   material as handed over; handbook and training; created wh
 ```
 
 ## Data
-ppp keeps everything in your project folder and its git repository. Exports can contain personal data and tenant details; keep project repositories private. The plugin itself holds no tenant, personal or customer data.
+ppp keeps everything in your project folder and its git repository. Exports can contain personal data and tenant details; keep project repositories private. The plugin itself holds no tenant, personal or customer data. Session logs leave the computer only when you ask for an upload, and only to the repository you name (`ppp settings --sessions <clone>`); keep it private.
 
 ## More
 - [CHANGELOG.md](CHANGELOG.md): versions and changes.
