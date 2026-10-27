@@ -4,8 +4,10 @@ create files from templates (new) and archive packages (archive). Rules: entwurf
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
+import stat
 from datetime import date
 from pathlib import Path
 
@@ -151,6 +153,59 @@ def _numbered(entries: list[str], where: str, rep: Report, suffix: str = "") -> 
         numbers[m.group(1)] = e
 
 
+def _outside(root: Path) -> list[tuple[Path, bool]]:
+    """Top-level entries outside the structure, each with True when git does not track it."""
+    allowed = set(CORE_FILES) | {d.split("/")[0] for d in CORE_DIRS} | set(OPTIONAL_DIRS)
+    repo = gitutil.is_repo(root)
+    # a leftover outside git stays on one computer only, e.g. after a transition done on the other one
+    return [(p, repo and not gitutil.git(root, "ls-files", "--", p.name).strip())
+            for p in sorted(root.iterdir()) if not p.name.startswith(".") and p.name not in allowed]
+
+
+def _is_link(path: Path) -> bool:
+    return path.is_symlink() or getattr(os.path, "isjunction", lambda _: False)(path)
+
+
+def _empty_tree(path: Path) -> int | None:
+    """Number of folders of a tree without files and links, hidden entries included; None otherwise."""
+    if _is_link(path):
+        return None
+    folders = 0
+    for top, dirs, files in os.walk(path, followlinks=False):
+        if files or any(_is_link(Path(top, d)) for d in dirs):
+            return None
+        folders += 1
+    return folders
+
+
+def remove_leftovers(root: Path, dry_run: bool = False) -> list[str]:
+    """Remove local leftover trees outside git that hold no files; GEN-20261025-WIN-01."""
+    removed, kept = [], []
+    for p, local in _outside(root):
+        if not (local and p.is_dir()):
+            continue
+        count = _empty_tree(p)
+        if count is None:
+            kept.append(p.name + "/")
+            continue
+        removed.append(f"{p.name}/ ({count} folders)")
+        if dry_run:
+            continue
+        for top, _, _ in os.walk(p, topdown=False):
+            try:
+                os.rmdir(top)
+            except PermissionError:
+                # OneDrive folders on Windows carry the read-only attribute; clear only that, never the access rights
+                os.chmod(top, os.stat(top).st_mode | stat.S_IWRITE)
+                os.rmdir(top)
+    out = [("Plan, nothing changed yet. " if dry_run else "") + "Local leftovers without files "
+           + ("to remove" if dry_run else "removed") + ": " + (", ".join(removed) or "-")]
+    if kept:
+        out.append("Leftovers with files or links, untouched; move what is still needed to legacy/, inputs/ or exchange/: "
+                   + ", ".join(kept))
+    return out
+
+
 def check(root: Path, *notes: str | None) -> Report:
     rep = Report(f"ppp check | {root.name} | structure version {STRUCTURE_VERSION}")
     try:
@@ -173,19 +228,19 @@ def check(root: Path, *notes: str | None) -> Report:
     if not (root / "exchange").exists():  # not in git, so a fresh clone lacks it
         (root / "exchange").mkdir()
         rep.info("S exchange/ was missing and is created (not in git)")
-    allowed = set(CORE_FILES) | {d.split("/")[0] for d in CORE_DIRS} | set(OPTIONAL_DIRS)
     repo = gitutil.is_repo(root)
-    for p in sorted(root.iterdir()):
-        if p.name.startswith("."):
-            continue
-        if p.name not in allowed:
-            # a leftover outside git stays on one computer only, e.g. after a transition done on the other one
-            local = repo and not gitutil.git(root, "ls-files", "--", p.name).strip()
+    for p, local in _outside(root):
+        empty = _empty_tree(p) if local and p.is_dir() else None
+        if empty is not None:
+            rep.error(f"S not part of the structure: {p.name}/ (not in git: a local leftover without files, {empty} folders; "
+                      "remove it with ppp tidy --leftovers after a card)")
+        else:
             rep.error(f"S not part of the structure: {p.name}{'/' if p.is_dir() else ''}"
                       + (" (not in git: a local leftover; move what is still needed to legacy/, inputs/ or exchange/, "
                          "then delete it)" if local else ""))
-        elif p.name in OPTIONAL_DIRS and not p.is_dir():
-            rep.error(f"S {p.name} must be a folder")
+    for name in OPTIONAL_DIRS:
+        if (root / name).exists() and not (root / name).is_dir():
+            rep.error(f"S {name} must be a folder")
 
     # components/
     modules = [m for m in config.get("modules") or [] if m in MODULES]

@@ -12,7 +12,9 @@ The tenant is out of reach, so the whole skill is getting a **feedback loop** th
 ## 1. What is already here, then evidence from the tenant
 Start with what needs no tenant step: the error message the user reported, the definition in `solution/` (`ppp inventory <flow>`, search for the action and expression the message names), the list schema and earlier exports in `inputs/`. When message and definition explain the error, go straight to the feedback loop.
 
-Ask for evidence only when a concrete question remains that only the tenant answers, and then for exports, not readings: the failed run (Run history › the run › Download, or Monitor export) for the inputs and outputs of an action, the affected list ("Export › CSV with schema") for data, the import message as text, a fresh solution export when the definition may differ from `solution/`. One tenant-step card names exactly what to export, where it goes (`exchange/`, or `inputs/` for data) and which question it answers. Personal data in these exports may be read.
+When the report carries no platform error text (an app shows only its own message such as "write failed"), the first card asks for the error message of the first failed action as text: Run history › the run › the red action › its error. That message usually names action and cause.
+
+Ask for further evidence only when a concrete question remains that only the tenant answers, and then for exports, not readings: the failed run (Run history › the run › Download, or Monitor export) for the inputs and outputs of an action, the affected list ("Export › CSV with schema") for data, the import message as text, a fresh solution export when the definition may differ from `solution/`. One tenant-step card names exactly what to export, where it goes (`exchange/`, or `inputs/` for data) and which question it answers. Personal data in these exports may be read.
 
 Done when the symptom is captured: the error message, a wrong value or a failed action with its inputs, from the user's report or an export.
 
@@ -30,6 +32,4 @@ Write 3–5 ranked hypotheses, each falsifiable: "If X is the cause, changing Y 
 ## 4. Test and fix
 Change one thing at a time and rerun the loop. The fix becomes a package (ppp-package) or, if the user prefers a small fix by hand in the tenant, a card with the exact change plus a note in `STATE.md` under "Manual changes in the tenant". Keep the loop as a regression test in `tests/` when it is cheap to keep.
 
-Done when the loop is green, the cause is named in the commit message, and the fix is either packed or noted.
-
-If the cause was platform behaviour you did not know, propose a lesson (`ppp new lesson`).
+Done when the loop is green, the cause is named in the commit message, the fix is either packed or noted, and a cause in platform behaviour you did not know has a lesson proposal (`ppp new lesson`).

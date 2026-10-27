@@ -262,7 +262,14 @@ def cmd_archive(a) -> int:
 
 def cmd_tidy(a) -> int:
     from . import exchange
-    print("\n".join(exchange.tidy(find_root(a.project), a.keep, a.dry_run)))
+    root = find_root(a.project)
+    print("\n".join(structure.remove_leftovers(root, a.dry_run) if a.leftovers else exchange.tidy(root, a.keep, a.dry_run)))
+    return 0
+
+
+def cmd_mail(a) -> int:
+    from . import mail
+    print("\n".join(mail.show(Path(a.file), Path(a.out) if a.out else None)))
     return 0
 
 
@@ -395,7 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     def check_args(c):
         c.add_argument("--base", default=None, help="git ref to compare with (default: commit of the current solution version)")
-        c.add_argument("--allowed", default="", help="comma-separated files that may change (Other/Solution.xml always)")
+        c.add_argument("--allowed", default="", help="comma-separated files that may change, as C4 names them or by a file name that matches one changed file (Other/Solution.xml always)")
         c.add_argument("--retry-none", default="", help="comma-separated actions that need retryPolicy none")
         c.add_argument("--all", action="store_true", help="check every flow, not only changed ones")
         c.add_argument("--with-apps", action="store_true", help="apps stay in the package (move to test or production only)")
@@ -421,7 +428,12 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("file", nargs="?", default="", help="App.Formulas in en-US (default: components/power-apps/theme/App.Formulas.en-US.txt)")
     c.add_argument("--out", default="", help="target file (default: same name with .de-DE.txt)")
 
-    c = command("run", cmd_run, "Run a project generator or test with the central building blocks (bausteine, pfx, versionen, wdl_sim).", False)
+    c = command("mail", cmd_mail, "Show an Outlook message (.msg) without Outlook: subject, sender, recipients, date, body "
+                                  "(text, else HTML as text) and attachments.", False)
+    c.add_argument("file", help=".msg file, e.g. in exchange/ or inputs/")
+    c.add_argument("--out", default="", help="folder for the attachments (equal names are numbered)")
+
+    c = command("run", cmd_run,"Run a project generator or test with the central building blocks (bausteine, pfx, versionen, wdl_sim).", False)
     c.add_argument("script", help="script path relative to the project")
     c.add_argument("args", nargs=argparse.REMAINDER, help="arguments for the script")
 
@@ -477,6 +489,9 @@ def build_parser() -> argparse.ArgumentParser:
                                   "the other packages and the older exports of each solution deleted, other files listed.", False)
     c.add_argument("--keep", nargs="+", default=None, metavar="ZIP",
                    help="packages to archive (default: the newest of the transfer solution, else of the main solution)")
+    c.add_argument("--leftovers", action="store_true",
+                   help="instead: remove local leftover folders outside git and the structure that hold no files "
+                        "(read-only ones too, links never followed); folders with files are only listed")
     c.add_argument("--dry-run", action="store_true", help="show the plan only")
 
     c = sub.add_parser("usage", help="Usage per session from the session logs of Copilot and Claude Code (for evaluation).",

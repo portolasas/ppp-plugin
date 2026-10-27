@@ -2,6 +2,16 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.4.0 (2026-10-27)
+- wdl_sim fails like the tenant on property names with . [ or ] in setProperty and addProperty (PA-20261026-WIN-01) and on startsWith/endsWith with an object or array (PA-20261026-WIN-02); ppp verify C9 reports literal names. Two runs that passed locally had failed in the tenant (Orga-Otto package 003).
+- Knowledge: hyperlink columns read through REST are objects {Url, Description}, Get items returns text (SP-20261026-WIN-01; corrects lists.md and sharepoint-connector.md).
+- ppp-diagnose: without a platform error text in the report the first card asks for the error message of the first failed action; a lesson proposal for an unknown platform cause belongs to the done criterion of step 4.
+- Core rules: cards ask in text fields for no times, counts or other evidence; every progress line in the user's language; the stopping point recommends GPT-6.1 Sol also for building a prototype or document; known misfire: Outlook COM hangs on .msg files.
+- ppp check names local leftovers without files; ppp tidy --leftovers removes them bottom-up, read-only folders too, links never followed (GEN-20261025-WIN-01).
+- ppp mail reads an Outlook .msg without Outlook: subject, sender, recipients, date, body (text, else HTML), attachments numbered on equal names (GEN-20261026-WIN-01).
+- ppp-prototype: screenshots in desktop width with Edge headless (GEN-20261026-WIN-02, GEN-20261027-WIN-01).
+- ppp verify --allowed accepts a file name that matches exactly one changed file (SOL-20261025-WIN-01).
+
 ## 0.3.0 (2026-10-27)
 - Skill ppp-sessions and command ppp sessions (PLUGIN PL-20, user, 2026-10-27): on request, the Copilot session logs of ppp projects that changed since the last upload of this computer go to the clone of the user's private sessions repository (copy, commit, push); ppp settings --sessions <clone> keeps its folder, ~/.ppp/sessions.json the time of the last upload.
 

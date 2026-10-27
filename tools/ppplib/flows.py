@@ -107,6 +107,34 @@ def expressions(s: str) -> tuple[list[str], list[str]]:
     return found, unclosed
 
 
+def literal_property_names(e: str):
+    """(function, name) for each setProperty/addProperty in an expression whose name argument is one text literal."""
+    for m in re.finditer(r"\b(setProperty|addProperty)\s*\(", e, re.I):
+        args, depth, quoted, start, i = [], 0, False, m.end(), m.end()
+        while i < len(e) and len(args) < 2:
+            c = e[i]
+            if quoted:
+                if c == "'":
+                    if e[i + 1:i + 2] == "'":
+                        i += 1
+                    else:
+                        quoted = False
+            elif c == "'":
+                quoted = True
+            elif c in "([":
+                depth += 1
+            elif c in ")]" and depth:
+                depth -= 1
+            elif c in ",)" and depth == 0:
+                args.append(e[start:i].strip())
+                start = i + 1
+                if c == ")":
+                    break
+            i += 1
+        if len(args) == 2 and re.fullmatch(r"'(?:[^']|'')*'", args[1]):
+            yield m.group(1), args[1][1:-1].replace("''", "'")
+
+
 def syntax_problem(e: str) -> str | None:
     """Brackets, strings and empty arguments of one expression."""
     depth, quoted, last, i, n = 0, False, "", 0, len(e)

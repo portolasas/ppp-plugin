@@ -4,7 +4,7 @@ List design, field XML and the setup flow are in the skill ppp-sharepoint.
 
 ## Lists and items
 - Multi-line text columns are unsuitable for emptiness checks in a filter query; keep a dedicated Boolean or choice flag (e.g. `HatFehler`). [B]
-- Hyperlink columns come from `Get items` as a URL string; writing an empty string is invalid. Write an object with `Url` and `Description`. [B]
+- Hyperlink columns: `Get items` returns the URL as text, REST ("Send an HTTP request to SharePoint") an object `{Url, Description}`: read `?['Url']`, text functions on the object fail the run. Writing an empty string is invalid; write an object with `Url` and `Description`. [B] (SP-20261026-WIN-01)
 - A required choice column blocks error rows when the value set lacks a neutral value; add one (e.g. `Unbekannt`) before writing error rows. [B]
 - Uniqueness on an ID column: backfill first, check idempotency (second run changes nothing), then switch it on. [B]
 

@@ -16,6 +16,7 @@
 - Booleans: `True`/`False` from `string(or(...))` is invalid JSON, SharePoint answers 400 "Invalid JSON". Use `@{if(or(...),'true','false')}` without quotes. [B]
 - Real parsing with `Parse JSON` and a strict schema. [B]
 - A property name that starts with `@` is read as an expression, in schemas and bodies too: `@odata.nextLink` as a Parse JSON schema key failed the import with `TemplateValidationError` ("Unable to parse template language expression 'odata.nextLink'"). Write `@@odata.nextLink`; reading a response stays `?['@odata.nextLink']` [B] (PA-20261024-WIN-01). `ppp verify` C9 checks property names too.
+- `setProperty` rejects property names containing `.`, `[` or `]`, at run time only: a key built as `concat(<list>,'.',<field>)` imported and failed the run ("The provided property name … has these invalid characters '.'"). Nest the objects: `setProperty(<o>,<list>,setProperty(<inner>,<field>,<value>))` [B] (PA-20261026-WIN-01). `wdl_sim` applies the rule to `setProperty` and `addProperty`, `ppp verify` C9 to literal names.
 - Build expressions in files or generators, never through shell or Python string literals: quotes get lost (`replace(x,,'')` once broke a whole package). [B] `ppp verify` C9 checks the syntax.
 
 ## Variables
@@ -31,6 +32,7 @@
 
 ## Text
 - `substring(text, 0, n)` fails on empty text, even with n = 0: the start index must be below the text length. Safe: `substring(concat(x,' '),0,min(length(x),n))`. [B] (ASUM, 2026-10-08)
+- `startsWith` and `endsWith` expect text: an object fails the run ("expects its first parameter to be of type string. The provided value is of type 'Object'"). Read the text property first, e.g. `?['Url']` of a hyperlink value from REST [B] (PA-20261026-WIN-02). `wdl_sim` fails the same way.
 - VTT timing line: `trim()` the part after `-->` before cutting off the cue settings, otherwise `int()` fails on the leading blank [B]:
   `@first(split(trim(last(split(outputs('<Compose_TimingLine>'),'-->'))),' '))`
 

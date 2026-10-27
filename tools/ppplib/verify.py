@@ -169,6 +169,13 @@ def check_flow(rep: Report, short: str, text: str, base_text: str | None, retry_
                 bad9 += 1
                 if bad9 <= 10:
                     rep.error(f"C9 {short} :: expression: {problem} :: {_short(e)}")
+            for fn, key in flows.literal_property_names(e):
+                # '.', '[' and ']' fail at run time only (PA-20261026-WIN-01)
+                if any(c in key for c in "[]."):
+                    bad9 += 1
+                    if bad9 <= 10:
+                        rep.error(f"C9 {short} :: {fn}() property name '{key}' contains . [ or ]; the run fails. "
+                                  "Nest the objects instead")
     for key in flows.keys(flows.definition(flow)):
         # a key is read as an expression too: '@odata.nextLink' in a schema failed the import (PA-20261024-WIN-01)
         if key.startswith("@") and not key.startswith(("@@", "@{")):
@@ -283,7 +290,16 @@ def verify(root: Path, folder: Path, base: str, *, allowed: list[str] | None = N
     changed = [f for f in current if f in base_data and _sha(data[f]) != _sha(base_data[f])]
     rep.info(f"C4 changed files ({len(changed)}): " + (", ".join(changed) or "-"))
     if allowed:
-        not_allowed = [f for f in changed if f != SOLUTION_XML and f not in allowed]
+        # C4 names files relative to the solution; a bare file name released nothing (SOL-20261025-WIN-01)
+        released = set()
+        for a in allowed:
+            hits = [f for f in changed if f == a or f.endswith("/" + a.strip("/"))]
+            if len(hits) == 1:
+                released.add(hits[0])
+            elif hits or not any(f == a or f.endswith("/" + a.strip("/")) for f in current):
+                rep.warn(f"C4 --allowed {a} matches " + (f"{len(hits)} changed files: " + ", ".join(hits) if hits else "no changed file")
+                         + "; give the path as C4 names it")
+        not_allowed = [f for f in changed if f != SOLUTION_XML and f not in released]
         if not_allowed:
             rep.error("C4 changes not released: " + ", ".join(not_allowed))
         else:

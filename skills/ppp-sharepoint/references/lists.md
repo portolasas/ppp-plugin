@@ -5,7 +5,7 @@
 - **Relations through text or number keys** instead of lookup or person columns when apps or flows filter on them (delegation, threshold, lookup limit per view). [D]
 - **JSON snapshots** in multi-line **plain text** columns (`RichText="FALSE"`), compact keys, well below the limit of about 63,000 characters. [D]
 - Multi-line text is unsuitable for emptiness checks in a filter query; keep a Yes/No or choice flag (e.g. `HatFehler`). [B]
-- **Hyperlink columns** come from `Get items` as a URL string; writing an empty string is invalid, write an object with `Url` and `Description`. [B]
+- **Hyperlink columns**: `Get items` returns the URL as text, REST ("Send an HTTP request to SharePoint") an object `{Url, Description}`: read `?['Url']`, text functions on the object fail the run. Writing an empty string is invalid; write an object with `Url` and `Description`. [B] (SP-20261026-WIN-01)
 - **Required choice columns** need a neutral value (e.g. `Unbekannt`), otherwise error rows cannot be written; add it before error rows appear. [B]
 - **Switching uniqueness on**: backfill existing data, check idempotency (a second run changes nothing), then "enforce unique values". [B]
 

@@ -306,9 +306,30 @@ def _substring(kx, s, start, laenge=None):
     return s[start:ende]
 
 
+def _name_pruefen(fn, key):
+    # the tenant rejects '.', '[' and ']' in property names at run time (PA-20261026-WIN-01)
+    falsch = ", ".join(z for z in "[]." if z in to_str(key))
+    if falsch:
+        raise WdlFehler(f"{fn}(): The provided property name '{key}' has these invalid characters '{falsch}'. "
+                        "The name cannot contain any of the following symbols: '[, ], .'.")
+
+
+def _text_vergleich(fn, op):
+    # startsWith/endsWith on an object or array fail in the tenant instead of comparing its JSON (PA-20261026-WIN-02)
+    def f(kx, s, t):
+        for pos, v in (("first", s), ("second", t)):
+            if isinstance(v, (dict, list)):
+                art = "Object" if isinstance(v, dict) else "Array"
+                raise WdlFehler(f"The template language function '{fn}' expects its {pos} parameter to be of type "
+                                f"string. The provided value is of type '{art}'.")
+        return op(to_str(s).lower(), to_str(t).lower())
+    return f
+
+
 def _set_property(kx, obj, key, val):
     if not isinstance(obj, dict):
         raise WdlFehler("setProperty() auf Nicht-Objekt")
+    _name_pruefen("setProperty", key)
     o = copy.deepcopy(obj)
     o[key] = val
     return o
@@ -338,6 +359,7 @@ def _float(v):
 def _add_property(o, k, v):
     if not isinstance(o, dict):
         raise WdlFehler("addProperty() auf Nicht-Objekt")
+    _name_pruefen("addProperty", k)
     if k in o:
         raise WdlFehler(f"addProperty(): Eigenschaft {k} existiert bereits")
     o = copy.deepcopy(o)
@@ -497,8 +519,8 @@ FUNKTIONEN = {
     "addProperty": lambda kx, o, k, v: _add_property(o, k, v),
     "toUpper": lambda kx, s: s.upper() if isinstance(s, str) else (_ for _ in ()).throw(WdlFehler("toUpper() erwartet Text")),
     "guid": lambda kx: "0f8fad5b-d9cb-469f-a165-70867728950e",
-    "startsWith": lambda kx, s, t: to_str(s).lower().startswith(to_str(t).lower()),
-    "endsWith": lambda kx, s, t: to_str(s).lower().endswith(to_str(t).lower()),
+    "startsWith": _text_vergleich("startsWith", str.startswith),
+    "endsWith": _text_vergleich("endsWith", str.endswith),
     "replace": lambda kx, s, a, b: s.replace(a, b) if isinstance(s, str) else (_ for _ in ()).throw(WdlFehler("replace() erwartet Text")),
     "last": lambda kx, v: (v[-1] if v else None) if isinstance(v, (list, str)) else (_ for _ in ()).throw(WdlFehler("last()")),
     "mul": lambda kx, a, b: num(a, "mul") * num(b, "mul"),

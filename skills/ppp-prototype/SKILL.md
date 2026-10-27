@@ -18,5 +18,13 @@ A prototype is **throwaway** and answers one question: does this app fit the pro
 
 Done when every screen of the specs is reachable by clicks and the data covers the scenarios of `specs/`.
 
+## Screenshots
+For slides and documents take screenshots with Edge headless; the browser in the chat keeps a narrow mobile width [B] (GEN-20261026-WIN-02, GEN-20261027-WIN-01):
+`msedge --headless=new --disable-gpu --hide-scrollbars --user-data-dir=<temp folder> --window-size=1440,<height> --virtual-time-budget=<ms> --screenshot=<absolute path> <file URL>`
+- Drive each view (role, record, dialog) with a small script appended to a temporary copy of the page, chosen by a URL parameter.
+- Raise the window height instead of scrolling: scrolling shifts the capture under a fixed header.
+- `--screenshot` takes an absolute path; with a relative one no file appeared. Set the time budget longer than any toast or animation.
+- Start Edge with Popen, wait until the file exists, then end only the processes of that temporary profile; otherwise it may hang.
+
 ## Feedback
 The user collects feedback with the people concerned. Their answers come as material into `inputs/`; settled changes go into `specs/` (ppp-clarify), then planning follows. The prototype stays in `prototype/` as a record of the design question; it is not maintained further.
