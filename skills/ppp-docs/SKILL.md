@@ -1,6 +1,6 @@
 ---
 name: ppp-docs
-description: Documents for people outside development - handbook, training, Six Sigma documents, questionnaires and project material in docs/. Use when a handbook, training, user guide, in-app help or DMAIC document is needed.
+description: Documents for people outside development - handbook, training, Six Sigma documents, questionnaires and project material in docs/. Use when a handbook, training, user guide, in-app help, DMAIC document or presentation is needed.
 ---
 
 # Documents for people
@@ -17,7 +17,13 @@ The technical documentation is the project structure itself (`README.md`, `specs
 Done when every task of the users has a chapter and every chapter was read by an end user.
 
 ## Training (`docs/training/`)
-Only when the handbook is not enough: a short deck or exercise sheet per user role, built on the handbook chapters. For slides in the corporate design use the skill bi-ppt if it is installed.
+Only when the handbook is not enough: a short deck (see Presentations) or exercise sheet per user role, built on the handbook chapters.
+
+## Presentations
+Any deck ppp prepares (training, workshop, steering committee update) starts as its slide description, the template for the deck:
+1. Write `docs/<area>/<name>.md` in the language of the deck: per slide one heading with number and title as a statement, below it the core message, the content points and the intended design (for example status per strand, timeline, comparison old → new). Done when every slide of the planned deck has its section and the user confirmed the outline.
+2. Build in the corporate design with bi-ppt if it is installed (skill or agent), naming the slide description as its template. bi-ppt sets it as `"dokument"`, writes `<name>.pptx` and `<name>.spec.json` beside it and appends its own section with the built state; your text above stays. Without bi-ppt the slide description is the result, and the user builds the deck.
+3. Later changes go through bi-ppt with the slide numbers from the slide description; bi-ppt changes only those slides.
 
 ## Six Sigma (`docs/six-sigma/`)
 Only when the project plan provides it: one document per DMAIC phase (Define, Measure, Analyze, Improve, Control) with the content the plan asks for, fed from `specs/`, `decisions/` and measured data.

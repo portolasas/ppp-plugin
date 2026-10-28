@@ -15,7 +15,7 @@ Clarify until you and the user share one understanding of the solution. Map it a
 - **large**: current state, concept, specification with success criteria, no contradictions. If the project plan provides Six Sigma, follow its DMAIC phases and keep the documents in `docs/six-sigma/`.
 
 ## Rounds
-1. **Read the material.** Everything in `inputs/` and the exports. Facts are your job: look them up in files and exports, never ask the user for something you can find. Done when every input is read once and its facts are noted.
+1. **Read the material.** Everything in `inputs/` and the exports. A presentation with a slide description beside it (`<name>.md`, section from `<!-- bippt:folienbeschreibung`) is read through that description, the PPTX only for what it does not say. Facts are your job: look them up in files and exports, never ask the user for something you can find. Done when every input is read once and its facts are noted.
 2. **Ask the frontier.** The frontier is every decision whose prerequisites are settled. Ask the whole frontier in one turn, one card per question, the recommended answer first, worded so that accepting it settles the question. A question that depends on another open question waits for a later round.
 3. **Challenge.** Check each answer for contradictions with earlier answers, gaps and hidden assumptions, and advise with a recommendation. A requirement the user confirmed stays confirmed.
 4. **Write down at once.** Each settled capability goes into `specs/<capability>.md` (`ppp new spec "<capability>"`): requirements as SHALL, scenarios as WHEN/THEN with concrete values. The scenarios are the base for the critical tests later.

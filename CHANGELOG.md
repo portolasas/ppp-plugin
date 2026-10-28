@@ -2,6 +2,9 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.4.1 (2026-10-28)
+- Presentations: ppp-clarify reads a deck through its slide description <name>.md (bi-design 2.3.0) instead of the PPTX; ppp-docs prepares every deck as a slide description, the template bi-ppt takes as "dokument"; ppp-intake keeps a presentation together with its slide description (T6, user, 2026-10-28).
+
 ## 0.4.0 (2026-10-27)
 - wdl_sim fails like the tenant on property names with . [ or ] in setProperty and addProperty (PA-20261026-WIN-01) and on startsWith/endsWith with an object or array (PA-20261026-WIN-02); ppp verify C9 reports literal names. Two runs that passed locally had failed in the tenant (Orga-Otto package 003).
 - Knowledge: hyperlink columns read through REST are objects {Url, Description}, Get items returns text (SP-20261026-WIN-01; corrects lists.md and sharepoint-connector.md).

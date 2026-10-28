@@ -22,7 +22,7 @@ Done when every fact has an answer and the mode is confirmed.
 
 ## 2. Create the structure
 1. `ppp init --name "<name>" --prefix <PREFIX> --modules <list> --mode <mode> --language <code>` in the project folder. Existing files stay untouched.
-2. Material the user hands over goes unchanged to `inputs/` (transcripts, SOPs, mails, presentations, data files).
+2. Material the user hands over goes unchanged to `inputs/` (transcripts, SOPs, mails, presentations with their slide description `<name>.md`, data files).
 3. Write the purpose into `README.md` and the five lines into `AGENTS.md`.
 4. Set the remote, commit "Intake" and push.
 
