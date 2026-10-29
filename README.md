@@ -23,12 +23,12 @@ It works **offline from solution exports**. The agent has no tenant access, no c
 ## Quick start
 
 ### 1. Install
-**VS Code.** Add to your user settings (JSON):
-```json
-"chat.plugins.enabled": true,
-"chat.plugins.marketplaces": ["portolasas/ppp-plugin"]
-```
-Install **ppp** in the Extensions view under Agent Plugins, run "Developer: Reload Window" and choose the agent **ppp** once in the agent picker; it stays chosen.
+**VS Code.** No JSON editing and no install script:
+1. Add the marketplace: open the Settings, search for `chat.plugins.marketplaces`, choose "Add Item" and enter `portolasas/ppp-plugin`. Or in the Agents view: Customizations › Browse › Configure Marketplaces › Add Marketplace.
+2. Install **ppp** from the marketplace (Customizations › Browse, or the Extensions view under Agent Plugins) and confirm the trust prompt.
+3. Run "Developer: Reload Window" and choose the agent **ppp** once in the agent picker; it stays chosen.
+
+If ppp does not appear, check that agent plugins are on (`chat.plugins.enabled`).
 
 **Claude Code.** Once per computer:
 ```

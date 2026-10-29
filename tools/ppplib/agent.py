@@ -74,10 +74,9 @@ def setup() -> list[str]:
                       "rename or remove it yourself.", ""]
     write_tool_call()
     lines += [f"Tool call: {tool_command()} (kept in {TOOL_CALL})", "",
-              "VS Code: add to the user settings (JSON) if not there yet, install ppp from the marketplace, then",
-              "'Developer: Reload Window' and choose the agent 'ppp' once in the agent picker (it stays chosen):",
-              '  "chat.plugins.enabled": true,',
-              f'  "chat.plugins.marketplaces": ["{MARKETPLACE}"]']
+              f"VS Code: Settings > chat.plugins.marketplaces > 'Add Item' > {MARKETPLACE} (if not there yet;",
+              "or Customizations > Browse > Configure Marketplaces > Add Marketplace), install ppp from the marketplace,",
+              "then 'Developer: Reload Window' and choose the agent 'ppp' once in the agent picker (it stays chosen)."]
     if _development_clone():
         lines.append(f'  development clone instead of the marketplace: "chat.pluginLocations": {{ {json.dumps(str(PLUGIN))}: true }}')
     lines += ["", "Claude Code: once per computer", f"  /plugin marketplace add {MARKETPLACE}", "  /plugin install ppp@ppp"]

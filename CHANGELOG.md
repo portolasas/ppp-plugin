@@ -2,6 +2,9 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.4.2 (2026-10-29)
+- README and ppp setup: install in VS Code by adding the marketplace portolasas/ppp-plugin in the Settings (chat.plugins.marketplaces › Add Item) or under Customizations › Configure Marketplaces, no JSON editing (user, 2026-10-29).
+
 ## 0.4.1 (2026-10-28)
 - Presentations: ppp-clarify reads a deck through its slide description <name>.md (bi-design 2.3.0) instead of the PPTX; ppp-docs prepares every deck as a slide description, the template bi-ppt takes as "dokument"; ppp-intake keeps a presentation together with its slide description (T6, user, 2026-10-28).
 
