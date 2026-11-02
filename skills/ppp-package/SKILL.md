@@ -43,7 +43,7 @@ Done when `ppp verify` ends with RESULT: OK or OK WITH WARNINGS and you can give
 Tenant-step card: Solutions › Import solution › the ZIP from `exchange/` › connections as before › Import; expected result: "successfully imported", flows on, and the checks after the import this package needs on the same card (flow checker without errors, connections, switches, prompts open). "All as expected" or "imported successfully" confirms them; no separate check card. Screens: one card per screen with "paste code" from the file.
 
 ## 7. Test
-One card per critical scenario: what to do, the expected values, answers "All as expected", "Deviation – I describe it", "Not possible". A deviation goes to diagnosis (ppp-diagnose) or into a fix in this package.
+For changed screens the user has pasted: first a layout review with skill ppp-app-walk, if a walk is possible. Then one card per critical scenario: what to do, the expected values, answers "All as expected", "Deviation – I describe it", "Not possible". A deviation goes to diagnosis (ppp-diagnose) or into a fix in this package.
 
 ## 8. Close
 Merge the spec changes into `specs/`, then `ppp archive NNN` and `ppp tidy`: the imported package goes to `exchange/archive/`, intermediate packages and older exports are deleted (`--keep` names the imported package when it is not the newest one). For the other files it lists, ask on one card which may go; diagnosis files of this package are the recommendation, they may hold personal data. Set the package to done in `ROADMAP.md`, overwrite `STATE.md` (no active package, next package, last export = this version), remove manual-change notes that this package rebuilt, commit and push. Then the stopping-point card.

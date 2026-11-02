@@ -24,3 +24,5 @@ Status per statement: **[B]** observed in the tenant, **[D]** documentation, not
 | Performance and delegation with SharePoint and flows | [references/performance.md](references/performance.md) |
 | Layout, auto layout, classic control colours, theme, media, timelines | [references/layout.md](references/layout.md) |
 | App state in a solution export | [references/solution.md](references/solution.md) |
+
+Checking a pasted screen in the running app: skill ppp-app-walk.

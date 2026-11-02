@@ -2,6 +2,9 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.5.0 (2026-11-02)
+- Skill ppp-app-walk with ppp walk and ppp guide (PLUGIN PL-21, user, 2026-11-02): the agent walks through a running canvas app in Edge with Playwright (clicks, typing, wait for content), takes pictures with numbered frames and masks as a browser overlay, reports measured layout findings and console and HTTP errors, and builds an illustrated Word guide with python-docx. Writing steps need identifiable, removable test data and a card, in any environment. Clicks in the tenant are still to be proven.
+
 ## 0.4.2 (2026-10-29)
 - README and ppp setup: install in VS Code by adding the marketplace portolasas/ppp-plugin in the Settings (chat.plugins.marketplaces › Add Item) or under Customizations › Configure Marketplaces, no JSON editing (user, 2026-10-29).
 

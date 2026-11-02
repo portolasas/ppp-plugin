@@ -9,6 +9,7 @@ It works **offline from solution exports**. The agent has no tenant access, no c
 - **14 skills**, loaded when a task needs them:
   - phases: `ppp-intake`, `ppp-clarify`, `ppp-prototype`, `ppp-plan`, `ppp-package`, `ppp-diagnose`, `ppp-docs`, `ppp-golive`;
   - platform knowledge, each statement marked observed, documented, open or version-dependent: `ppp-power-automate`, `ppp-power-apps`, `ppp-sharepoint`, `ppp-power-bi`, `ppp-copilot-studio`;
+  - `ppp-app-walk`: walks through your running app in Edge with automated clicks, reviews the layout from measurements and pictures, and builds illustrated Word guides (optional packages `playwright`, `python-docx`).
   - `ppp-sessions`: on your request, uploads the session logs of your ppp projects to a private repository of yours, to improve ppp from them.
 - **Command line `ppp`** (Python standard library only): unpack and pack solutions with `pac`, inventory flows, check flows before packing (`ppp verify`, checks C1–C14), check screen YAML before "paste code" (`ppp canvas`), convert App.Formulas to de-DE, simulate flows, create project files from templates, record usage. `ppp --help` lists every command.
 - **Hooks** for session start, turn end and compaction. They run only in ppp projects and never block.

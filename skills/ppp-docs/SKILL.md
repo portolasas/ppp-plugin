@@ -10,7 +10,7 @@ The technical documentation is the project structure itself (`README.md`, `specs
 ## Handbook (`docs/handbook/`)
 1. **Outline with the users**: ask who reads it and for which tasks; one chapter per task, in the order the users work, not per screen.
 2. **Content from the specs**: each chapter takes its steps and rules from the scenarios in `specs/`; nothing that the solution does not do.
-3. **Pictures** for Power Apps: a tenant-step card asks for screenshots of named screens and states, saved to `docs/handbook/images/`. Mark highlights in the text, not in the picture.
+3. **Pictures and guide** for Power Apps: one walk per chapter with skill ppp-app-walk; it takes the pictures with numbered frames and builds the Word guide. Where a walk is not possible, a tenant-step card asks for screenshots of named screens and states, saved to `docs/handbook/images/`.
 4. **Review**: the user hands the draft to one or two end users; their remarks come back as material into `inputs/`.
 5. In-app help, if wanted: short texts per screen as a named formula or a help screen in the app, built like any other screen in a package.
 

@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-from . import VERSION, canvas, flows, gitutil, solution, structure
+from . import VERSION, canvas, flows, gitutil, solution, structure, walk
 from .project import ToolError, find_root, load_config, solution_dir
 from .report import Report
 from .verify import verify
@@ -124,8 +125,9 @@ def cmd_pack(a) -> int:
     return 0
 
 
-BLOCKS = Path(__file__).resolve().parent.parent / "blocks"
-PACKAGES = {"yaml": "PyYAML"}  # module name -> PyPI package, where they differ
+TOOLS = Path(__file__).resolve().parent.parent
+BLOCKS = TOOLS / "blocks"
+PACKAGES = {"yaml": "PyYAML", "docx": "python-docx"}  # module name -> PyPI package, where they differ
 
 
 def _project_or_none(project: Path | None) -> Path | None:
@@ -188,9 +190,14 @@ def cmd_run(a) -> int:
     script = (root / a.script).resolve() if not Path(a.script).is_absolute() else Path(a.script)
     if not script.is_file():
         raise ToolError(f"Script not found: {script}")
-    env = dict(os.environ, PYTHONPATH=str(BLOCKS), PPP_PROJEKT=str(root), PYTHONDONTWRITEBYTECODE="1",
-               PYTHONIOENCODING="utf-8")
-    proc = subprocess.run([sys.executable, "-B", str(script), *a.args], cwd=root, env=env,
+    return _child(script, a.args, root, BLOCKS)
+
+
+def _child(script: Path, args: list[str], root: Path, importable: Path) -> int:
+    """Run a script in its own Python: unlike python -I it sees packages installed with --user."""
+    path = os.pathsep.join(p for p in (str(importable), os.environ.get("PYTHONPATH", "")) if p)
+    env = dict(os.environ, PYTHONPATH=path, PPP_PROJEKT=str(root), PYTHONDONTWRITEBYTECODE="1", PYTHONIOENCODING="utf-8")
+    proc = subprocess.run([sys.executable, "-B", str(script), *args], cwd=root, env=env,
                           stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
     sys.stderr.write(proc.stderr)
     missing = re.search(r"ModuleNotFoundError: No module named '([A-Za-z0-9_]+)", proc.stderr)
@@ -201,6 +208,45 @@ def cmd_run(a) -> int:
               f"the user agreed: \"{sys.executable}\" -m pip install --user {package}. "
               "No virtual environment: group policies often block it.", file=sys.stderr)
     return proc.returncode
+
+
+def _walk_path(root: Path, given: str) -> Path:
+    path = Path(given) if Path(given).is_absolute() else root / given
+    if not path.is_file():
+        raise ToolError(f"Walk file not found: {path}")
+    return path
+
+
+def cmd_walk(a) -> int:
+    root = find_root(a.project)
+    path = _walk_path(root, a.file)
+    rep = walk.check_file(root, path)
+    if a.check or rep.errors:
+        print(rep.text())
+        return 1 if rep.errors else 0
+    loaded = walk.load(path)
+    if walk.writes(loaded) and not a.allow_writes:
+        print(rep.text())
+        print("ERROR: this walk writes data. Confirm on a decision card what it creates, when, what its flows trigger "
+              "and how the test data is removed, then run it with --allow-writes.", file=sys.stderr)
+        return 1
+    for level, message in rep.lines:
+        if level == "WARN":
+            print(f"[WARN]  {message}")
+    profile = Path(a.profile) if a.profile else Path.home() / ".ppp" / "edge-profile"
+    options = {"walk": str(path), "out": str(walk.out_dir(root, path, loaded)), "profile": str(profile),
+               "channel": a.channel, "headless": a.headless, "timeout": a.timeout}
+    return _child(TOOLS / "child" / "walk_browser.py", [json.dumps(options)], root, TOOLS)
+
+
+def cmd_guide(a) -> int:
+    root = find_root(a.project)
+    paths = [_walk_path(root, name) for name in a.files]
+    target = Path(a.out) if a.out else Path("docs") / "handbook" / f"{walk.name_of(paths[0])}.docx"
+    options = {"root": str(root), "walks": [str(p) for p in paths], "out": str(root / target), "title": a.title,
+               "template": str(root / a.template) if a.template else "",
+               "language": load_config(root).get("handbookLanguage", "en")}
+    return _child(TOOLS / "child" / "walk_word.py", [json.dumps(options)], root, TOOLS)
 
 
 def cmd_init(a) -> int:
@@ -513,6 +559,21 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--dry-run", action="store_true", help="only list the sessions, copy and push nothing")
     c.add_argument("--home", default="", help="home folder with .copilot (default: the user's)")
     c.set_defaults(func=cmd_sessions)
+
+    c = command("walk", cmd_walk, "Run a walk file through the running app in Edge: clicks, pictures, measured layout findings, console and HTTP errors. Needs the package playwright.", False)
+    c.add_argument("file", help="walk file (JSON), usually in docs/handbook/walks/ or tests/walks/")
+    c.add_argument("--check", action="store_true", help="only check the walk file offline, no browser")
+    c.add_argument("--allow-writes", action="store_true", help="run steps marked writes, after the user confirmed them on a card")
+    c.add_argument("--channel", default="msedge", help="installed browser (default: msedge)")
+    c.add_argument("--headless", action="store_true", help="without a window; company sign-in usually needs the window")
+    c.add_argument("--profile", default="", help="browser profile folder (default: ~/.ppp/edge-profile)")
+    c.add_argument("--timeout", type=float, default=90, help="seconds to wait for content or a control (default: 90)")
+
+    c = command("guide", cmd_guide, "Build a Word guide from walk files and their pictures, one chapter per walk. Needs the package python-docx.", False)
+    c.add_argument("files", nargs="+", help="walk files in chapter order")
+    c.add_argument("--out", default="", help="Word file (default: docs/handbook/<first walk>.docx)")
+    c.add_argument("--title", default="", help="document title")
+    c.add_argument("--template", default="", help="Word template to fill, its styles apply")
 
     # one call of ppp --help shows every command with its options
     usages = "\n".join(c.format_usage().replace("usage: ", "  ", 1).rstrip() for c in sub.choices.values())

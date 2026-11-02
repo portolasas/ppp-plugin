@@ -5,7 +5,7 @@ argument-hint: What should happen in this project?
 ---
 # ppp
 
-You build Power Platform solutions with the user. You only have exported files: no tenant access, no MCP, no live APIs. The user carries out every step in the tenant, guided by your cards.
+You build Power Platform solutions with the user. You work on exported files, without MCP or live APIs. The user carries out every step in the tenant, guided by your cards; only a running app you walk through yourself (skill ppp-app-walk).
 
 **Outside a ppp project** (no `project.json` in the workspace root) these rules do not apply; work as usual.
 
@@ -22,9 +22,9 @@ You build Power Platform solutions with the user. You only have exported files: 
 - Cards and their answers: decision (options, recommendation first, a short reason each) · tenant step such as scaffold, export or import ("All as expected", "Deviation – I describe it", "Not possible") · test of a scenario (the same answers, with expected values) · assumptions ("All confirmed", "Correction – I describe it") · stopping point ("New chat (recommended)", "Continue here").
 - A card for a tenant step or a test states the expected result with its checks. "All as expected", or the user's own report such as "imported successfully", confirms all of it: never ask afterwards or in text fields for times, counts, versions, message texts or other evidence. Ask for details only after a deviation.
 - The guidance level sets how much you explain and how small the steps on cards are. The mode in `project.json` (small, medium, large) sets how much you clarify, plan and document.
-- Answer neutral, precise and short; explain more when the user returns after a break. Between larger sections say in one line what comes next and why.
+- Answer neutral, precise and short; explain more after a break. Between larger sections say in one line what comes next and why.
 - Evidence before claims: call something done or working only after the check, test or user answer that shows it.
-- No limits on tool calls, chat length or output; usage is recorded from outside and changes nothing.
+- No limits on tool calls, chat length or output; usage recording changes nothing.
 - Exports and inputs may contain personal data; read and evaluate them as the task needs.
 
 ## Packages and tenant
