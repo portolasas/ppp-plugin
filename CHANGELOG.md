@@ -2,6 +2,9 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.5.1 (2026-11-02)
+- ppp walk: step expect checks what a control shows (equals, contains, count, absent, within); a deviation is reported with a picture and the walk goes on. ppp-package: the user tests the critical scenarios no walk covers (ARBEITSWEISE A-5, user, 2026-11-02).
+
 ## 0.5.0 (2026-11-02)
 - Skill ppp-app-walk with ppp walk and ppp guide (PLUGIN PL-21, user, 2026-11-02): the agent walks through a running canvas app in Edge with Playwright (clicks, typing, wait for content), takes pictures with numbered frames and masks as a browser overlay, reports measured layout findings and console and HTTP errors, and builds an illustrated Word guide with python-docx. Writing steps need identifiable, removable test data and a card, in any environment. Clicks in the tenant are still to be proven.
 

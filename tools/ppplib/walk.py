@@ -9,9 +9,11 @@ from pathlib import Path
 from .project import ToolError
 from .report import Report
 
-ACTIONS = ("click", "type", "wait", "hover", "key", "scroll", "shot")
+ACTIONS = ("click", "type", "wait", "hover", "key", "scroll", "shot", "expect")
+EXPECTATIONS = ("equals", "contains", "count", "absent")
 TOP_KEYS = {"title", "intro", "url", "viewports", "ready", "mask", "ignore", "markColor", "testData", "out", "steps"}
-STEP_KEYS = set(ACTIONS) | {"value", "nth", "writes", "text", "by", "marks", "crop", "check", "caption"}
+STEP_KEYS = set(ACTIONS) | set(EXPECTATIONS) | {"value", "nth", "writes", "text", "by", "marks", "crop", "check", "caption",
+                                                "within", "scenario"}
 DEFAULT_VIEWPORT = [1366, 800]
 WRITING = re.compile(r"\b(Patch|SubmitForm|Remove|RemoveIf|UpdateIf|Update)\s*\(|\.Run\s*\(")
 
@@ -51,10 +53,6 @@ def mark_parts(mark) -> tuple[str, int, str]:
     if isinstance(mark, str):
         return mark, 0, ""
     return mark.get("control", ""), mark.get("nth", 0), mark.get("label", "")
-
-
-def shot_steps(walk: dict) -> list[dict]:
-    return [s for s in walk.get("steps", []) if isinstance(s, dict) and "shot" in s]
 
 
 def _screens_text(root: Path) -> str:
@@ -122,6 +120,14 @@ def check(walk: dict, screens: str = "") -> Report:
         action = found[0]
         if action == "type" and "value" not in step:
             rep.error(f"{where}: type needs a value")
+        if action == "expect":
+            wanted = [k for k in EXPECTATIONS if k in step]
+            if len(wanted) != 1:
+                rep.error(f"{where}: expect needs exactly one of {', '.join(EXPECTATIONS)}")
+            elif wanted[0] == "count" and not (isinstance(step["count"], int) and step["count"] >= 0):
+                rep.error(f"{where}: count must be a whole number")
+            elif wanted[0] == "absent" and step["absent"] is not True:
+                rep.error(f"{where}: absent can only be true")
         if action == "shot":
             shot = str(step["shot"])
             if not re.fullmatch(r"[A-Za-z0-9_-]+", shot):
@@ -156,6 +162,24 @@ def check(walk: dict, screens: str = "") -> Report:
 
 def check_file(root: Path, path: Path) -> Report:
     return check(load(path), _screens_text(root))
+
+
+def expectation(step: dict, values: list[str]) -> tuple[bool, str]:
+    """Compare the shown texts of all visible instances of a control with a step's expectation; (met, what was found).
+    Without nth any instance may match, so a value in some gallery row counts."""
+    shown = [" ".join(v.split()) for v in values]
+    found = f"found {shown[:3]!r}" + (f" and {len(shown) - 3} more" if len(shown) > 3 else "")
+    if "count" in step:
+        return len(shown) == step["count"], f"found {len(shown)}"
+    if "absent" in step:
+        return not shown, found
+    if "nth" in step:
+        shown = shown[step["nth"]:step["nth"] + 1]
+    if "equals" in step:
+        want = " ".join(str(step["equals"]).split())
+        return want in shown, found
+    want = " ".join(str(step["contains"]).split())
+    return any(want in v for v in shown), found
 
 
 def layout_findings(controls: list[dict], viewport: list[int], ignore: list[str] | tuple = ()) -> list[str]:

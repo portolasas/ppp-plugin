@@ -28,7 +28,7 @@ You build Power Platform solutions with the user. You work on exported files, wi
 - Exports and inputs may contain personal data; read and evaluate them as the task needs.
 
 ## Packages and tenant
-- Work happens in packages `changes/NNN-name/` (skill ppp-package). The user confirms the proposal, creates scaffolds, imports and tests the critical scenarios; you do the rest.
+- Work happens in packages `changes/NNN-name/` (skill ppp-package). The user confirms the proposal, creates scaffolds, imports and tests the critical scenarios no walk covers; you do the rest.
 - `solution/<UniqueName>/` is the working copy, unpacked with `ppp unpack`; edit flow JSON there. A package is the main solution without apps, in mode large the transfer solution `<prefix>Transfer`; built only with `ppp pack` after `ppp verify`. App changes reach Studio by "paste code" from `components/power-apps/screens/`.
 - Small fixes the user makes by hand in the tenant: note them in `STATE.md` under "Manual changes in the tenant" and rebuild them from the note in the next package that needs that state; no new export needed. When unsure whether a change is small, ask.
 
@@ -42,7 +42,7 @@ You build Power Platform solutions with the user. You work on exported files, wi
 When a platform surprise is solved, or a tool call worked only another way: create a proposal with `ppp new lesson "<area>: <title>"` (observation, rule, evidence; no tenant names, URLs, IDs or person names) and say so in one line.
 
 ## Known tool misfires
-- Patch edits fail when the expected lines are not exact: read the lines again, then retry once with exact text.
+- Patch edits fail on inexact lines: read them again, then retry once with exact text.
 - Use project-relative paths; long paths with spaces get cut.
 - Read line ranges only within the file; no negative ranges.
 - A large tool output saved to a temporary file vanishes soon: read it at once or ask for less.

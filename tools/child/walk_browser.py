@@ -146,6 +146,46 @@ def has_content(page, name: str) -> bool:
     return False
 
 
+def shown_texts(page, name: str) -> list[str]:
+    """What the visible instances of a control show: the value of a field, else the text."""
+    script = """el => { const f = el.matches('input,textarea,select') ? el : el.querySelector('input,textarea,select');
+                        return f ? f.value : (el.innerText || ''); }"""
+    out = []
+    for frame in page.frames:
+        try:
+            loc = frame.locator(f'[data-control-name={json.dumps(name)}]')
+            for i in range(loc.count()):
+                box = loc.nth(i).bounding_box()
+                if box and box["width"] > 0 and box["height"] > 0:
+                    out.append(loc.nth(i).evaluate(script))
+        except PlaywrightError:
+            continue
+    return out
+
+
+def verify(page, walk: dict, step: dict, number: int, label: str, folder: Path, rep: Report, record: dict,
+           mask_seen: set, timeout: float) -> None:
+    """A value may arrive late, for example from a flow, so look again until `within`. A miss is recorded with a picture
+    and the walk goes on, so one run shows all deviations."""
+    deadline = time.monotonic() + float(step.get("within", 30))
+    while True:
+        met, found = W.expectation(step, shown_texts(page, step["expect"]))
+        if met or time.monotonic() >= deadline:
+            break
+        page.wait_for_timeout(500)
+    kind = next(k for k in W.EXPECTATIONS if k in step)
+    title = f"{label} step {number}" + (f" ({step['scenario']})" if step.get("scenario") else "")
+    what = f"{step['expect']} {kind} {step[kind]!r}"
+    entry = {"viewport": label, "step": number, "scenario": step.get("scenario", ""), "expect": what, "met": met, "found": found}
+    if met:
+        rep.ok(f"{title}: {what}")
+    else:
+        file = take(page, walk, {"shot": f"deviation-{number}"}, folder, mask_seen, timeout)
+        entry["file"] = str(folder / file)
+        rep.error(f"{title}: {what}, {found}; picture {entry['file']}")
+    record["expects"].append(entry)
+
+
 def wait_for(page, name: str, timeout: float, refresh: str = "") -> None:
     """Wait for content; on an empty result press refresh and look again. A failed wait stops the walk, so no empty picture."""
     limit = timeout
@@ -227,7 +267,9 @@ def run_steps(page, walk: dict, size: list[int], folder: Path, rep: Report, reco
                 page.mouse.move(*centre(locate(page, step["scroll"], step.get("nth", 0), timeout)))
                 page.mouse.wheel(0, step.get("by", 400))
             settle(page, timeout)
-            if action == "shot":
+            if action == "expect":
+                verify(page, walk, step, number, label, folder, rep, record, mask_seen, timeout)
+            elif action == "shot":
                 file = take(page, walk, step, folder, mask_seen, timeout)
                 controls = scan(page)
                 findings = W.layout_findings(controls, size, walk.get("ignore", [])) if step.get("check", True) else []
@@ -246,8 +288,9 @@ def main(options: dict) -> int:
     folder.mkdir(parents=True, exist_ok=True)
     timeout = float(options["timeout"])
     rep = Report(f"ppp walk: {W.name_of(path)}")
-    record = {"walk": W.name_of(path), "shots": [], "console": [], "http": []}
+    record = {"walk": W.name_of(path), "shots": [], "expects": [], "console": [], "http": []}
     mask_seen: set = set()
+    aborted = False
 
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
@@ -282,10 +325,11 @@ def main(options: dict) -> int:
             except PlaywrightError:
                 pass
             rep.error(str(ex).splitlines()[0])
+            aborted = True
         finally:
             context.close()
 
-    if not rep.errors:
+    if not aborted:
         for name in sorted(set(walk.get("mask", [])) - mask_seen):
             rep.error(f"mask {name} was never found; the pictures may show what it should cover")
     for kind, title in (("console", "console errors"), ("http", "failed requests")):
