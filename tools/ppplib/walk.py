@@ -11,10 +11,12 @@ from .report import Report
 
 ACTIONS = ("click", "type", "wait", "hover", "key", "scroll", "shot", "expect")
 EXPECTATIONS = ("equals", "contains", "count", "absent")
-TOP_KEYS = {"title", "intro", "url", "viewports", "ready", "mask", "ignore", "markColor", "testData", "out", "steps"}
+TOP_KEYS = {"title", "intro", "url", "viewports", "ready", "mask", "ignore", "markColor", "testData", "out", "steps", "role"}
 STEP_KEYS = set(ACTIONS) | set(EXPECTATIONS) | {"value", "nth", "writes", "text", "by", "marks", "crop", "check", "caption",
                                                 "within", "scenario"}
 DEFAULT_VIEWPORT = [1366, 800]
+MIN_TARGET = 24  # px, WCAG 2.2 target size minimum; layout.md asks for icons of 24-32 px
+MIN_CONTRAST = 4.5  # WCAG 2 AA for normal text
 WRITING = re.compile(r"\b(Patch|SubmitForm|Remove|RemoveIf|UpdateIf|Update)\s*\(|\.Run\s*\(")
 
 
@@ -34,6 +36,16 @@ def name_of(path: Path) -> str:
 
 def out_dir(root: Path, path: Path, walk: dict) -> Path:
     return root / walk["out"] if walk.get("out") else root / "exchange" / "walks" / name_of(path)
+
+
+def role_name(walk: dict) -> str:
+    return str((walk.get("role") or {}).get("name", ""))
+
+
+def profile_dir(home: Path, walk: dict) -> Path:
+    """Each role keeps its own sign-in in its own browser profile."""
+    slug = re.sub(r"[^a-z0-9]+", "-", role_name(walk).lower()).strip("-")
+    return home / ".ppp" / (f"edge-profile-{slug}" if slug else "edge-profile")
 
 
 def viewports(walk: dict) -> list[list[int]]:
@@ -89,8 +101,8 @@ def check(walk: dict, screens: str = "") -> Report:
     rep = Report("ppp walk: walk file")
     for key in sorted(set(walk) - TOP_KEYS):
         rep.error(f"unknown key {key}")
-    if not str(walk.get("url", "")).startswith(("https://", "http://", "file:")):
-        rep.error("url: the play URL of the app is missing")
+    if not walk.get("url"):
+        rep.error("url: the play URL of the app, or the path of a click mock-up in the project, is missing")
     ready = walk.get("ready")
     if not (isinstance(ready, dict) and ready.get("control")):
         rep.error("ready: {control, refresh} is missing; a walk starts by waiting for content, a fixed time is unreliable")
@@ -103,6 +115,15 @@ def check(walk: dict, screens: str = "") -> Report:
             rep.error(f"viewports: {size} is not [width, height]")
 
     names: list[str] = [str(n) for n in walk.get("mask", [])]
+    if "role" in walk:
+        role = walk["role"] if isinstance(walk["role"], dict) else {}
+        identity = role.get("identity") if isinstance(role.get("identity"), dict) else {}
+        if not re.search(r"[A-Za-z0-9]", str(role.get("name", ""))):
+            rep.error("role: name is missing")
+        if not identity.get("control") or len([k for k in ("equals", "contains") if k in identity]) != 1:
+            rep.error("role: identity {control, equals or contains} is missing; it proves the run is in this role's session")
+        else:
+            names.append(str(identity["control"]))
     if isinstance(ready, dict):
         names += [str(ready[k]) for k in ("control", "refresh") if ready.get(k)]
     ids: set[str] = set()
@@ -160,8 +181,36 @@ def check(walk: dict, screens: str = "") -> Report:
     return rep
 
 
+def is_local(url: str) -> bool:
+    return not re.match(r"[a-z]+:", url)
+
+
 def check_file(root: Path, path: Path) -> Report:
-    return check(load(path), _screens_text(root))
+    walk = load(path)
+    rep = check(walk, _screens_text(root))
+    url = str(walk.get("url", ""))
+    if url and is_local(url) and not (root / url.split("#")[0].split("?")[0]).is_file():
+        rep.error(f"url: {url} is neither a web address nor a file in the project")
+    return rep
+
+
+def resolved_url(root: Path, url: str) -> str:
+    """A click mock-up is named by its path in the project, so that the walk works on every computer."""
+    if not is_local(url):
+        return url
+    file, sep, rest = url.partition("?") if "?" in url else url.partition("#")
+    return (root / file).resolve().as_uri() + sep + rest
+
+
+def slower(now: list[dict], before: list[dict]) -> list[str]:
+    """Timings that clearly got worse against the last run: at least half as long again and a second more."""
+    known = {(t["viewport"], t["what"]): t["seconds"] for t in before}
+    out = []
+    for t in now:
+        last = known.get((t["viewport"], t["what"]))
+        if last is not None and t["seconds"] > last * 1.5 and t["seconds"] - last > 1:
+            out.append(f"{t['viewport']} {t['what']}: {t['seconds']:.1f} s, last run {last:.1f} s")
+    return out
 
 
 def expectation(step: dict, values: list[str]) -> tuple[bool, str]:
@@ -182,9 +231,18 @@ def expectation(step: dict, values: list[str]) -> tuple[bool, str]:
     return any(want in v for v in shown), found
 
 
+def contrast(foreground: list[float], background: list[float]) -> float:
+    """Contrast ratio after WCAG 2 of two RGB colours, 1 to 21."""
+    def luminance(rgb):
+        linear = [c / 12.92 if c <= 10.31 else ((c / 255 + 0.055) / 1.055) ** 2.4 * 255 for c in rgb[:3]]
+        return (0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]) / 255
+    light, dark = sorted((luminance(foreground), luminance(background)), reverse=True)
+    return (light + 0.05) / (dark + 0.05)
+
+
 def layout_findings(controls: list[dict], viewport: list[int], ignore: list[str] | tuple = ()) -> list[str]:
     """Findings from the measured controls of one state. Each control: name, x, y, w, h, id, parent (id or None), px, py,
-    pw, ph (box of the parent), scroller, transparent, truncated, text, broken. Rows of a gallery repeat, so equal
+    pw, ph (box of the parent), scroller, transparent, truncated, text, broken, interactive, labelled, fg, bg. Rows of a gallery repeat, so equal
     messages count once. The result is a hint for the look at the picture, not a verdict."""
     width, height = viewport
     seen = [c for c in controls if c["w"] > 0 and c["h"] > 0 and c["name"] not in ignore]
@@ -207,6 +265,15 @@ def layout_findings(controls: list[dict], viewport: list[int], ignore: list[str]
             add(f"L3 {name}: text is cut off: {c.get('text', '')!r}")
         if c.get("broken"):
             add(f"L5 {name}: image does not load")
+        if c.get("interactive"):
+            if not c.get("labelled"):
+                add(f"A1 {name}: can be clicked but has no text or AccessibleLabel")
+            if c["w"] < MIN_TARGET or c["h"] < MIN_TARGET:
+                add(f"A2 {name}: click area {round(c['w'])}x{round(c['h'])} px, smaller than {MIN_TARGET} px")
+        if c.get("fg") and c.get("bg") and c.get("text"):
+            ratio = contrast(c["fg"], c["bg"])
+            if ratio < MIN_CONTRAST:
+                add(f"A3 {name}: text contrast {ratio:.1f}:1, below {MIN_CONTRAST}:1")
 
     families: dict = {}
     for c in seen:

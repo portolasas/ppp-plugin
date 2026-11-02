@@ -13,6 +13,7 @@ from docx.shared import Emu
 from ppplib import walk as W
 
 FIGURE = {"de": "Abbildung", "en": "Figure"}
+ROLE = {"de": "Rolle", "en": "Role"}
 EMU_PER_PIXEL = 9525
 
 
@@ -35,10 +36,25 @@ def picture(doc, file: Path) -> None:
     doc.add_picture(str(file), width=Emu(min(usable, pixels * EMU_PER_PIXEL)))
 
 
-def chapter(doc, root: Path, path: Path, figure: str, count: int) -> int:
+def proven(folder: Path, path: Path, walk: dict) -> None:
+    """Pictures only from a complete run, for a role only from a session proven as that role."""
+    try:
+        report = json.loads((folder / "report.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise FileNotFoundError(f"no run of {path.name}; run ppp walk {path.name} first")
+    if not report.get("complete"):
+        raise FileNotFoundError(f"the last run of {path.name} did not finish; run ppp walk {path.name} again")
+    if W.role_name(walk) and report.get("role") != W.role_name(walk):
+        raise FileNotFoundError(f"the pictures of {path.name} are not proven as role {W.role_name(walk)}; run ppp walk {path.name} again")
+
+
+def chapter(doc, root: Path, path: Path, figure: str, count: int, role_word: str) -> int:
     walk = W.load(path)
     folder = W.out_dir(root, path, walk)
+    proven(folder, path, walk)
     doc.add_heading(walk.get("title") or W.name_of(path), level=1)
+    if W.role_name(walk):
+        paragraph(doc, f"**{role_word}: {W.role_name(walk)}**")
     if walk.get("intro"):
         paragraph(doc, walk["intro"])
     number = 0
@@ -67,10 +83,11 @@ def main(options: dict) -> int:
     if options.get("title"):
         paragraph(doc, options["title"], "Title")
     figure = FIGURE.get(options.get("language", "en"), FIGURE["en"])
+    role_word = ROLE.get(options.get("language", "en"), ROLE["en"])
     count = 0
     try:
         for name in options["walks"]:
-            count = chapter(doc, root, Path(name), figure, count)
+            count = chapter(doc, root, Path(name), figure, count, role_word)
     except FileNotFoundError as ex:
         print(f"ERROR: {ex}", file=sys.stderr)
         return 2

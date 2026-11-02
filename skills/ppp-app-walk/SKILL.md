@@ -1,11 +1,11 @@
 ---
 name: ppp-app-walk
-description: Walk through a running canvas app in Edge with automated clicks - pictures, layout review of pasted screens, checks of expected values in scenarios, illustrated Word guide of a process. Use when a screen should be checked visually, a critical scenario tested, or a handbook chapter, guide or screenshots of the app are needed.
+description: Walk through a running canvas app or click mock-up in Edge with automated clicks - pictures, layout and usability review, expected values in scenarios, reproducing errors, load times, comparison with the last run, illustrated Word guides per role, training videos. Use when a screen should be checked visually, a critical scenario tested, an app error reproduced, or a guide, screenshots or a video of the app are needed.
 ---
 
 # Walk through a running app
 
-A **walk** is a JSON file the tool plays in the user's installed Edge, signed in with the user's account. You run it yourself; import, export and "paste code" stay with the user. Status: **[B]** observed in the tenant, **[O]** open; the first walks with clicks settle the [O] points: on a surprise write a lesson.
+A **walk** is a JSON file the tool plays in the user's installed Edge, signed in with the user's account; a click mock-up works too (ppp-prototype). You run it yourself; import, export and "paste code" stay with the user. Status: **[B]** observed in the tenant, **[O]** open; the first walks with clicks settle the [O] points: on a surprise write a lesson.
 
 ## 1. Prepare
 - Packages once per computer, after a card: `<python> -m pip install --user playwright` for walks, `python-docx` for guides. No browser download; no virtual environment. `ppp walk` names the exact command when one is missing.
@@ -56,7 +56,11 @@ A writing walk is allowed in every environment, under three conditions: the data
 ## 4. Run and review
 `ppp walk <file>`. Report the result lines; console errors and failed requests are among them.
 
-The measured findings are hints: L1 outside the window, L2 outside the parent, L3 cut-off text, L4 overlap, L5 image not loading. Then look at every picture of every viewport yourself with the image tool (`view` in VS Code, `Read` in Claude Code) against `specs/` and ppp-power-apps: alignment, spacing, cut-off and wrapped text, empty areas, colours, scroll bars, whether the state is what the step should show.
+The measured findings are hints: L1 outside the window, L2 outside the parent, L3 cut-off text, L4 overlap, L5 image not loading; for usability A1 clickable without text or `AccessibleLabel`, A2 click area under 24 px, A3 text contrast under 4.5:1. Then look at every picture of every viewport yourself with the image tool (`view` in VS Code, `Read` in Claude Code) against `specs/` and ppp-power-apps: alignment, spacing, cut-off and wrapped text, empty areas, colours, scroll bars, whether the state is what the step should show.
+
+From the second complete run on, every picture is compared with the last one; the result lines name each changed picture with its area and a diff in `exchange/walks/<name>/diff/` (changed pixels red). Look at each diff: a change outside the package's scope is a finding. Moving data such as dates also shows up there; cover it with `mask` if it gets in the way.
+
+The run also measures time and requests: from the action to the last visible change, for the start and each `click`, `type`, `key` and `wait`, all in `report.json`, those from one second on in the result lines. A step clearly slower than in the last complete run is a warning; go through ppp-power-apps (performance) for it. Compare like with like: the first start of a fresh profile is slower, and a second viewport runs in a warm browser.
 
 Fix in the screen YAML in the current package, or in a new one; the user pastes it by card, and the walk runs again. What you cannot decide alone goes on a decision card with the picture path. Done when every picture was looked at and every finding is fixed, or intended and in `ignore`.
 
@@ -70,10 +74,28 @@ A critical scenario becomes a walk in `tests/walks/`: the user's steps, then the
 ```
 Exactly one of `equals`, `contains`, `count` (visible instances) or `absent`. Without `nth` any instance may match. `within` is how many seconds a value may take to arrive (default 30); raise it when a flow delivers the value. A miss goes into the report as an error with a picture `deviation-<step>.png`, the walk continues, and the run ends with RESULT: ERROR. A scenario that writes follows section 3.
 
-A deviation goes to diagnosis (ppp-diagnose) or into a fix, as after a test card. A scenario counts as tested by the walk only as far as the app shows it. Whatever it does not show stays on a test card for the user: a mail received, a Teams message, a value only in a list, another role, whether the process fits.
+A deviation goes to diagnosis (ppp-diagnose) or into a fix, as after a test card; its picture and a `failed.png` lie in `exchange/walks/<name>/`, outside git. A scenario counts as tested by the walk only as far as the app shows it. Whatever it does not show stays on a test card for the user: a mail received, a Teams message, a value only in a list, another role, whether the process fits.
 
 ## 6. Guide
 `ppp guide <walk> [<walk> ...] --title "<title>"` writes `docs/handbook/<first walk>.docx`, one chapter per walk: numbered `text`, pictures with caption, the legend of the frames. `--out` sets the file, `--template` a Word template whose styles apply; if bi-designer is installed, take the template it names, else the neutral look stays. The rules for the chapters are in ppp-docs. The user reviews the Word file.
+
+## 7. Reproduce an error
+`ppp walk <file> --diagnose` plays the user's steps and writes every error of the app per step to `exchange/walks/<name>/diagnosis.json`: console errors, script errors and failed requests with the first 2000 characters of the response; the result lines show the first ten. That is the error text the app does not show. The file may hold personal data and stays outside git. A walk that reproduces the symptom is a feedback loop for ppp-diagnose; with an `expect` on the wrong value it goes red. Steps that write follow section 3.
+
+## 8. Roles
+A guide shows every action from the session of the role that does it, with that role's permissions, never from a developer account that sees more. So one walk per role and task:
+```json
+"role": {"name": "Shift lead", "identity": {"control": "lblRole", "equals": "Shift lead"}}
+```
+- `identity` names a control that shows who is signed in or which role the app assigned, with `equals` or `contains`. The run stops without a picture when it does not match; single sign-on may quietly log in the user's own account. If the app shows no such control, add one to the screens first, in a package.
+- Each role has its own browser profile `~/.ppp/edge-profile-<role>`. First run per role with `--timeout 600`: a tenant-step card has the user sign in with the role's test account in the window that opens. Passwords stay with the user.
+- Without a test account per role: decision card with what is possible, for example a list entry that assigns the role to the user's own account while the walk runs, with the rules of section 3.
+- A click on a control the role lacks stops the run, as does a disabled one. That is the check that the chapter fits the role; a step the role cannot do does not belong in its chapter, or it reveals a defect in the permissions.
+- Add `expect` with `absent` for what this role must not see, from `specs/`, so the walk also tests the permissions. A check that runs in a flow shows only by doing the step: follow section 3.
+- `ppp guide <walks> --role "<name>"` builds the guide of one role from the given walks, `docs/handbook/<first walk>-<role>.docx`, and names the role under each chapter title. It refuses pictures from a run that did not finish or is not proven as that role.
+
+## 9. Training video
+`ppp walk <file> --video` records the walk to `exchange/walks/<name>/video/<name>.webm` instead of taking pictures: each `text` as a caption with time to read, a ring where a click lands, a pause on the `marks` of a `shot`, masks in every frame. One recording in the first viewport; the pictures of the walk stay as they are. The rules of sections 3 and 8 apply. It needs ffmpeg once per computer, after a card: `<python> -m playwright install ffmpeg`; this is a download from Microsoft that company rules may block. Edge plays the file; move a good recording to `docs/training/` on the user's word.
 
 ## State of the evidence
 | Statement | Status |
@@ -82,4 +104,7 @@ A deviation goes to diagnosis (ppp-diagnose) or into a fix, as after a test card
 | 80 controls of an app found through `data-control-name`; console and HTTP errors recorded | [B] |
 | Clicks, typing, frames and masks at the measured position of a control | [O] tested only on a stand-in with frames |
 | `expect` on real canvas markup: text and field values as the runtime renders them | [O] tested only on a stand-in |
-| Findings L1–L5 on real canvas markup, especially L3, L4 and the wait for a gallery | [O] tune with `ignore` or a lesson |
+| `--diagnose`: which errors of connectors the runtime shows as failed requests, and the headers `x-ms-request-url` and `x-ms-request-method` | [O] |
+| `--video` on the company computer: ffmpeg download, quality on real apps | [O] |
+| A second account in its own profile despite single sign-on on the company computer; how the canvas runtime marks disabled controls | [O] |
+| Findings L1–L5 and A1–A3 on real canvas markup, especially L3, L4, the roles behind A1 and the wait for a gallery | [O] tune with `ignore` or a lesson |

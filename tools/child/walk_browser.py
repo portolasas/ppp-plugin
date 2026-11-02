@@ -1,7 +1,9 @@
 """Child process of ppp walk: runs a walk file in the installed Edge with Playwright. Argument: options as JSON."""
 from __future__ import annotations
 
+import base64
 import json
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -18,6 +20,7 @@ QUIET = 2.5  # seconds without a change before a state counts as settled
 SCAN = """() => {
   const ids = new Map();
   const id = el => { if (!ids.has(el)) ids.set(el, ids.size); return ids.get(el); };
+  const rgb = c => { const m = /rgba?\\(([^)]+)\\)/.exec(c || ''); return m ? m[1].split(',').map(Number) : null; };
   const clear = c => !c || c === 'transparent' || /rgba\\(.*,\\s*0\\)$/.test(c);
   const out = [];
   for (const el of document.querySelectorAll('[data-control-name]')) {
@@ -31,15 +34,25 @@ SCAN = """() => {
       if (/auto|scroll/.test(o.overflowY + o.overflowX) && (a.scrollHeight > a.clientHeight + 1 || a.scrollWidth > a.clientWidth + 1)) { scroller = true; break; }
     }
     const own = [el, ...el.querySelectorAll('*')].filter(n => n === el || n.closest('[data-control-name]') === el);
-    let truncated = false, text = '', broken = false, painted = false;
+    let truncated = false, text = '', broken = false, painted = false, interactive = false, labelled = false, fg = null, bg = null;
     for (const n of own) {
       const o = getComputedStyle(n);
       const words = [...n.childNodes].filter(c => c.nodeType === 3).map(c => c.textContent).join('').trim();
       if (words) {
         text = text || words;
         painted = true;
+        if (!fg) {
+          fg = rgb(o.color);
+          for (let a = n; a && !bg; a = a.parentElement) {
+            const c = rgb(getComputedStyle(a).backgroundColor);
+            if (getComputedStyle(a).backgroundImage !== 'none') break;  // on a picture no colour can be judged
+            if (c && (c.length < 4 || c[3] === 1)) bg = c;
+          }
+        }
         if (!/auto|scroll/.test(o.overflowY + o.overflowX) && (n.scrollWidth > n.clientWidth + 1 || n.scrollHeight > n.clientHeight + 1)) truncated = true;
       }
+      if (n.tagName === 'BUTTON' || n.tagName === 'A' || n.getAttribute('role') === 'button') interactive = true;
+      if (n.getAttribute('aria-label') || n.getAttribute('title') || n.getAttribute('alt')) labelled = true;
       if (n.tagName === 'IMG') { painted = true; if (n.complete && !n.naturalWidth) broken = true; }
       if (n.tagName === 'svg' || n.tagName === 'INPUT' || n.tagName === 'TEXTAREA' || n.tagName === 'SELECT') painted = true;
       if (!clear(o.backgroundColor) || o.backgroundImage !== 'none' || parseFloat(o.borderTopWidth) > 0) painted = true;
@@ -47,7 +60,7 @@ SCAN = """() => {
     out.push({name: el.getAttribute('data-control-name'), x: r.x, y: r.y, w: r.width, h: r.height, id: id(el),
       parent: parent ? id(parent) : null, parentName: parent ? parent.getAttribute('data-control-name') : '',
       px: p ? p.x : 0, py: p ? p.y : 0, pw: p ? p.width : 0, ph: p ? p.height : 0,
-      scroller, transparent: !painted, truncated, broken, text: text.slice(0, 60)});
+      scroller, transparent: !painted, truncated, broken, text: text.slice(0, 60), interactive, labelled: labelled || !!text, fg, bg});
   }
   return out;
 }"""
@@ -74,8 +87,104 @@ OVERLAY = """([items, color]) => {
 }"""
 
 
+COMPARE = """async ([before, after]) => {
+  const load = src => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = 'data:image/png;base64,' + src; });
+  const [a, b] = [await load(before), await load(after)];
+  if (a.width !== b.width || a.height !== b.height) return {size: `${a.width}x${a.height} -> ${b.width}x${b.height}`};
+  const canvas = n => { const c = document.createElement('canvas'); c.width = n.width; c.height = n.height; const g = c.getContext('2d'); g.drawImage(n, 0, 0); return [c, g]; };
+  const [, ga] = canvas(a), [cb, gb] = canvas(b);
+  const da = ga.getImageData(0, 0, a.width, a.height), db = gb.getImageData(0, 0, b.width, b.height);
+  let changed = 0, left = a.width, top = a.height, right = -1, bottom = -1;
+  for (let y = 0, i = 0; y < a.height; y++) for (let x = 0; x < a.width; x++, i += 4) {
+    const differs = Math.max(Math.abs(da.data[i] - db.data[i]), Math.abs(da.data[i+1] - db.data[i+1]), Math.abs(da.data[i+2] - db.data[i+2])) > 16;
+    if (differs) {
+      changed++; left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
+      db.data[i] = 255; db.data[i+1] = 0; db.data[i+2] = 0;
+    } else for (let k = 0; k < 3; k++) db.data[i+k] = 255 - (255 - db.data[i+k]) / 3;
+  }
+  if (!changed) return {percent: 0};
+  gb.putImageData(db, 0, 0);
+  return {percent: 100 * changed / (a.width * a.height), box: [left, top, right - left + 1, bottom - top + 1], diff: cb.toDataURL('image/png').split(',')[1]};
+}"""
+
+
+POINTER = """([x, y, color]) => {
+  const dot = document.createElement('div');
+  dot.className = 'ppp-pointer';
+  dot.style.cssText = `position:fixed;left:${x - 18}px;top:${y - 18}px;width:36px;height:36px;border-radius:18px;border:4px solid ${color};box-sizing:border-box;pointer-events:none;z-index:2147483647`;
+  document.documentElement.appendChild(dot);
+  setTimeout(() => dot.remove(), 900);
+}"""
+
+CAPTION = """text => {
+  let bar = document.getElementById('ppp-caption');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'ppp-caption';
+    bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;padding:12px 24px;font:18px Segoe UI,Arial,sans-serif;color:#fff;background:rgba(0,0,0,.78);pointer-events:none;z-index:2147483647';
+    document.documentElement.appendChild(bar);
+  }
+  bar.textContent = text;
+}"""
+
+
+def mask_script(names: list[str]) -> str:
+    """For a video: masks as a style in every frame from its first moment, so no frame of the recording shows them."""
+    rules = "".join(f'[data-control-name={json.dumps(n)}]{{background:#8a8a8a!important;color:transparent!important}}'
+                    f'[data-control-name={json.dumps(n)}] *,img[data-control-name={json.dumps(n)}]{{visibility:hidden!important}}'
+                    for n in names)
+    return f"""(() => {{
+      const add = () => {{ const s = document.createElement('style'); s.textContent = {json.dumps(rules)}; document.documentElement.appendChild(s); }};
+      if (document.documentElement) add();
+      else new MutationObserver((_, o) => {{ if (document.documentElement) {{ o.disconnect(); add(); }} }}).observe(document, {{childList: true}});
+    }})();"""
+
+
 class WalkFailed(Exception):
     pass
+
+
+class Diagnosis:
+    """With --diagnose: every error of the app in order, with the step it happened in and the body of failed responses."""
+
+    def __init__(self):
+        self.events: list[dict] = []
+        self.step = "start"
+        self.pending: list[tuple] = []
+
+    def enter(self, number: int, action: str, step: dict) -> None:
+        self.drain()
+        self.step = f"step {number} {action} {step.get(action, '')}".rstrip()
+
+    def add(self, kind: str, detail: str) -> None:
+        self.events.append({"step": self.step, "kind": kind, "detail": detail})
+
+    def response(self, response) -> None:
+        if response.status >= 400:
+            self.pending.append((self.step, response))
+
+    def failed(self, request) -> None:
+        self.add("failed", f"{request.method} {address(request.url)}: {request.failure}")
+
+    def drain(self) -> None:
+        """Bodies are read outside the event handlers; a body the browser has dropped stays empty."""
+        pending, self.pending = self.pending, []
+        for step, response in pending:
+            try:
+                body = response.text()[:2000]
+            except (PlaywrightError, UnicodeDecodeError):
+                body = ""
+            request = response.request
+            # the connector call behind the runtime's gateway, when the runtime names it; never other headers: they hold tokens
+            inner = request.headers.get("x-ms-request-url", "")
+            inner = f" for {request.headers.get('x-ms-request-method', '')} {address(inner)}" if inner else ""
+            self.events.append({"step": step, "kind": "http", "detail": f"{response.status} {request.method} {address(response.url)}{inner}", "body": body})
+
+
+def address(url: str) -> str:
+    """Host and path without the query: it may hold tokens."""
+    parts = urlsplit(url)
+    return f"{parts.netloc}{parts.path}"
 
 
 def boxes(page, name: str) -> list[dict]:
@@ -119,8 +228,8 @@ def scan(page) -> list[dict]:
     return out
 
 
-def settle(page, timeout: float) -> None:
-    """Wait until the visible controls and their text stop changing."""
+def settle(page, timeout: float) -> float:
+    """Wait until the visible controls and their text stop changing; returns the moment of the last change."""
     deadline = time.monotonic() + timeout
     last, since = None, time.monotonic()
     while time.monotonic() < deadline:
@@ -128,8 +237,9 @@ def settle(page, timeout: float) -> None:
         if state != last:
             last, since = state, time.monotonic()
         elif time.monotonic() - since >= QUIET:
-            return
+            return since
         page.wait_for_timeout(250)
+    return since
 
 
 def has_content(page, name: str) -> bool:
@@ -186,15 +296,14 @@ def verify(page, walk: dict, step: dict, number: int, label: str, folder: Path, 
     record["expects"].append(entry)
 
 
-def wait_for(page, name: str, timeout: float, refresh: str = "") -> None:
+def wait_for(page, name: str, timeout: float, refresh: str = "") -> float:
     """Wait for content; on an empty result press refresh and look again. A failed wait stops the walk, so no empty picture."""
     limit = timeout
     for attempt in range(3 if refresh else 1):
         deadline = time.monotonic() + limit
         while time.monotonic() < deadline:
             if has_content(page, name):
-                settle(page, timeout)
-                return
+                return settle(page, timeout)
             page.wait_for_timeout(500)
         limit = timeout / 3
         if refresh and attempt < 2 and boxes(page, refresh):
@@ -218,7 +327,43 @@ def centre(box: dict) -> tuple[float, float]:
 
 
 def click(page, name: str, nth: int, timeout: float) -> None:
-    page.mouse.click(*centre(locate(page, name, nth, timeout)))
+    box = locate(page, name, nth, timeout)
+    if disabled_at(page, name, box):
+        raise WalkFailed(f"control {name} is disabled here, so this session may not do this step")
+    page.mouse.click(*centre(box))
+
+
+def disabled_at(page, name: str, box: dict) -> bool:
+    script = """el => el.matches('[disabled],[aria-disabled="true"]')
+                      || el.querySelector('button[disabled],input[disabled],[aria-disabled="true"]') !== null"""
+    for frame in page.frames:
+        try:
+            loc = frame.locator(f'[data-control-name={json.dumps(name)}]')
+            for i in range(loc.count()):
+                found = loc.nth(i).bounding_box()
+                if found and (found["x"], found["y"]) == (box["x"], box["y"]) and loc.nth(i).evaluate(script):
+                    return True
+        except PlaywrightError:
+            continue
+    return False
+
+
+def prove_role(page, walk: dict, record: dict, timeout: float) -> None:
+    """No picture from the wrong session: single sign-on may quietly log in the user's own account."""
+    role = walk.get("role")
+    if not role:
+        return
+    identity = role["identity"]
+    deadline = time.monotonic() + timeout
+    while True:
+        met, found = W.expectation(identity, shown_texts(page, identity["control"]))
+        if met:
+            record["role"] = role["name"]
+            return
+        if time.monotonic() >= deadline:
+            raise WalkFailed(f"this session is not role {role['name']}: {identity['control']} {found}. "
+                             "The user signs in with the role's account in the window of this profile")
+        page.wait_for_timeout(500)
 
 
 def take(page, walk: dict, step: dict, folder: Path, mask_seen: set, timeout: float) -> str:
@@ -243,13 +388,49 @@ def take(page, walk: dict, step: dict, folder: Path, mask_seen: set, timeout: fl
     return target.name
 
 
-def run_steps(page, walk: dict, size: list[int], folder: Path, rep: Report, record: dict, mask_seen: set, timeout: float) -> None:
+def present(page, walk: dict, step: dict, action: str, timeout: float) -> None:
+    """For a video: the step's text as a caption with time to read it, and a ring where the click lands."""
+    if step.get("text"):
+        text = step["text"].replace("**", "")
+        page.evaluate(CAPTION, text)
+        page.wait_for_timeout(int(max(2.0, len(text) / 15) * 1000))
+    if action in ("click", "type", "hover"):
+        box = locate(page, step[action], step.get("nth", 0), timeout)
+        page.evaluate(POINTER, [*centre(box), walk.get("markColor", "#c00000")])
+        page.wait_for_timeout(700)
+
+
+def pause_on_marks(page, walk: dict, step: dict, timeout: float) -> None:
+    items = []
+    for number, mark in enumerate(step.get("marks", []), 1):
+        name, nth, _ = W.mark_parts(mark)
+        box = locate(page, name, nth, timeout)
+        items.append({"x": box["x"], "y": box["y"], "w": box["width"], "h": box["height"], "n": number})
+    page.evaluate(OVERLAY, [items, walk.get("markColor", "#c00000")])
+    page.wait_for_timeout(2500)
+    page.evaluate("() => document.getElementById('ppp-overlay').remove()")
+
+
+def timed(record: dict, viewport: str, what: str, seconds: float, requests: dict, asked: int = 0) -> None:
+    record["timings"].append({"viewport": viewport, "what": what, "seconds": round(max(seconds, 0), 1),
+                              "requests": requests["count"] - asked})
+
+
+def run_steps(page, walk: dict, size: list[int], folder: Path, rep: Report, record: dict, mask_seen: set, timeout: float,
+              diagnosis: Diagnosis | None, requests: dict, started: float, work: Path, video: bool) -> None:
     ready = walk["ready"]
-    wait_for(page, ready["control"], timeout, ready.get("refresh", ""))
     label = f"{size[0]}x{size[1]}"
+    done = wait_for(page, ready["control"], timeout, ready.get("refresh", ""))
+    timed(record, label, "start", done - started, requests)
+    prove_role(page, walk, record, timeout)
     for number, step in enumerate(walk["steps"], 1):
         action = W.action_of(step)
+        begun, asked = time.monotonic(), requests["count"]
+        if diagnosis:
+            diagnosis.enter(number, action, step)
         try:
+            if video:
+                present(page, walk, step, action, timeout)
             if action == "wait":
                 wait_for(page, step["wait"], timeout)
             elif action == "click":
@@ -266,9 +447,14 @@ def run_steps(page, walk: dict, size: list[int], folder: Path, rep: Report, reco
             elif action == "scroll":
                 page.mouse.move(*centre(locate(page, step["scroll"], step.get("nth", 0), timeout)))
                 page.mouse.wheel(0, step.get("by", 400))
-            settle(page, timeout)
+            done = settle(page, timeout)
+            mask_seen.update(n for n in walk.get("mask", []) if boxes(page, n))
+            if action in ("click", "type", "key", "wait"):
+                timed(record, label, f"step {number} {action} {step.get(action, '')}".rstrip(), done - begun, requests, asked)
             if action == "expect":
-                verify(page, walk, step, number, label, folder, rep, record, mask_seen, timeout)
+                verify(page, walk, step, number, label, work, rep, record, mask_seen, timeout)
+            elif action == "shot" and video:
+                pause_on_marks(page, walk, step, timeout)
             elif action == "shot":
                 file = take(page, walk, step, folder, mask_seen, timeout)
                 controls = scan(page)
@@ -281,44 +467,136 @@ def run_steps(page, walk: dict, size: list[int], folder: Path, rep: Report, reco
             raise WalkFailed(f"step {number} ({action}): {ex}")
 
 
+def report_timings(record: dict, work: Path, rep: Report) -> None:
+    for t in record["timings"]:
+        if t["what"] == "start" or t["seconds"] >= 1:
+            rep.info(f"{t['viewport']} {t['what']}: {t['seconds']:.1f} s, {t['requests']} requests")
+    try:
+        before = json.loads((work / "previous" / "report.json").read_text(encoding="utf-8")).get("timings", [])
+    except (OSError, ValueError):
+        return
+    for line in W.slower(record["timings"], before):
+        rep.warn(f"slower: {line}")
+
+
+def keep_last_run(folder: Path, work: Path) -> None:
+    """The pictures of the last complete run become the baseline; an aborted run leaves the baseline as it is."""
+    report = folder / "report.json"
+    try:
+        last = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not last.get("complete"):
+        return
+    previous = work / "previous"
+    shutil.rmtree(previous, ignore_errors=True)
+    previous.mkdir(parents=True)
+    for shot in last["shots"]:
+        target = previous / shot["viewport"] / f"{shot['id']}.png"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if Path(shot["file"]).is_file():
+            shutil.copyfile(shot["file"], target)
+    shutil.copyfile(report, previous / "report.json")
+
+
+def compare(context, work: Path, record: dict, rep: Report) -> None:
+    """Compare each picture with the last complete run, in the browser, so that no image package is needed. The grey-out
+    diff shows changed pixels in red. Changes are expected in a package: they say where to look, not that something is wrong."""
+    if not (work / "previous").is_dir():
+        return
+    page = context.new_page()
+    same = 0
+    shutil.rmtree(work / "diff", ignore_errors=True)
+    for shot in record["shots"]:
+        before = work / "previous" / shot["viewport"] / f"{shot['id']}.png"
+        title = f"{shot['viewport']} {shot['id']}"
+        if not before.is_file():
+            rep.info(f"{title}: new picture")
+            continue
+        encoded = [base64.b64encode(p.read_bytes()).decode() for p in (before, Path(shot["file"]))]
+        result = page.evaluate(COMPARE, encoded)
+        if result.get("size"):
+            rep.info(f"{title}: size changed, {result['size']}")
+        elif result["percent"]:
+            diff = work / "diff" / shot["viewport"] / f"{shot['id']}.png"
+            diff.parent.mkdir(parents=True, exist_ok=True)
+            diff.write_bytes(base64.b64decode(result["diff"]))
+            x, y, w, h = result["box"]
+            shot["changed"] = {"percent": round(result["percent"], 2), "box": result["box"], "diff": str(diff)}
+            rep.info(f"{title}: {result['percent']:.2f} % changed, area {w}x{h} at {x},{y}; {diff}")
+        else:
+            same += 1
+    page.close()
+    rep.info(f"compared with the last complete run: {same} pictures unchanged")
+
+
 def main(options: dict) -> int:
     path = Path(options["walk"])
     walk = W.load(path)
     folder = Path(options["out"])
     folder.mkdir(parents=True, exist_ok=True)
     timeout = float(options["timeout"])
+    work = Path(options["work"])
+    work.mkdir(parents=True, exist_ok=True)
+    keep_last_run(folder, work)
     rep = Report(f"ppp walk: {W.name_of(path)}")
-    record = {"walk": W.name_of(path), "shots": [], "expects": [], "console": [], "http": []}
+    record = {"walk": W.name_of(path), "shots": [], "expects": [], "timings": [], "console": [], "http": []}
     mask_seen: set = set()
     aborted = False
+    diagnosis = Diagnosis() if options.get("diagnosis") else None
+    video = bool(options.get("video"))
+    first = {"width": W.viewports(walk)[0][0], "height": W.viewports(walk)[0][1]}
+    raw_video = folder / "raw"
 
     with sync_playwright() as p:
-        context = p.chromium.launch_persistent_context(
-            options["profile"], channel=options["channel"], headless=options["headless"],
-            viewport={"width": W.viewports(walk)[0][0], "height": W.viewports(walk)[0][1]})
+        try:
+            context = p.chromium.launch_persistent_context(
+                options["profile"], channel=options["channel"], headless=options["headless"], viewport=first,
+                **({"record_video_dir": str(raw_video), "record_video_size": first} if video else {}))
+        except PlaywrightError as ex:
+            hint = f' Recording needs ffmpeg: "{sys.executable}" -m playwright install ffmpeg, after the user agreed.' if "ffmpeg" in str(ex) else ""
+            print(f"ERROR: the browser did not start: {str(ex).splitlines()[0]}{hint} Is a window of this profile still open?", file=sys.stderr)
+            return 2
+        if video and walk.get("mask"):
+            context.add_init_script(mask_script(walk["mask"]))
         page = context.pages[0] if context.pages else context.new_page()
         page.on("console", lambda m: record["console"].append(m.text[:300]) if m.type == "error" else None)
         page.on("pageerror", lambda e: record["console"].append(str(e)[:300]))
 
         def note(response):
             if response.status >= 400:
-                parts = urlsplit(response.url)  # without the query: it may hold tokens
-                record["http"].append(f"{response.status} {parts.netloc}{parts.path}"[:300])
+                record["http"].append(f"{response.status} {address(response.url)}"[:300])
         page.on("response", note)
-        page.on("requestfailed", lambda r: record["http"].append(
-            f"failed {urlsplit(r.url).netloc}{urlsplit(r.url).path}"[:300]))
+        requests = {"count": 0}
+
+        def count(_request):
+            requests["count"] += 1
+        page.on("request", count)
+        page.on("requestfailed", lambda r: record["http"].append(f"failed {address(r.url)}"[:300]))
+        if diagnosis:
+            page.on("console", lambda m: diagnosis.add("console", m.text[:2000]) if m.type == "error" else None)
+            page.on("pageerror", lambda e: diagnosis.add("pageerror", str(e)[:2000]))
+            page.on("response", diagnosis.response)
+            page.on("requestfailed", diagnosis.failed)
         try:
             for number, size in enumerate(W.viewports(walk)):
                 if number and W.writes(walk):
                     rep.info(f"{size[0]}x{size[1]} skipped: this walk writes data, it runs once")
                     continue
+                if number and video:
+                    break  # one recording, in the first viewport
                 target = folder if not number else folder / f"{size[0]}x{size[1]}"
                 target.mkdir(parents=True, exist_ok=True)
                 page.set_viewport_size({"width": size[0], "height": size[1]})
-                page.goto(walk["url"], wait_until="domcontentloaded", timeout=timeout * 1000)
-                run_steps(page, walk, size, target, rep, record, mask_seen, timeout)
+                started = time.monotonic()
+                requests["count"] = 0
+                page.goto(options["url"], wait_until="domcontentloaded", timeout=timeout * 1000)
+                run_steps(page, walk, size, target, rep, record, mask_seen, timeout, diagnosis, requests, started, work, video)
+            if not video:
+                compare(context, work, record, rep)
         except (WalkFailed, PlaywrightError) as ex:
-            failed = folder / "failed.png"
+            work.mkdir(parents=True, exist_ok=True)
+            failed = work / "failed.png"  # without masks, so outside git whatever the walk's "out" says
             try:
                 page.screenshot(path=str(failed))
                 rep.info(f"state at the failure: {failed}")
@@ -327,16 +605,35 @@ def main(options: dict) -> int:
             rep.error(str(ex).splitlines()[0])
             aborted = True
         finally:
+            if diagnosis:
+                diagnosis.drain()
             context.close()
+            recorded = Path(page.video.path()) if video else None
 
+    if video:
+        target = folder / f"{W.name_of(path)}.webm"
+        shutil.move(str(recorded), target)
+        shutil.rmtree(raw_video, ignore_errors=True)
+        rep.info(f"recording: {target}")
+    record["complete"] = not aborted
+    report_timings(record, work, rep)
     if not aborted:
         for name in sorted(set(walk.get("mask", [])) - mask_seen):
             rep.error(f"mask {name} was never found; the pictures may show what it should cover")
     for kind, title in (("console", "console errors"), ("http", "failed requests")):
         if record[kind]:
             rep.warn(f"{len(record[kind])} {title}, first: {record[kind][0]}")
+    if W.role_name(walk) and not aborted:
+        rep.ok(f"session proven as role {W.role_name(walk)}")
     if W.writes(walk) and walk.get("testData"):
         rep.info(f"test data carries the mark {walk['testData'].get('mark')}; remove it: {walk['testData'].get('cleanup')}")
+    if diagnosis:
+        file = Path(options["diagnosis"])
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(json.dumps(diagnosis.events, ensure_ascii=False, indent=1), encoding="utf-8")
+        for event in diagnosis.events[:10]:
+            rep.info(f"{event['step']}: {event['kind']} {event['detail'][:200]} {event.get('body', '')[:200]}".rstrip())
+        rep.info(f"{len(diagnosis.events)} errors of the app in {file}")
     (folder / "report.json").write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
     rep.info(f"{len(record['shots'])} pictures and report.json in {folder}")
     print(rep.text())

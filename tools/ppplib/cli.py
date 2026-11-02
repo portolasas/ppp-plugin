@@ -233,8 +233,14 @@ def cmd_walk(a) -> int:
     for level, message in rep.lines:
         if level == "WARN":
             print(f"[WARN]  {message}")
-    profile = Path(a.profile) if a.profile else Path.home() / ".ppp" / "edge-profile"
-    options = {"walk": str(path), "out": str(walk.out_dir(root, path, loaded)), "profile": str(profile),
+    profile = Path(a.profile) if a.profile else walk.profile_dir(Path.home(), loaded)
+    # response bodies may hold personal data, so they stay outside git whatever the walk's "out" says
+    work = root / "exchange" / "walks" / walk.name_of(path)
+    diagnosis = work / "diagnosis.json" if a.diagnose else ""
+    # a recording keeps apart from the pictures and their baseline
+    out = work / "video" if a.video else walk.out_dir(root, path, loaded)
+    work = out if a.video else work
+    options = {"walk": str(path), "url": walk.resolved_url(root, str(loaded["url"])), "video": a.video, "out": str(out), "profile": str(profile), "diagnosis": str(diagnosis), "work": str(work),
                "channel": a.channel, "headless": a.headless, "timeout": a.timeout}
     return _child(TOOLS / "child" / "walk_browser.py", [json.dumps(options)], root, TOOLS)
 
@@ -242,7 +248,14 @@ def cmd_walk(a) -> int:
 def cmd_guide(a) -> int:
     root = find_root(a.project)
     paths = [_walk_path(root, name) for name in a.files]
-    target = Path(a.out) if a.out else Path("docs") / "handbook" / f"{walk.name_of(paths[0])}.docx"
+    stem = ""
+    if a.role:
+        roles = {p: walk.role_name(walk.load(p)) for p in paths}
+        paths = [p for p in paths if roles[p] == a.role]
+        if not paths:
+            raise ToolError(f"No walk for role {a.role}; roles in these walks: {', '.join(sorted(set(filter(None, roles.values())))) or 'none'}")
+        stem = "-" + walk.profile_dir(Path(), {"role": {"name": a.role}}).name.removeprefix("edge-profile-")
+    target = Path(a.out) if a.out else Path("docs") / "handbook" / f"{walk.name_of(paths[0])}{stem}.docx"
     options = {"root": str(root), "walks": [str(p) for p in paths], "out": str(root / target), "title": a.title,
                "template": str(root / a.template) if a.template else "",
                "language": load_config(root).get("handbookLanguage", "en")}
@@ -564,15 +577,18 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("file", help="walk file (JSON), usually in docs/handbook/walks/ or tests/walks/")
     c.add_argument("--check", action="store_true", help="only check the walk file offline, no browser")
     c.add_argument("--allow-writes", action="store_true", help="run steps marked writes, after the user confirmed them on a card")
+    c.add_argument("--diagnose", action="store_true", help="record every error of the app per step, with the bodies of failed responses, in exchange/walks/<name>/diagnosis.json")
+    c.add_argument("--video", action="store_true", help="record the walk with captions and a click ring to exchange/walks/<name>/video/<name>.webm instead of taking pictures; needs ffmpeg from playwright")
     c.add_argument("--channel", default="msedge", help="installed browser (default: msedge)")
     c.add_argument("--headless", action="store_true", help="without a window; company sign-in usually needs the window")
-    c.add_argument("--profile", default="", help="browser profile folder (default: ~/.ppp/edge-profile)")
+    c.add_argument("--profile", default="", help="browser profile folder (default: ~/.ppp/edge-profile, per role ~/.ppp/edge-profile-<role>)")
     c.add_argument("--timeout", type=float, default=90, help="seconds to wait for content or a control (default: 90)")
 
     c = command("guide", cmd_guide, "Build a Word guide from walk files and their pictures, one chapter per walk. Needs the package python-docx.", False)
     c.add_argument("files", nargs="+", help="walk files in chapter order")
     c.add_argument("--out", default="", help="Word file (default: docs/handbook/<first walk>.docx)")
     c.add_argument("--title", default="", help="document title")
+    c.add_argument("--role", default="", help="only the walks of this role: one guide per role")
     c.add_argument("--template", default="", help="Word template to fill, its styles apply")
 
     # one call of ppp --help shows every command with its options

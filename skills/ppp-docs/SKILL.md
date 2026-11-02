@@ -8,16 +8,16 @@ description: Documents for people outside development - handbook, training, Six 
 The technical documentation is the project structure itself (`README.md`, `specs/`, the READMEs in `components/`, `decisions/`); keep it current per package. This skill covers what end users, trainers and the business read. These documents are in the language of the end users (`handbookLanguage` in `project.json`).
 
 ## Handbook (`docs/handbook/`)
-1. **Outline with the users**: ask who reads it and for which tasks; one chapter per task, in the order the users work, not per screen.
+1. **Outline with the users**: ask who reads it and for which tasks; one guide per role, one chapter per task, in the order the users work, not per screen.
 2. **Content from the specs**: each chapter takes its steps and rules from the scenarios in `specs/`; nothing that the solution does not do.
-3. **Pictures and guide** for Power Apps: one walk per chapter with skill ppp-app-walk; it takes the pictures with numbered frames and builds the Word guide. Where a walk is not possible, a tenant-step card asks for screenshots of named screens and states, saved to `docs/handbook/images/`.
+3. **Pictures and guide** for Power Apps: one walk per chapter and role with skill ppp-app-walk, run in the session of that role so that each action shows its permissions; it takes the pictures with numbered frames and builds the Word guide. Where a walk is not possible, a tenant-step card asks for screenshots of named screens and states, saved to `docs/handbook/images/`.
 4. **Review**: the user hands the draft to one or two end users; their remarks come back as material into `inputs/`.
 5. In-app help, if wanted: short texts per screen as a named formula or a help screen in the app, built like any other screen in a package.
 
-Done when every task of the users has a chapter and every chapter was read by an end user.
+Done when every task of each role has a chapter from a walk in that role's session and every chapter was read by an end user.
 
 ## Training (`docs/training/`)
-Only when the handbook is not enough: a short deck (see Presentations) or exercise sheet per user role, built on the handbook chapters.
+Only when the handbook is not enough: a short deck (see Presentations), a recorded walk (skill ppp-app-walk) or exercise sheet per user role, built on the handbook chapters.
 
 ## Presentations
 Any deck ppp prepares (training, workshop, steering committee update) starts as its slide description, the template for the deck:

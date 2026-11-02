@@ -12,7 +12,9 @@ The tenant is out of reach, so the whole skill is getting a **feedback loop** th
 ## 1. What is already here, then evidence from the tenant
 Start with what needs no tenant step: the error message the user reported, the definition in `solution/` (`ppp inventory <flow>`, search for the action and expression the message names), the list schema and earlier exports in `inputs/`. When message and definition explain the error, go straight to the feedback loop.
 
-When the report carries no platform error text (an app shows only its own message such as "write failed"), the first card asks for the error message of the first failed action as text: Run history › the run › the red action › its error. That message usually names action and cause.
+When an app misbehaves and a walk is possible (skill ppp-app-walk), reproduce the user's steps with `ppp walk <file> --diagnose` before asking: it records the errors behind the app's message per step.
+
+When the report still carries no platform error text (an app shows only its own message such as "write failed"), the first card asks for the error message of the first failed action as text: Run history › the run › the red action › its error. That message usually names action and cause.
 
 Ask for further evidence only when a concrete question remains that only the tenant answers, and then for exports, not readings: the failed run (Run history › the run › Download, or Monitor export) for the inputs and outputs of an action, the affected list ("Export › CSV with schema") for data, the import message as text, a fresh solution export when the definition may differ from `solution/`. One tenant-step card names exactly what to export, where it goes (`exchange/`, or `inputs/` for data) and which question it answers. Personal data in these exports may be read.
 
@@ -21,8 +23,9 @@ Done when the symptom is captured: the error message, a wrong value or a failed 
 ## 2. Feedback loop
 Build one command that reproduces the symptom here, in this order:
 1. `ppp verify --all` and `ppp canvas` when the error is a save or import error (InvalidTemplate, nesting, a missing reference).
-2. A simulation with `wdl_sim` in `tests/` (`ppp run tests/<test>.py`): the exported flow, the trigger input and the list data of the run.
-3. A reference calculation in Python for business logic, compared with the values from the export.
+2. For an app: a walk with an `expect` on the wrong value (skill ppp-app-walk).
+3. A simulation with `wdl_sim` in `tests/` (`ppp run tests/<test>.py`): the exported flow, the trigger input and the list data of the run.
+4. A reference calculation in Python for business logic, compared with the values from the export.
 
 Done when the command has run and goes red on the user's symptom, not on a neighbouring one. Without such a command, say so, list what you tried and which export would close the gap.
 

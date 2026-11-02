@@ -2,6 +2,27 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.6.0 (2026-11-02)
+- Version 0.6.0 gathers the walk tools since 0.5.1: --diagnose, comparison with the last run, load times, usability findings, roles with per-role guides, --video and mock-ups by project path (PLUGIN PL-21).
+
+## 0.5.7 (2026-11-02)
+- ppp walk --video records a walk with captions, click ring and masks in every frame to exchange/walks/<name>/video/; ppp walk reports a browser that does not start in one line (user, 2026-11-02).
+
+## 0.5.6 (2026-11-02)
+- Roles: a walk with role {name, identity} runs in its own browser profile and stops without a picture unless the app shows that identity; a click on a disabled control stops the run; ppp guide --role builds one guide per role and refuses pictures not proven as that role; failure pictures stay in exchange/ (user, 2026-11-02).
+
+## 0.5.5 (2026-11-02)
+- ppp walk: usability findings A1 clickable without label, A2 click area under 24 px, A3 text contrast under 4.5:1; fix: a first run without pictures broke the next run (user, 2026-11-02).
+
+## 0.5.4 (2026-11-02)
+- ppp walk measures start and action times with their requests and warns when a step is clearly slower than in the last complete run (user, 2026-11-02).
+
+## 0.5.3 (2026-11-02)
+- ppp walk compares every picture with the last complete run and names changed pictures with area and a diff in exchange/walks/<name>/diff/ (user, 2026-11-02).
+
+## 0.5.2 (2026-11-02)
+- ppp walk --diagnose records every error of the app per step, with the bodies of failed responses, in exchange/walks/<name>/diagnosis.json; ppp-diagnose reproduces with it before asking (user, 2026-11-02).
+
 ## 0.5.1 (2026-11-02)
 - ppp walk: step expect checks what a control shows (equals, contains, count, absent, within); a deviation is reported with a picture and the walk goes on. ppp-package: the user tests the critical scenarios no walk covers (ARBEITSWEISE A-5, user, 2026-11-02).
 

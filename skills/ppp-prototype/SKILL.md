@@ -11,7 +11,7 @@ A prototype is **throwaway** and answers one question: does this app fit the pro
 
 ## Build
 1. State the question in one line at the top of `prototype/index.html`, e.g. "Can the shift lead plan a cleaning in under a minute?"
-2. Screens as in the planned app (usually 5–6), navigation between them, realistic sample data in `prototype/data.json`. One HTML file with inline CSS and JavaScript that reads the JSON; it opens by double click, without a server (embed the JSON as a script block if the browser blocks local reads).
+2. Screens as in the planned app (usually 5–6), navigation between them, realistic sample data in `prototype/data.json`. Every element a walk should reach carries `data-control-name` with the planned control name. One HTML file with inline CSS and JavaScript that reads the JSON; it opens by double click, without a server (embed the JSON as a script block if the browser blocks local reads).
 3. Brand design: if the skill bi-designer is installed, take colours, fonts and the logo rules from it; otherwise a neutral design.
 4. Where the layout is open, build **variants** that differ in structure (navigation, information order, primary action), switchable from a small floating bar at the bottom. Three at most.
 5. Surface the state: actions change the data visibly (a list grows, a status changes), so a non-developer understands the flow.
@@ -19,7 +19,9 @@ A prototype is **throwaway** and answers one question: does this app fit the pro
 Done when every screen of the specs is reachable by clicks and the data covers the scenarios of `specs/`.
 
 ## Screenshots
-For slides and documents take screenshots with Edge headless; the browser in the chat keeps a narrow mobile width [B] (GEN-20261026-WIN-02, GEN-20261027-WIN-01):
+For slides, documents and a guide to the mock-up, write a walk (skill ppp-app-walk) with `"url": "prototype/index.html"`, run it with `--headless`; no sign-in is needed, and the frames, the Word guide and the layout findings work as for an app. Set `ready` to a control that shows content at the start.
+
+Without Playwright take screenshots with Edge headless; the browser in the chat keeps a narrow mobile width [B] (GEN-20261026-WIN-02, GEN-20261027-WIN-01):
 `msedge --headless=new --disable-gpu --hide-scrollbars --user-data-dir=<temp folder> --window-size=1440,<height> --virtual-time-budget=<ms> --screenshot=<absolute path> <file URL>`
 - Drive each view (role, record, dialog) with a small script appended to a temporary copy of the page, chosen by a URL parameter.
 - Raise the window height instead of scrolling: scrolling shifts the capture under a fixed header.
