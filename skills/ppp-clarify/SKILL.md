@@ -24,7 +24,7 @@ Clarify until you and the user share one understanding of the solution. Map it a
 Done when the frontier is empty: every branch visited, every assumption confirmed on a card, every requirement in `specs/`.
 
 ## Decisions
-Record a decision with `ppp new decision "<title>"` only when all three hold: hard to reverse, surprising without its context, and the result of a real trade-off. Context, decision, rejected alternatives, consequences.
+Record a decision with `ppp new decision "<title>"` only when all three hold: hard to reverse, surprising without its context, and the result of a real trade-off. Context, decision, rejected alternatives, consequences. An accepted decision stays as written: a new decision replaces it, and the old one's status becomes "superseded by NNN".
 
 ## Questionnaire for a third party
 When a decision needs knowledge only someone else has: ask the user who receives it and what is needed back, then write `docs/project/questionnaire-<slug>.md`: purpose, from and to, context in one paragraph, how to answer, questions grouped by theme, most important first, one idea per question with an answer line. The answers come back as material into `inputs/`.

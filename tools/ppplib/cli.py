@@ -241,12 +241,24 @@ def cmd_walk(a) -> int:
     out = work / "video" if a.video else walk.out_dir(root, path, loaded)
     work = out if a.video else work
     options = {"walk": str(path), "url": walk.resolved_url(root, str(loaded["url"])), "video": a.video, "out": str(out), "profile": str(profile), "diagnosis": str(diagnosis), "work": str(work),
+               "screens": walk.screen_hashes(root, loaded),
                "channel": a.channel, "headless": a.headless, "timeout": a.timeout}
     return _child(TOOLS / "child" / "walk_browser.py", [json.dumps(options)], root, TOOLS)
 
 
 def cmd_guide(a) -> int:
     root = find_root(a.project)
+    if a.files[0].endswith(".md"):
+        if len(a.files) > 1 or a.role:
+            raise ToolError("A handbook in Markdown comes alone; it names its walks itself with <!-- walk: <name> -->")
+        source = Path(a.files[0]) if Path(a.files[0]).is_absolute() else root / a.files[0]
+        if not source.is_file():
+            raise ToolError(f"Handbook not found: {source}")
+        target = Path(a.out) if a.out else source.with_suffix(".docx")
+        options = {"root": str(root), "markdown": str(source), "out": str(root / target), "title": a.title,
+                   "template": str(root / a.template) if a.template else "",
+                   "language": load_config(root).get("handbookLanguage", "en")}
+        return _child(TOOLS / "child" / "walk_word.py", [json.dumps(options)], root, TOOLS)
     paths = [_walk_path(root, name) for name in a.files]
     stem = ""
     if a.role:
@@ -584,8 +596,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--profile", default="", help="browser profile folder (default: ~/.ppp/edge-profile, per role ~/.ppp/edge-profile-<role>)")
     c.add_argument("--timeout", type=float, default=90, help="seconds to wait for content or a control (default: 90)")
 
-    c = command("guide", cmd_guide, "Build a Word guide from walk files and their pictures, one chapter per walk. Needs the package python-docx.", False)
-    c.add_argument("files", nargs="+", help="walk files in chapter order")
+    c = command("guide", cmd_guide, "Build a Word guide from a handbook in Markdown that names its walks with <!-- walk: <name> -->, or from walk files, one chapter per walk; with the walks' pictures. Needs the package python-docx.", False)
+    c.add_argument("files", nargs="+", help="the handbook docs/handbook/<name>.md, or walk files in chapter order")
     c.add_argument("--out", default="", help="Word file (default: docs/handbook/<first walk>.docx)")
     c.add_argument("--title", default="", help="document title")
     c.add_argument("--role", default="", help="only the walks of this role: one guide per role")

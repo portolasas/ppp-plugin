@@ -2,6 +2,7 @@
 the browser and Word parts run as child processes (tools/child/), because python -I hides packages installed with --user."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -74,6 +75,42 @@ def _screens_text(root: Path) -> str:
     if not folder.is_dir():
         return ""
     return "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in sorted(folder.glob("*.y*ml")))
+
+
+def used_controls(walk: dict) -> set[str]:
+    ready, identity = walk.get("ready") or {}, ((walk.get("role") or {}).get("identity") or {})
+    names = {ready.get("control"), ready.get("refresh"), identity.get("control"), *walk.get("mask", [])}
+    for step in walk.get("steps", []):
+        names.update(step.get(key) for key in ("click", "type", "wait", "hover", "scroll", "expect", "crop"))
+        names.update(mark_parts(mark)[0] for mark in step.get("marks", []))
+    return {n for n in names if isinstance(n, str) and n}
+
+
+def screen_hashes(root: Path, walk: dict) -> dict[str, str]:
+    """The screen YAML files that hold the walk's controls, with their SHA-256: a later change of one makes the pictures
+    of the walk stale."""
+    folder = root / "components" / "power-apps" / "screens"
+    names = used_controls(walk)
+    out = {}
+    for p in sorted(folder.glob("*.y*ml")) if folder.is_dir() else []:
+        data = p.read_bytes()
+        text = data.decode("utf-8", "replace")
+        if any(re.search(rf"^\s*-?\s*{re.escape(n)}:", text, re.M) for n in names):
+            out[p.relative_to(root).as_posix()] = hashlib.sha256(data).hexdigest()
+    return out
+
+
+def stale_screens(root: Path, path: Path) -> list[str]:
+    """Screens changed since the last complete run of the walk; empty when none changed or the run recorded none."""
+    walk = load(path)
+    try:
+        report = json.loads((out_dir(root, path, walk) / "report.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not report.get("complete"):
+        return []
+    return [Path(rel).name for rel, digest in (report.get("screens") or {}).items()
+            if not (root / rel).is_file() or hashlib.sha256((root / rel).read_bytes()).hexdigest() != digest]
 
 
 def on_select(screens: str, control: str) -> str:

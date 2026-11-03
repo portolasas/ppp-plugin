@@ -8,13 +8,14 @@ description: Documents for people outside development - handbook, training, Six 
 The technical documentation is the project structure itself (`README.md`, `specs/`, the READMEs in `components/`, `decisions/`); keep it current per package. This skill covers what end users, trainers and the business read. These documents are in the language of the end users (`handbookLanguage` in `project.json`).
 
 ## Handbook (`docs/handbook/`)
-1. **Outline with the users**: ask who reads it and for which tasks; one guide per role, one chapter per task, in the order the users work, not per screen.
-2. **Content from the specs**: each chapter takes its steps and rules from the scenarios in `specs/`; nothing that the solution does not do.
-3. **Pictures and guide** for Power Apps: one walk per chapter and role with skill ppp-app-walk, run in the session of that role so that each action shows its permissions; it takes the pictures with numbered frames and builds the Word guide. Where a walk is not possible, a tenant-step card asks for screenshots of named screens and states, saved to `docs/handbook/images/`.
-4. **Review**: the user hands the draft to one or two end users; their remarks come back as material into `inputs/`.
-5. In-app help, if wanted: short texts per screen as a named formula or a help screen in the app, built like any other screen in a package.
+1. **Outline with the users**: ask who reads it and for which tasks; one chapter per task, in the order the users work, not per screen; one handbook with a section per role, or one per role, as the users want.
+2. **Text in Markdown**: `docs/handbook/<name>.md` holds the whole handbook: version, date and the solution version it describes, a short section "New in this version" with what the last package changed for the users, start, terms, and per task its purpose, prerequisites, expected result and help when something goes wrong. Each chapter takes its steps and rules from the scenarios in `specs/`; nothing that the solution does not do.
+3. **Pictures** for Power Apps: one walk per chapter and role in `docs/handbook/walks/` with skill ppp-app-walk, run in the session of that role so that each action shows its permissions. A line `<!-- walk: <name> -->` in the chapter takes the walk's numbered steps and pictures with frames; the clicks come from the walk alone, the chapter's text holds purpose, prerequisites, result and help (`ppp guide` warns about numbered steps beside a walk line). After a package, `ppp check` names the handbook walks whose screens changed since their pictures: run them again and rebuild the Word file. Where a walk is not possible, a tenant-step card asks for screenshots of named screens and states, saved to `docs/handbook/images/` and placed with a Markdown image line, its alt text the caption.
+4. **Word**: `ppp guide docs/handbook/<name>.md` builds `docs/handbook/<name>.docx` (ppp-app-walk, section 6).
+5. **Review**: the user hands the Word file to one or two end users; their remarks come back as material into `inputs/` and change the Markdown.
+6. In-app help, if wanted: short texts per screen as a named formula or a help screen in the app, built like any other screen in a package.
 
-Done when every task of each role has a chapter from a walk in that role's session and every chapter was read by an end user.
+Done when every task of each role has a chapter, every chapter with clicks has its walk run in that role's session, the Word file is built from the current Markdown and pictures, and every chapter was read by an end user.
 
 ## Training (`docs/training/`)
 Only when the handbook is not enough: a short deck (see Presentations), a recorded walk (skill ppp-app-walk) or exercise sheet per user role, built on the handbook chapters.

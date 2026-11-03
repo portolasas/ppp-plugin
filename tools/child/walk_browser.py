@@ -126,6 +126,45 @@ OVERLAY = """([items, color]) => {
   document.documentElement.appendChild(root);
 }"""
 
+# the part of a control its clipping parents leave visible, in its frame; a frame around the whole box landed on other
+# content (PAPPS-20261103-WIN-06)
+EXPOSED = """el => {
+  const r = el.getBoundingClientRect();
+  let left = Math.max(0, r.left), top = Math.max(0, r.top), right = Math.min(innerWidth, r.right), bottom = Math.min(innerHeight, r.bottom);
+  for (let a = el.parentElement; a; a = a.parentElement) {
+    const s = getComputedStyle(a), b = a.getBoundingClientRect(), x = b.left + a.clientLeft, y = b.top + a.clientTop;
+    if (s.display === 'none' || s.visibility === 'hidden') return {x: r.x, y: r.y, width: 0, height: 0, ratio: 0, fullX: r.x, fullY: r.y};
+    if (/hidden|clip|auto|scroll/.test(s.overflowX)) { left = Math.max(left, x); right = Math.min(right, x + a.clientWidth); }
+    if (/hidden|clip|auto|scroll/.test(s.overflowY)) { top = Math.max(top, y); bottom = Math.min(bottom, y + a.clientHeight); }
+  }
+  const width = Math.max(0, right - left), height = Math.max(0, bottom - top);
+  return {x: left, y: top, width, height, ratio: width * height / Math.max(1, r.width * r.height), fullX: r.x, fullY: r.y};
+}"""
+
+# a marked control into view inside the app's scrolling containers, as little as needed; the page itself stays
+SCROLL_INTO_VIEW = """el => {
+  for (let a = el.parentElement; a && a !== document.body && a !== document.documentElement; a = a.parentElement) {
+    const s = getComputedStyle(a), b = a.getBoundingClientRect();
+    for (const [over, start, end, pos, size, edge] of [['overflowY', 'top', 'bottom', 'scrollTop', 'clientHeight', 'clientTop'],
+                                                        ['overflowX', 'left', 'right', 'scrollLeft', 'clientWidth', 'clientLeft']]) {
+      if (!/auto|scroll/.test(s[over])) continue;
+      const r = el.getBoundingClientRect(), low = b[start] + a[edge], high = low + a[size];
+      if (r[start] < low) a[pos] -= low - r[start];
+      else if (r[end] > high) a[pos] += Math.min(r[end] - high, r[start] - low);
+    }
+  }
+}"""
+
+# a selection painted blue over the page in a guide picture (PAPPS-20261103-WIN-06)
+CLEAR_SELECTION = """() => {
+  getSelection()?.removeAllRanges();
+  const f = document.activeElement;
+  if (f && /^(INPUT|TEXTAREA)$/.test(f.tagName)) {
+    try { f.setSelectionRange(f.value.length, f.value.length); } catch (e) {}
+    f.blur();
+  }
+}"""
+
 
 COMPARE = """async ([before, after]) => {
   const load = src => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = 'data:image/png;base64,' + src; });
@@ -145,6 +184,32 @@ COMPARE = """async ([before, after]) => {
   if (!changed) return {percent: 0};
   gb.putImageData(db, 0, 0);
   return {percent: 100 * changed / (a.width * a.height), box: [left, top, right - left + 1, bottom - top + 1], diff: cb.toDataURL('image/png').split(',')[1]};
+}"""
+
+# up to six pictures side by side with their names: one image to look at instead of six, so a guide's pictures do not
+# fill the chat
+SHEET = """async ([pictures, names]) => {
+  const load = src => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = 'data:image/png;base64,' + src; });
+  const images = await Promise.all(pictures.map(load));
+  const COLS = 2, WIDTH = 760, GAP = 16, LABEL = 26;
+  const sizes = images.map(i => { const w = Math.min(WIDTH, i.width); return [w, Math.round(i.height * w / i.width)]; });
+  const rows = [];
+  for (let r = 0; r * COLS < images.length; r++) rows.push(Math.max(...sizes.slice(r * COLS, r * COLS + COLS).map(s => s[1])) + LABEL + GAP);
+  const c = document.createElement('canvas');
+  c.width = COLS * WIDTH + (COLS + 1) * GAP; c.height = rows.reduce((a, b) => a + b, GAP);
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  g.font = 'bold 16px Segoe UI, Arial, sans-serif'; g.strokeStyle = '#888';
+  let y = GAP;
+  rows.forEach((height, r) => {
+    for (let k = 0; k < COLS && r * COLS + k < images.length; k++) {
+      const n = r * COLS + k, x = GAP + k * (WIDTH + GAP), [w, h] = sizes[n];
+      g.fillStyle = '#000'; g.fillText(names[n], x, y + 18);
+      g.drawImage(images[n], x, y + LABEL, w, h); g.strokeRect(x, y + LABEL, w, h);
+    }
+    y += height;
+  });
+  return c.toDataURL('image/png').split(',')[1];
 }"""
 
 
@@ -227,8 +292,9 @@ def address(url: str) -> str:
     return f"{parts.netloc}{parts.path}"
 
 
-def boxes(page, name: str) -> list[dict]:
-    """Visible boxes of a control across all frames, relative to the window; the runtime may render in a frame."""
+def found(page, name: str) -> list[tuple]:
+    """Visible instances of a control across all frames with their boxes relative to the window; the runtime may
+    render in a frame."""
     out = []
     for frame in page.frames:
         try:
@@ -236,10 +302,51 @@ def boxes(page, name: str) -> list[dict]:
             for i in range(loc.count()):
                 box = loc.nth(i).bounding_box()
                 if box and box["width"] > 0 and box["height"] > 0:
-                    out.append(box)
+                    out.append((loc.nth(i), box))
         except PlaywrightError:
             continue  # frame replaced during navigation
     return out
+
+
+def boxes(page, name: str) -> list[dict]:
+    return [box for _, box in found(page, name)]
+
+
+def element(page, name: str, nth: int, timeout: float):
+    locate(page, name, nth, timeout)
+    return found(page, name)[nth][0]
+
+
+def visible_part(control) -> dict:
+    """The visible rectangle of a control relative to the window, and which share of the control it is."""
+    whole = control.bounding_box()
+    part = control.evaluate(EXPOSED)
+    return {"x": part["x"] + whole["x"] - part["fullX"], "y": part["y"] + whole["y"] - part["fullY"],
+            "width": part["width"], "height": part["height"], "ratio": part["ratio"]}
+
+
+def app_area(page) -> dict | None:
+    """The frame the app renders in. The player around it shows the signed-in user's name and photo, where no mask
+    reaches (PAPPS-20261103-WIN-05); a mock-up without a frame has no player."""
+    for frame in page.frames:
+        if frame == page.main_frame:
+            continue
+        try:
+            if frame.locator("[data-control-name]").count():
+                box = frame.frame_element().bounding_box()
+                if box:
+                    return box
+        except PlaywrightError:
+            continue
+    return None
+
+
+def cut_to(box: dict, area: dict | None, size: dict) -> dict:
+    """The box cut to the app area and the window."""
+    left, top = max(box["x"], area["x"] if area else 0, 0), max(box["y"], area["y"] if area else 0, 0)
+    right = min(box["x"] + box["width"], area["x"] + area["width"] if area else size["width"], size["width"])
+    bottom = min(box["y"] + box["height"], area["y"] + area["height"] if area else size["height"], size["height"])
+    return {"x": left, "y": top, "width": max(right - left, 1), "height": max(bottom - top, 1)}
 
 
 def control_names(page) -> list[str]:
@@ -330,8 +437,7 @@ def verify(page, walk: dict, step: dict, number: int, label: str, folder: Path, 
     if met:
         rep.ok(f"{title}: {what}")
     else:
-        file = take(page, walk, {"shot": f"deviation-{number}"}, folder, mask_seen, timeout)
-        entry["file"] = str(folder / file)
+        entry["file"] = str(folder / take(page, walk, {"shot": f"deviation-{number}"}, folder, mask_seen, timeout)["file"])
         rep.error(f"{title}: {what}, {found}; picture {entry['file']}")
     record["expects"].append(entry)
 
@@ -373,6 +479,23 @@ def click(page, name: str, nth: int, timeout: float) -> None:
     page.mouse.click(*centre(box))
 
 
+def type_into(page, name: str, nth: int, value: str, timeout: float) -> None:
+    """Fill the control's own input and check it: Ctrl+A after a click beside the input selected the whole page
+    (PAPPS-20261103-WIN-06)."""
+    box = locate(page, name, nth, timeout)
+    if disabled_at(page, name, box):
+        raise WalkFailed(f"control {name} is disabled here, so this session may not do this step")
+    control = found(page, name)[nth][0]
+    field = control if control.evaluate("el => el.matches('input,textarea')") else \
+        control.locator("input:not([type=hidden]),textarea").first
+    if not field.count():
+        raise WalkFailed(f"control {name} has no input field to type into")
+    field.fill(value)
+    if field.input_value() != value:
+        raise WalkFailed(f"control {name} shows {field.input_value()!r} after typing {value!r}")
+    field.press("Tab")  # OnChange fires when the field loses the focus
+
+
 def disabled_at(page, name: str, box: dict) -> bool:
     script = """el => el.matches('[disabled],[aria-disabled="true"]')
                       || el.querySelector('button[disabled],input[disabled],[aria-disabled="true"]') !== null"""
@@ -406,26 +529,43 @@ def prove_role(page, walk: dict, record: dict, timeout: float) -> None:
         page.wait_for_timeout(500)
 
 
-def take(page, walk: dict, step: dict, folder: Path, mask_seen: set, timeout: float) -> str:
-    items = []
+def take(page, walk: dict, step: dict, folder: Path, mask_seen: set, timeout: float, strict: bool = True) -> dict:
+    """A picture of the app area only, without text selection, frames on the visible part of each marked control.
+    Strict, in the viewport of the guide's pictures, a mark less than 97 % visible stops the walk; else it is a hint."""
+    marked = [(W.mark_parts(mark)[:2]) for mark in step.get("marks", [])]
+    for name, nth in marked:
+        element(page, name, nth, timeout).evaluate(SCROLL_INTO_VIEW)
+    if marked:
+        settle(page, timeout)
+    items, marks, cut = [], [], []
     for name in walk.get("mask", []):
         for box in boxes(page, name):
             mask_seen.add(name)
             items.append({"x": box["x"], "y": box["y"], "w": box["width"], "h": box["height"]})
-    for number, mark in enumerate(step.get("marks", []), 1):
-        name, nth, _ = W.mark_parts(mark)
-        box = locate(page, name, nth, timeout)
-        items.append({"x": box["x"], "y": box["y"], "w": box["width"], "h": box["height"], "n": number})
+    for number, (name, nth) in enumerate(marked, 1):
+        part = visible_part(element(page, name, nth, timeout))
+        if part["ratio"] < 0.97:
+            hint = f"mark {name}: only {part['ratio']:.0%} of it is visible"
+            if strict:
+                raise WalkFailed(f"{hint}; scroll first or split the shot")
+            cut.append(hint)
+        items.append({"x": part["x"], "y": part["y"], "w": part["width"], "h": part["height"], "n": number})
+        marks.append({"control": name, "nth": nth, **{k: round(part[k], 1) for k in ("x", "y", "width", "height")}})
+    for frame in page.frames:
+        try:
+            frame.evaluate(CLEAR_SELECTION)
+        except PlaywrightError:
+            continue
     page.evaluate(OVERLAY, [items, walk.get("markColor", "#c00000")])
     target = folder / f"{step['shot']}.png"
-    options = {"path": str(target)}
+    area, size = app_area(page), page.viewport_size
+    clip = dict(area) if area else {"x": 0, "y": 0, **size}
     if step.get("crop"):
         box = locate(page, step["crop"], 0, timeout)
-        options["clip"] = {"x": max(box["x"] - 12, 0), "y": max(box["y"] - 12, 0),
-                           "width": box["width"] + 24, "height": box["height"] + 24}
-    page.screenshot(**options)
+        clip = {"x": box["x"] - 12, "y": box["y"] - 12, "width": box["width"] + 24, "height": box["height"] + 24}
+    page.screenshot(path=str(target), clip=cut_to(clip, area, size))
     page.evaluate("() => document.getElementById('ppp-overlay').remove()")
-    return target.name
+    return {"file": target.name, "marks": marks, "cut": cut}
 
 
 def present(page, walk: dict, step: dict, action: str, timeout: float) -> None:
@@ -478,10 +618,7 @@ def run_steps(page, walk: dict, size: list[int], folder: Path, rep: Report, reco
             elif action == "hover":
                 page.mouse.move(*centre(locate(page, step["hover"], step.get("nth", 0), timeout)))
             elif action == "type":
-                click(page, step["type"], step.get("nth", 0), timeout)
-                page.keyboard.press("ControlOrMeta+A")
-                page.keyboard.type(str(step["value"]))
-                page.keyboard.press("Tab")  # OnChange fires when the field loses the focus
+                type_into(page, step["type"], step.get("nth", 0), str(step["value"]), timeout)
             elif action == "key":
                 page.keyboard.press(step["key"])
             elif action == "scroll":
@@ -496,13 +633,16 @@ def run_steps(page, walk: dict, size: list[int], folder: Path, rep: Report, reco
             elif action == "shot" and video:
                 pause_on_marks(page, walk, step, timeout)
             elif action == "shot":
-                file = take(page, walk, step, folder, mask_seen, timeout)
+                shot = take(page, walk, step, folder, mask_seen, timeout, strict=size == W.viewports(walk)[0])
+                for hint in shot["cut"]:
+                    rep.warn(f"{label} {step['shot']}: {hint}")
                 controls = scan(page)
                 findings = W.layout_findings(controls, size, walk.get("ignore", [])) if step.get("check", True) else []
                 for finding in findings:
                     rep.warn(f"{label} {step['shot']}: {finding}")
-                record["shots"].append({"viewport": label, "id": step["shot"], "file": str(folder / file),
-                                        "findings": findings, "controls": sorted({c["name"] for c in controls})})
+                record["shots"].append({"viewport": label, "id": step["shot"], "file": str(folder / shot["file"]),
+                                        "marks": shot["marks"], "findings": findings,
+                                        "controls": sorted({c["name"] for c in controls})})
         except WalkFailed as ex:
             raise WalkFailed(f"step {number} ({action}): {ex}")
 
@@ -570,6 +710,24 @@ def compare(context, work: Path, record: dict, rep: Report) -> None:
     rep.info(f"compared with the last complete run: {same} pictures unchanged")
 
 
+def sheets(context, work: Path, record: dict, rep: Report) -> None:
+    """Overviews of the run, up to six pictures each per viewport, outside git."""
+    shutil.rmtree(work / "sheets", ignore_errors=True)
+    by_viewport: dict = {}
+    for shot in record["shots"]:
+        by_viewport.setdefault(shot["viewport"], []).append(shot)
+    page = context.new_page()
+    for viewport, shots in by_viewport.items():
+        for start in range(0, len(shots), 6):
+            part = shots[start:start + 6]
+            encoded = [base64.b64encode(Path(s["file"]).read_bytes()).decode() for s in part]
+            file = work / "sheets" / f"{viewport}-{start // 6 + 1}.png"
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_bytes(base64.b64decode(page.evaluate(SHEET, [encoded, [s["id"] for s in part]])))
+            rep.info(f"overview {file}: {', '.join(s['id'] for s in part)}")
+    page.close()
+
+
 def main(options: dict) -> int:
     path = Path(options["walk"])
     walk = W.load(path)
@@ -580,7 +738,8 @@ def main(options: dict) -> int:
     work.mkdir(parents=True, exist_ok=True)
     keep_last_run(folder, work)
     rep = Report(f"ppp walk: {W.name_of(path)}")
-    record = {"walk": W.name_of(path), "shots": [], "expects": [], "timings": [], "console": [], "http": []}
+    record = {"walk": W.name_of(path), "shots": [], "expects": [], "timings": [], "console": [], "http": [],
+              "screens": options.get("screens", {})}  # what the pictures show; ppp check names the walk when one changes
     mask_seen: set = set()
     aborted = False
     diagnosis = Diagnosis() if options.get("diagnosis") else None
@@ -634,6 +793,7 @@ def main(options: dict) -> int:
                 run_steps(page, walk, size, target, rep, record, mask_seen, timeout, diagnosis, requests, started, work, video)
             if not video:
                 compare(context, work, record, rep)
+                sheets(context, work, record, rep)
         except (WalkFailed, PlaywrightError) as ex:
             work.mkdir(parents=True, exist_ok=True)
             failed = work / "failed.png"  # without masks, so outside git whatever the walk's "out" says

@@ -13,3 +13,4 @@
 
 ## 4. Close
 - [ ] 4.1 Spec changes merged into specs/, package archived, ROADMAP.md and STATE.md updated
+- [ ] 4.2 Handbook current: `ppp check` names no handbook walk with changed screens (n/a without docs/handbook/)

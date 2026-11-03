@@ -5,7 +5,7 @@ description: Walk through a running canvas app or click mock-up in Edge with aut
 
 # Walk through a running app
 
-A **walk** is a JSON file the tool plays in the user's installed Edge, signed in with the user's account; a click mock-up works too (ppp-prototype). You run it yourself; import, export and "paste code" stay with the user. Status: **[B]** observed in the tenant, **[O]** open; the first walks with clicks settle the [O] points: on a surprise write a lesson.
+A **walk** is a JSON file the tool plays in the user's installed Edge, signed in with the user's account; a click mock-up works too (ppp-prototype). You run it yourself; import, export and "paste code" stay with the user. Every run on the app goes through `ppp walk`: when it lacks an action, a measurement or an output the task needs, propose a lesson that names the gap and ask on a decision card before writing a project script for it. Status: **[B]** observed in the tenant, **[O]** open; the first walks with clicks settle the [O] points: on a surprise write a lesson.
 
 ## 1. Prepare
 - Packages once per computer, after a card: `<python> -m pip install --user playwright` for walks, `python-docx` for guides. No browser download; no virtual environment. `ppp walk` names the exact command when one is missing.
@@ -35,12 +35,13 @@ Location: `tests/walks/<name>.json` for a review, `docs/handbook/walks/<name>.js
 }
 ```
 - One action per step: `click`, `type` with `value`, `wait`, `hover`, `key`, `scroll` with `by`, `shot`, `expect`. `nth` picks a repeated control such as a gallery row.
+- `type` fills the control's own input and checks its value; Ctrl+A after a click beside the input had selected the whole page [B] (PAPPS-20261103-WIN-06).
 - `scroll` turns the wheel over the centre of the named control, so a gallery under that point scrolls instead of its container [B]: to scroll the container, name a control of it outside any gallery and check in the picture that the intended area moved (PAPPS-20261102-WIN-01).
 - Keys End and Enter left a classic dropdown unchanged [B]: after choosing a value, `expect` the value it shows (PAPPS-20261102-WIN-02).
 - `ready` waits for content, presses `refresh` when it stays empty and stops with an error instead of an empty picture. The first start of a fresh profile showed an empty list [B].
-- The first viewport gives the pictures in `out`, further ones land in a subfolder and serve the review. Include 1024 x 600, the minimum size in ppp-power-apps. Without `out` pictures go to `exchange/walks/<name>/`, outside git.
-- `mask` covers controls with personal data with a grey box; a mask that never matches is an error. Pictures of a guide go into git, so cover every name and photo that the guide does not need.
-- `marks` draws numbered frames as an overlay in the browser, only for the picture; the app stays unchanged. `markColor` sets their colour. `text`, `caption` and `label` go into the guide, in `handbookLanguage`.
+- The first viewport gives the pictures in `out`, further ones land in a subfolder and serve the review. A review includes 1024 x 600, the minimum size in ppp-power-apps; a guide's walk has one viewport, the screen size of its readers. Without `out` pictures go to `exchange/walks/<name>/`, outside git.
+- Every picture shows the app's frame only: the player around it shows the signed-in user's name and photo, where no mask reaches [B] (PAPPS-20261103-WIN-05). `mask` covers controls in the app with personal data with a grey box; a mask that never matches is an error. Pictures of a guide go into git, so cover every name and photo that the guide does not need.
+- `marks` draws numbered frames as an overlay in the browser, only for the picture; the app stays unchanged. A frame sits on the visible part of its control: `ppp walk` scrolls the app's containers to show it and measures it inside every clipping parent, because a frame around the whole box landed on other content [B] (PAPPS-20261103-WIN-06). In the first viewport a marked control less than 97 % visible stops the walk, so scroll first or split the shot; in further viewports it is a hint. Text selections are cleared before each picture. `markColor` sets the colour of the frames. `text`, `caption` and `label` go into the guide, in `handbookLanguage`.
 - `ignore` lists controls whose findings are intended. `"check": false` skips the measurement for a picture.
 
 - `expect` checks what a control shows, see section 5.
@@ -59,7 +60,7 @@ A writing walk is allowed in every environment, under three conditions: the data
 ## 4. Run and review
 `ppp walk <file>`. Report the result lines; console errors and failed requests are among them.
 
-The measured findings are hints: L1 outside the window, L2 outside the parent, L3 text cut off by its control or by a clipping box inside it, measured on the text's own rectangles, so the chevron of a dropdown and the frame of a combo box count and a small overhang is font metrics (PAPPS-20261103-WIN-02, PAPPS-20261103-WIN-03), L4 overlap, L5 image not loading, L6 a button label on more than one line, L7 a painted border cut by a parent, L8 a word broken over two lines; for usability A1 clickable without text or `AccessibleLabel`, A2 click area under 24 px, A3 text contrast under 4.5:1. Then look at every picture of every viewport yourself with the image tool (`view` in VS Code, `Read` in Claude Code) against `specs/` and ppp-power-apps: alignment, spacing, cut-off and wrapped text, empty areas, colours, scroll bars, whether the state is what the step should show.
+The measured findings are hints: L1 outside the window, L2 outside the parent, L3 text cut off by its control or by a clipping box inside it, measured on the text's own rectangles, so the chevron of a dropdown and the frame of a combo box count and a small overhang is font metrics (PAPPS-20261103-WIN-02, PAPPS-20261103-WIN-03), L4 overlap, L5 image not loading, L6 a button label on more than one line, L7 a painted border cut by a parent, L8 a word broken over two lines; for usability A1 clickable without text or `AccessibleLabel`, A2 click area under 24 px, A3 text contrast under 4.5:1. Then look at the run's overviews with the image tool (`view` in VS Code, `Read` in Claude Code), right after the run: the result lines name each overview, up to six pictures side by side with their names, in `exchange/walks/<name>/sheets/`. Check them against `specs/` and ppp-power-apps: alignment, spacing, cut-off and wrapped text, empty areas, colours, scroll bars, whether the state is what the step should show. Open a single picture only where a finding, a diff or an overview calls for it. Each image you look at stays in the chat, and beyond 50 every new one has the whole chat processed again at full price.
 
 In a layout review open every dropdown, combo box and date picker with a `click` and take a `shot`, so the open list is measured and seen too.
 
@@ -67,7 +68,7 @@ From the second complete run on, every picture is compared with the last one; th
 
 The run also measures time and requests: from the action to the last visible change, for the start and each `click`, `type`, `key` and `wait`, all in `report.json`, those from one second on in the result lines. A step clearly slower than in the last complete run is a warning; go through ppp-power-apps (performance) for it. Compare like with like: the first start of a fresh profile is slower, and a second viewport runs in a warm browser.
 
-Fix in the screen YAML in the current package, or in a new one; the user pastes it by card, and the walks of the changed screens run again, not the whole review. Findings left after that go on a decision card before another round, each with its picture and the screens a fix would mean pasting again: fix them in another round, or accept them as intended (user, 2026-11-03). What you cannot decide alone goes on a decision card with the picture path. Done when every picture was looked at and every finding is fixed, or intended and in `ignore`. A review that leaves findings unfixed ends with a decision card: fix them in a package (recommended), diagnose first, or accept them as intended.
+Fix in the screen YAML in the current package, or in a new one; the user pastes it by card, and the walks of the changed screens run again, not the whole review. Findings left after that go on a decision card before another round, each with its picture and the screens a fix would mean pasting again: fix them in another round, or accept them as intended (user, 2026-11-03). What you cannot decide alone goes on a decision card with the picture path. Done when every overview was looked at and every finding is fixed, or intended and in `ignore`. A review that leaves findings unfixed ends with a decision card: fix them in a package (recommended), diagnose first, or accept them as intended.
 
 ## 5. Scenarios
 A critical scenario becomes a walk in `tests/walks/`: the user's steps, then the expected values from the proposal.
@@ -82,7 +83,7 @@ Exactly one of `equals`, `contains`, `count` (visible instances) or `absent`. Wi
 A deviation goes to diagnosis (ppp-diagnose) or into a fix, as after a test card; its picture and a `failed.png` lie in `exchange/walks/<name>/`, outside git. A scenario counts as tested by the walk only as far as the app shows it. Whatever it does not show stays on a test card for the user: a mail received, a Teams message, a value only in a list, another role, whether the process fits.
 
 ## 6. Guide
-`ppp guide <walk> [<walk> ...] --title "<title>"` writes `docs/handbook/<first walk>.docx`, one chapter per walk: numbered `text`, pictures with caption, the legend of the frames. `--out` sets the file, `--template` a Word template whose styles apply; if bi-designer is installed, take the template it names, else the neutral look stays. The rules for the chapters are in ppp-docs. The user reviews the Word file.
+`ppp guide docs/handbook/<name>.md` writes the handbook as `docs/handbook/<name>.docx`: headings, paragraphs, lists and tables of the Markdown, and at each line `<!-- walk: <name> -->` the numbered `text` of `docs/handbook/walks/<name>.json`, its pictures with caption and the legend of the frames; a line `<!-- toc -->` gives a table of contents that Word fills on F9. `ppp guide <walk> [<walk> ...] --title "<title>"` builds a guide of walks alone, one chapter per walk, as `docs/handbook/<first walk>.docx`. `--out` sets the file, `--template` a Word template whose styles apply. If bi-designer is installed, take its Word template; when it names none, build one once with its Word recipe as `docs/handbook/template.docx`, styles only, and set `markColor` to a brand colour from its tokens that stands out from the app. Without bi-designer the neutral look stays. The rules for the chapters are in ppp-docs. The user reviews the Word file.
 
 ## 7. Reproduce an error
 `ppp walk <file> --diagnose` plays the user's steps and writes every error of the app per step to `exchange/walks/<name>/diagnosis.json`: console errors, script errors and failed requests with the first 2000 characters of the response; the result lines show the first ten. That is the error text the app does not show. The file may hold personal data and stays outside git. A walk that reproduces the symptom is a feedback loop for ppp-diagnose; with an `expect` on the wrong value it goes red. Steps that write follow section 3.
@@ -98,6 +99,7 @@ A guide shows every action from the session of the role that does it, with that 
 - A click on a control the role lacks stops the run, as does a disabled one. That is the check that the chapter fits the role; a step the role cannot do does not belong in its chapter, or it reveals a defect in the permissions.
 - Add `expect` with `absent` for what this role must not see, from `specs/`, so the walk also tests the permissions. A check that runs in a flow shows only by doing the step: follow section 3.
 - `ppp guide <walks> --role "<name>"` builds the guide of one role from the given walks, `docs/handbook/<first walk>-<role>.docx`, and names the role under each chapter title. It refuses pictures from a run that did not finish or is not proven as that role.
+- A guide for several roles takes one chat per role: at the end of a role save the state, then a stopping-point card with "New chat (recommended)" and the start prompt for the next role.
 
 ## 9. Training video
 `ppp walk <file> --video` records the walk to `exchange/walks/<name>/video/<name>.webm` instead of taking pictures: each `text` as a caption with time to read, a ring where a click lands, a pause on the `marks` of a `shot`, masks in every frame. One recording in the first viewport; the pictures of the walk stay as they are. The rules of sections 3 and 8 apply. It needs ffmpeg once per computer, after a card: `<python> -m playwright install ffmpeg`; this is a download from Microsoft that company rules may block. Edge plays the file; move a good recording to `docs/training/` on the user's word.
@@ -107,7 +109,8 @@ A guide shows every action from the session of the role that does it, with that 
 |---|---|
 | Edge through Playwright without a browser download, single sign-on in the own profile, conditional access does not block | [B] |
 | 80 controls of an app found through `data-control-name`; console and HTTP errors recorded | [B] |
-| Clicks, typing, frames and masks at the measured position of a control | [O] tested only on a stand-in with frames |
+| Clicks and masks at the measured position of a control | [O] tested only on a stand-in with frames |
+| Typing into the control's input, frames on its visible part, no selection, the app's frame only: the technique in a project camera (PAPPS-20261103-WIN-05, PAPPS-20261103-WIN-06) is [B] | [O] in `ppp walk`, tested on a stand-in |
 | `expect` on real canvas markup: text and field values as the runtime renders them | [O] tested only on a stand-in |
 | `--diagnose`: which errors of connectors the runtime shows as failed requests, and the headers `x-ms-request-url` and `x-ms-request-method` | [O] |
 | `--video` on the company computer: ffmpeg download, quality on real apps | [O] |

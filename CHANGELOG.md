@@ -2,6 +2,21 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.11.0 (2026-11-03)
+- ppp-docs: the clicks of a chapter come from its walk alone, the text holds purpose, prerequisites, result and help; ppp guide warns about numbered steps beside a walk line
+- ppp walk records the screens its pictures show; ppp check names handbook walks whose screens changed since; ppp-package and tasks.md close a package with a current handbook
+- ppp-docs: the handbook names its version, date and solution version and has a section "New in this version"
+- ppp-clarify: an accepted decision stays as written, a new one supersedes it
+
+## 0.10.0 (2026-11-03)
+- ppp walk: pictures show the app's frame only, without the player's name and photo (PAPPS-20261103-WIN-05)
+- ppp walk: frames on the visible part of each marked control, minimal scrolling in the app's containers; less than 97 % visible stops the walk in the first viewport, a hint in further ones; text selections cleared before each picture; type fills the control's input and checks its value (PAPPS-20261103-WIN-06)
+- ppp walk: overviews of up to six pictures per viewport in exchange/walks/<name>/sheets/; ppp-app-walk looks at them instead of every single picture, a guide's walk has one viewport
+- ppp guide: builds the Word handbook from docs/handbook/<name>.md; <!-- walk: <name> --> inserts a walk's steps and pictures, <!-- toc --> a table of contents; ppp-docs keeps the whole handbook text in that Markdown
+- ppp-app-walk: every run goes through ppp walk, a missing feature becomes a lesson proposal before a project script; one chat per role of a guide; Word template once from bi-designer's recipe, markColor from its tokens
+- ppp new lesson: skips IDs still in the git history of lessons/, so an ID a learning session removed is not given out again
+- ppp usage: tokens of a Copilot session without a shutdown event come from its usage records
+
 ## 0.9.0 (2026-11-03)
 - ppp-app-walk: after a fix round only the walks of the changed screens run again; findings left go on a decision card before another round
 

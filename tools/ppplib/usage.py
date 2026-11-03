@@ -75,6 +75,7 @@ def copilot(home: Path, since: datetime) -> list[Session]:
         s = Session("copilot", events.parent.name, events)
         before = last = 0.0
         shutdown = None
+        recorded = Counter()  # per request; the totals of the shutdown event are missing while a session is open
         for e in _lines(events):
             t, d = _time(e.get("timestamp")), e.get("data") or {}
             typ = e.get("type")
@@ -93,15 +94,17 @@ def copilot(home: Path, since: datetime) -> list[Session]:
                 s.models[d["model"]] += 1
                 if not d.get("toolRequests") and not d.get("parentToolCallId") and plain_question(d.get("content")):
                     s.questions += 1
+            elif typ == "session.usage_record" and (not t or t >= since):
+                for item in ((d.get("usage") or {}).get("copilotUsage") or {}).get("tokenDetails") or []:
+                    recorded[item.get("tokenType")] += item.get("tokenCount", 0)
             elif typ == "subagent.started" and (not t or t >= since):
                 s.subagents += 1
             if t:
                 s.end = t
         s.aiu = max(0.0, last - before)
-        if shutdown and (s.start is None or s.start >= since):
-            details = shutdown.get("tokenDetails") or {}
-            for key in ("input", "cache_read", "cache_write", "output"):
-                s.tokens[key] += (details.get(key) or {}).get("tokenCount", 0)
+        details = (shutdown.get("tokenDetails") or {}) if shutdown and (s.start is None or s.start >= since) else {}
+        for key in ("input", "cache_read", "cache_write", "output"):
+            s.tokens[key] += (details[key] or {}).get("tokenCount", 0) if key in details else recorded[key]
         if s.project == "?":
             ws = events.parent / "workspace.yaml"
             if ws.is_file():

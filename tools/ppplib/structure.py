@@ -12,6 +12,7 @@ from datetime import date
 from pathlib import Path
 
 from . import gitutil
+from . import walk as walkfile
 from .project import ToolError
 from .report import Report
 
@@ -305,6 +306,16 @@ def check(root: Path, *notes: str | None) -> Report:
             if not p.name.startswith(".") and p.name not in DOCS_DIRS:
                 rep.error(f"S docs/{p.name}: docs/ holds only {', '.join(DOCS_DIRS)}")
 
+    handbook = root / "docs" / "handbook" / "walks"
+    for p in sorted(handbook.glob("*.json")) if handbook.is_dir() else []:
+        try:
+            changed = walkfile.stale_screens(root, p)
+        except (ToolError, ValueError):
+            continue
+        if changed:
+            rep.warn(f"S handbook walk {p.stem}: {', '.join(changed)} changed since its pictures; run ppp walk "
+                     f"{gitutil.rel(root, p)} again and rebuild the Word file with ppp guide")
+
     # STATE.md, CLAUDE.md
     state = root / "STATE.md"
     if state.is_file():
@@ -434,7 +445,12 @@ def new(root: Path, kind: str, title: str, machine: str = "MAC") -> Path:
         code = f"{AREAS[area.strip()]}-{today.replace('-', '')}-{machine}"
         folder = root / "lessons"
         folder.mkdir(exist_ok=True)
-        n = 1 + max((int(p.stem.rsplit("-", 1)[1]) for p in folder.glob(f"{code}-*.md")), default=0)
+        names = [p.name for p in folder.glob(f"{code}-*.md")]
+        if gitutil.is_repo(root):  # a learning session removes answered proposals; their IDs stay taken
+            names += gitutil.git(root, "log", "--all", "--format=", "--name-only", "--", "lessons/",
+                                 check=False).decode("utf-8", "replace").splitlines()
+        n = 1 + max((int(Path(name).stem.rsplit("-", 1)[1]) for name in names
+                     if Path(name).name.startswith(f"{code}-") and name.endswith(".md")), default=0)
         lesson_id = f"{code}-{n:02d}"
         path = folder / f"{lesson_id}.md"
         text = fill((TEMPLATES / "files" / "lesson.md").read_text(encoding="utf-8"),
