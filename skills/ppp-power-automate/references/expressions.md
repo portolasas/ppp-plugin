@@ -28,6 +28,7 @@
 - `Get item`: `@outputs('<Action>')?['body/<Field>']` · choice: `…?['body/<Field>/Value']` · in loops `@item()?['<Field>']?['Value']` · Yes/No without `/Value`. [B]
 - Child-flow result: `@body('<Run a Child Flow>')?['<field>']`. [B]
 - A condition that refers to an action that did not run gets `null`. [B]
+- *Edit app role assignment* (Power Apps for Makers) answers per resource with `statusCode` as a name (`Created`, `OK`) and a `responseCode`: the app `ResourceShared`, each connector API definition (`type` `/providers/Microsoft.PowerApps/apis`) `NonsharableResource` [B] (PA-20261103-WIN-01). The share succeeded when the app entry succeeded and every other entry is such an API definition with success; anything else is an error. Read the app's role assignments back afterwards.
 - Inputs of a manual trigger are internally `text`, `text_1`, …; the mapping is in the code view. Multi-select or array inputs may need `@first(triggerBody()?['text'])`. [B]
 
 ## Text

@@ -2,6 +2,14 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.8.0 (2026-11-03)
+- ppp walk: L3 measures text rectangles against clipping boxes inside the control (dropdown chevron, combo box frame); new finding L8, a word broken over two lines (PAPPS-20261103-WIN-02, PAPPS-20261103-WIN-03)
+- ppp-app-walk: after a publication the user confirms the update or connection bar first; the first step expects a control of the new build (PAPPS-20261103-WIN-04)
+- layout.md: a classic dropdown's chevron and padding take about 54 px (PAPPS-20261103-WIN-02)
+- ppp-package: a package of screens only skips ppp tidy, whose message says so (GEN-20261103-WIN-01); the transfer solution may keep members the user wants, unchanged from its latest export
+- expressions.md: reading the answer of Edit app role assignment (PA-20261103-WIN-01)
+- Agent: misfire line for the optional design.md of a package
+
 ## 0.7.0 (2026-11-03)
 - ppp walk --check: Patch, Remove, RemoveIf, Update and UpdateIf on a collection filled by Collect or ClearCollect are no write (PAPPS-20261102-WIN-02)
 - ppp walk: findings L6 (button label on more than one line) and L7 (painted border cut by a parent); a layout review opens every dropdown, combo box and date picker (PAPPS-20261103-WIN-01)

@@ -87,7 +87,8 @@ def tidy(root: Path, keep: list[str] | None = None, dry_run: bool = False) -> li
         name = solution_with_role(config, "transfer") or solution_with_role(config, "main")
         own = [(version, stem) for stem, (unique, version, _) in packages.items() if unique == name]
         if not own:
-            raise ToolError(f"No package of {name or 'the package solution'} in exchange/; name the imported one with --keep.")
+            raise ToolError(f"No package of {name or 'the package solution'} in exchange/; name the imported one with --keep. "
+                            "A package of screens only imported no ZIP: skip tidy.")
         kept = [max(own)[1]]
 
     moves = []

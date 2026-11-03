@@ -10,6 +10,7 @@ A **walk** is a JSON file the tool plays in the user's installed Edge, signed in
 ## 1. Prepare
 - Packages once per computer, after a card: `<python> -m pip install --user playwright` for walks, `python-docx` for guides. No browser download; no virtual environment. `ppp walk` names the exact command when one is missing.
 - The app is published, the screens are pasted. Ask for the play URL once and keep it in the walk file.
+- After a publication the player can show a bar above the app to update or to confirm connections [B] (PAPPS-20261103-WIN-04). Before the run the user confirms it in the walk's Edge window on a tenant-step card; a prompt for other permissions or a sign-in stops the walk. The first step is an `expect` on a control or text only the new build shows, so a run on the old build stops instead of measuring it.
 - A visible Edge window opens on the user's computer. Sign-in runs by single sign-on in its own profile `~/.ppp/edge-profile` [B]; if a sign-in page stays open, the user signs in there.
 
 ## 2. Write the walk
@@ -58,7 +59,7 @@ A writing walk is allowed in every environment, under three conditions: the data
 ## 4. Run and review
 `ppp walk <file>`. Report the result lines; console errors and failed requests are among them.
 
-The measured findings are hints: L1 outside the window, L2 outside the parent, L3 cut-off text, L4 overlap, L5 image not loading, L6 a button label on more than one line, L7 a painted border cut by a parent; for usability A1 clickable without text or `AccessibleLabel`, A2 click area under 24 px, A3 text contrast under 4.5:1. Then look at every picture of every viewport yourself with the image tool (`view` in VS Code, `Read` in Claude Code) against `specs/` and ppp-power-apps: alignment, spacing, cut-off and wrapped text, empty areas, colours, scroll bars, whether the state is what the step should show.
+The measured findings are hints: L1 outside the window, L2 outside the parent, L3 text cut off by its control or by a clipping box inside it, measured on the text's own rectangles, so the chevron of a dropdown and the frame of a combo box count and a small overhang is font metrics (PAPPS-20261103-WIN-02, PAPPS-20261103-WIN-03), L4 overlap, L5 image not loading, L6 a button label on more than one line, L7 a painted border cut by a parent, L8 a word broken over two lines; for usability A1 clickable without text or `AccessibleLabel`, A2 click area under 24 px, A3 text contrast under 4.5:1. Then look at every picture of every viewport yourself with the image tool (`view` in VS Code, `Read` in Claude Code) against `specs/` and ppp-power-apps: alignment, spacing, cut-off and wrapped text, empty areas, colours, scroll bars, whether the state is what the step should show.
 
 In a layout review open every dropdown, combo box and date picker with a `click` and take a `shot`, so the open list is measured and seen too.
 
@@ -112,4 +113,5 @@ A guide shows every action from the session of the role that does it, with that 
 | `--video` on the company computer: ffmpeg download, quality on real apps | [O] |
 | A second account in its own profile despite single sign-on on the company computer; how the canvas runtime marks disabled controls | [O] |
 | Findings L1–L5 and A1–A3 on real canvas markup, especially L3, L4, the roles behind A1 and the wait for a gallery | [O] tune with `ignore` or a lesson |
+| L3 on text rectangles and L8 as measured by `ppp walk`; the cause, a clipping box inside dropdowns and combo boxes, is [B] (PAPPS-20261103-WIN-02, PAPPS-20261103-WIN-03) | [O] |
 | L6 and L7 as measured by `ppp walk`; the cause, the border layer `appmagic-borderfill-container` with `margin: -0.5px`, is [B] (PAPPS-20261103-WIN-01) | [O] |

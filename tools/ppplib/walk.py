@@ -252,7 +252,7 @@ def contrast(foreground: list[float], background: list[float]) -> float:
 def layout_findings(controls: list[dict], viewport: list[int], ignore: list[str] | tuple = ()) -> list[str]:
     """Findings from the measured controls of one state. Each control: name, x, y, w, h, id, parent (id or None), px, py,
     pw, ph (box of the parent), scroller, transparent, truncated, text, broken, interactive, labelled, fg, bg, lines (of a clickable
-    control's label), cut (the parent that cuts its painted border, with the sides). Rows of a gallery repeat, so equal
+    control's label), cut (the parent that cuts its painted border, with the sides), split (a word broken over two lines). Rows of a gallery repeat, so equal
     messages count once. The result is a hint for the look at the picture, not a verdict."""
     width, height = viewport
     seen = [c for c in controls if c["w"] > 0 and c["h"] > 0 and c["name"] not in ignore]
@@ -279,6 +279,8 @@ def layout_findings(controls: list[dict], viewport: list[int], ignore: list[str]
             add(f"L6 {name}: label on {c['lines']} lines: {c.get('text', '')!r}")
         if c.get("cut"):
             add(f"L7 {name}: border cut by {c['cut']}")
+        if c.get("split"):
+            add(f"L8 {name}: word broken over two lines: {c['split']!r}")
         if c.get("interactive"):
             if not c.get("labelled"):
                 add(f"A1 {name}: can be clicked but has no text or AccessibleLabel")

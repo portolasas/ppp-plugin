@@ -34,7 +34,7 @@ SCAN = """() => {
       if (/auto|scroll/.test(o.overflowY + o.overflowX) && (a.scrollHeight > a.clientHeight + 1 || a.scrollWidth > a.clientWidth + 1)) { scroller = true; break; }
     }
     const own = [el, ...el.querySelectorAll('*')].filter(n => n === el || n.closest('[data-control-name]') === el);
-    let truncated = false, text = '', broken = false, painted = false, interactive = false, labelled = false, fg = null, bg = null;
+    let truncated = false, split = '', text = '', broken = false, painted = false, interactive = false, labelled = false, fg = null, bg = null;
     for (const n of own) {
       const o = getComputedStyle(n);
       const words = [...n.childNodes].filter(c => c.nodeType === 3).map(c => c.textContent).join('').trim();
@@ -50,6 +50,23 @@ SCAN = """() => {
           }
         }
         if (!/auto|scroll/.test(o.overflowY + o.overflowX) && (n.scrollWidth > n.clientWidth + 1 || n.scrollHeight > n.clientHeight + 1)) truncated = true;
+        for (const t of [...n.childNodes].filter(c => c.nodeType === 3 && c.textContent.trim())) {
+          const range = document.createRange(); range.selectNodeContents(t);
+          const parts = [...range.getClientRects()].filter(q => q.width > 0);
+          // text cut by a clipping box inside the control, e.g. beside the chevron of a dropdown; the rectangles hold
+          // ascent and descent, so a small overhang is font metrics (PAPPS-20261103-WIN-02, PAPPS-20261103-WIN-03)
+          for (let a = n; a && !truncated; a = a === el ? null : a.parentElement) {
+            const ao = getComputedStyle(a), q = a.getBoundingClientRect();
+            if (/auto|scroll/.test(ao.overflowY + ao.overflowX) && (a.scrollHeight > a.clientHeight + 1 || a.scrollWidth > a.clientWidth + 1)) continue;
+            const x = /hidden|clip|auto|scroll/.test(ao.overflowX), y = /hidden|clip|auto|scroll/.test(ao.overflowY);
+            truncated = parts.some(r => (x && (r.left < q.left - 1 || r.right > q.right + 1)) || (y && (r.top < q.top - 2 || r.bottom > q.bottom + 2)));
+          }
+          for (const m of t.textContent.matchAll(/\\S{2,}/g)) {
+            range.setStart(t, m.index); range.setEnd(t, m.index + m[0].length);
+            const tops = [...range.getClientRects()].filter(q => q.width > 0).map(q => q.top).sort((a, b) => a - b);
+            if (!split && tops.some((top, i) => i > 0 && top - tops[i - 1] > 2)) split = m[0];
+          }
+        }
       }
       if (n.tagName === 'BUTTON' || n.tagName === 'A' || n.getAttribute('role') === 'button') interactive = true;
       if (n.getAttribute('aria-label') || n.getAttribute('title') || n.getAttribute('alt')) labelled = true;
@@ -83,7 +100,7 @@ SCAN = """() => {
       parent: parent ? id(parent) : null, parentName: parent ? parent.getAttribute('data-control-name') : '',
       px: p ? p.x : 0, py: p ? p.y : 0, pw: p ? p.width : 0, ph: p ? p.height : 0,
       scroller, transparent: !painted, truncated, broken, text: text.slice(0, 60), interactive, labelled: labelled || !!text, fg, bg,
-      lines, cut});
+      lines, cut, split});
   }
   return out;
 }"""
