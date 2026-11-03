@@ -2,6 +2,9 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.9.0 (2026-11-03)
+- ppp-app-walk: after a fix round only the walks of the changed screens run again; findings left go on a decision card before another round
+
 ## 0.8.0 (2026-11-03)
 - ppp walk: L3 measures text rectangles against clipping boxes inside the control (dropdown chevron, combo box frame); new finding L8, a word broken over two lines (PAPPS-20261103-WIN-02, PAPPS-20261103-WIN-03)
 - ppp-app-walk: after a publication the user confirms the update or connection bar first; the first step expects a control of the new build (PAPPS-20261103-WIN-04)
