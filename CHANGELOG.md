@@ -2,6 +2,14 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.7.0 (2026-11-03)
+- ppp walk --check: Patch, Remove, RemoveIf, Update and UpdateIf on a collection filled by Collect or ClearCollect are no write (PAPPS-20261102-WIN-02)
+- ppp walk: findings L6 (button label on more than one line) and L7 (painted border cut by a parent); a layout review opens every dropdown, combo box and date picker (PAPPS-20261103-WIN-01)
+- ppp-app-walk: scroll targets a control outside nested galleries (PAPPS-20261102-WIN-01); keys leave a classic dropdown unchanged, expect the shown value (PAPPS-20261102-WIN-02); a review with unfixed findings ends with a decision card
+- ppp-power-apps layout: classic button borders lie 0.5 px outside the button, leave 2 px; size labels with the real font (PAPPS-20261103-WIN-01)
+- ppp-package: one card for all screens of a package; ppp new package skips numbers already in ROADMAP.md (GEN-20261102-WIN-01)
+- ppp-sessions: the user's call is the permission to upload; GPT-6.1 Sol instead of GPT-6 Luna
+
 ## 0.6.0 (2026-11-02)
 - Version 0.6.0 gathers the walk tools since 0.5.1: --diagnose, comparison with the last run, load times, usability findings, roles with per-role guides, --video and mock-ups by project path (PLUGIN PL-21).
 

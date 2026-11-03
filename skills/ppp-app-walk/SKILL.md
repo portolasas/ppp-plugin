@@ -34,6 +34,8 @@ Location: `tests/walks/<name>.json` for a review, `docs/handbook/walks/<name>.js
 }
 ```
 - One action per step: `click`, `type` with `value`, `wait`, `hover`, `key`, `scroll` with `by`, `shot`, `expect`. `nth` picks a repeated control such as a gallery row.
+- `scroll` turns the wheel over the centre of the named control, so a gallery under that point scrolls instead of its container [B]: to scroll the container, name a control of it outside any gallery and check in the picture that the intended area moved (PAPPS-20261102-WIN-01).
+- Keys End and Enter left a classic dropdown unchanged [B]: after choosing a value, `expect` the value it shows (PAPPS-20261102-WIN-02).
 - `ready` waits for content, presses `refresh` when it stays empty and stops with an error instead of an empty picture. The first start of a fresh profile showed an empty list [B].
 - The first viewport gives the pictures in `out`, further ones land in a subfolder and serve the review. Include 1024 x 600, the minimum size in ppp-power-apps. Without `out` pictures go to `exchange/walks/<name>/`, outside git.
 - `mask` covers controls with personal data with a grey box; a mask that never matches is an error. Pictures of a guide go into git, so cover every name and photo that the guide does not need.
@@ -45,7 +47,7 @@ Location: `tests/walks/<name>.json` for a review, `docs/handbook/walks/<name>.js
 `ppp walk <file> --check` checks the file offline. Done when it ends with RESULT: OK.
 
 ## 3. Test data
-A step that creates, changes or deletes data, sends mail or starts a flow carries `"writes": true`. `--check` finds `Patch`, `SubmitForm`, `Remove`, `Update` and `.Run` directly in the `OnSelect` of a clicked control; read the formula for everything else, named formulas included.
+A step that creates, changes or deletes data, sends mail or starts a flow carries `"writes": true`. `--check` finds `SubmitForm`, `.Run` and `Patch`, `Remove`, `RemoveIf`, `Update`, `UpdateIf` in the `OnSelect` of a clicked control; on a collection the app fills with `Collect` or `ClearCollect` they change only the app and are no write [B] (PAPPS-20261102-WIN-02). Read the formula for everything else, named formulas and `Select()` of another control included.
 
 A writing walk is allowed in every environment, under three conditions: the data is clearly identifiable as test data, it can be removed again, and it arises at a time that endangers no production. So:
 1. Add `"testData": {"mark": "PPP-TEST", "cleanup": "<how it is removed>"}`; typed values carry the mark.
@@ -56,13 +58,15 @@ A writing walk is allowed in every environment, under three conditions: the data
 ## 4. Run and review
 `ppp walk <file>`. Report the result lines; console errors and failed requests are among them.
 
-The measured findings are hints: L1 outside the window, L2 outside the parent, L3 cut-off text, L4 overlap, L5 image not loading; for usability A1 clickable without text or `AccessibleLabel`, A2 click area under 24 px, A3 text contrast under 4.5:1. Then look at every picture of every viewport yourself with the image tool (`view` in VS Code, `Read` in Claude Code) against `specs/` and ppp-power-apps: alignment, spacing, cut-off and wrapped text, empty areas, colours, scroll bars, whether the state is what the step should show.
+The measured findings are hints: L1 outside the window, L2 outside the parent, L3 cut-off text, L4 overlap, L5 image not loading, L6 a button label on more than one line, L7 a painted border cut by a parent; for usability A1 clickable without text or `AccessibleLabel`, A2 click area under 24 px, A3 text contrast under 4.5:1. Then look at every picture of every viewport yourself with the image tool (`view` in VS Code, `Read` in Claude Code) against `specs/` and ppp-power-apps: alignment, spacing, cut-off and wrapped text, empty areas, colours, scroll bars, whether the state is what the step should show.
+
+In a layout review open every dropdown, combo box and date picker with a `click` and take a `shot`, so the open list is measured and seen too.
 
 From the second complete run on, every picture is compared with the last one; the result lines name each changed picture with its area and a diff in `exchange/walks/<name>/diff/` (changed pixels red). Look at each diff: a change outside the package's scope is a finding. Moving data such as dates also shows up there; cover it with `mask` if it gets in the way.
 
 The run also measures time and requests: from the action to the last visible change, for the start and each `click`, `type`, `key` and `wait`, all in `report.json`, those from one second on in the result lines. A step clearly slower than in the last complete run is a warning; go through ppp-power-apps (performance) for it. Compare like with like: the first start of a fresh profile is slower, and a second viewport runs in a warm browser.
 
-Fix in the screen YAML in the current package, or in a new one; the user pastes it by card, and the walk runs again. What you cannot decide alone goes on a decision card with the picture path. Done when every picture was looked at and every finding is fixed, or intended and in `ignore`.
+Fix in the screen YAML in the current package, or in a new one; the user pastes it by card, and the walk runs again. What you cannot decide alone goes on a decision card with the picture path. Done when every picture was looked at and every finding is fixed, or intended and in `ignore`. A review that leaves findings unfixed ends with a decision card: fix them in a package (recommended), diagnose first, or accept them as intended.
 
 ## 5. Scenarios
 A critical scenario becomes a walk in `tests/walks/`: the user's steps, then the expected values from the proposal.
@@ -108,3 +112,4 @@ A guide shows every action from the session of the role that does it, with that 
 | `--video` on the company computer: ffmpeg download, quality on real apps | [O] |
 | A second account in its own profile despite single sign-on on the company computer; how the canvas runtime marks disabled controls | [O] |
 | Findings L1–L5 and A1–A3 on real canvas markup, especially L3, L4, the roles behind A1 and the wait for a gallery | [O] tune with `ignore` or a lesson |
+| L6 and L7 as measured by `ppp walk`; the cause, the border layer `appmagic-borderfill-container` with `margin: -0.5px`, is [B] (PAPPS-20261103-WIN-01) | [O] |

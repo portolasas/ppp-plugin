@@ -57,10 +57,33 @@ SCAN = """() => {
       if (n.tagName === 'svg' || n.tagName === 'INPUT' || n.tagName === 'TEXTAREA' || n.tagName === 'SELECT') painted = true;
       if (!clear(o.backgroundColor) || o.backgroundImage !== 'none' || parseFloat(o.borderTopWidth) > 0) painted = true;
     }
+    let lines = 0, cut = '';
+    const label = interactive && own.find(n => [...n.childNodes].some(c => c.nodeType === 3 && c.textContent.trim()));
+    if (label) {
+      const range = document.createRange(); range.selectNodeContents(label);
+      const tops = [...range.getClientRects()].filter(q => q.width > 0).map(q => q.top).sort((a, b) => a - b);
+      lines = tops.filter((t, i) => i === 0 || t - tops[i - 1] > 2).length;
+    }
+    // a classic button paints its border on a layer with margin -0.5px, outside its own box (PAPPS-20261103-WIN-01)
+    const layer = own.find(n => n.classList && n.classList.contains('appmagic-borderfill-container')) || el;
+    const ls = getComputedStyle(layer), b = layer.getBoundingClientRect();
+    if (['Top', 'Right', 'Bottom', 'Left'].some(k => parseFloat(ls['border' + k + 'Width']) > 0)) {
+      for (let a = layer.parentElement; a && !cut; a = a.parentElement) {
+        const o = getComputedStyle(a), q = a.getBoundingClientRect();
+        if (/auto|scroll/.test(o.overflowY + o.overflowX) && (a.scrollHeight > a.clientHeight + 1 || a.scrollWidth > a.clientWidth + 1)) continue;
+        if (q.right <= b.left || q.left >= b.right || q.bottom <= b.top || q.top >= b.bottom) continue;
+        const x = /hidden|clip|auto|scroll/.test(o.overflowX), y = /hidden|clip|auto|scroll/.test(o.overflowY);
+        const lost = [y ? q.top - b.top : 0, x ? b.right - q.right : 0, y ? b.bottom - q.bottom : 0, x ? q.left - b.left : 0];
+        const sides = ['top', 'right', 'bottom', 'left'].filter((_, i) => lost[i] > 0.1);
+        const owner = a.closest('[data-control-name]');
+        if (sides.length) cut = `${owner ? owner.getAttribute('data-control-name') : a.tagName.toLowerCase()} (${sides.join(', ')})`;
+      }
+    }
     out.push({name: el.getAttribute('data-control-name'), x: r.x, y: r.y, w: r.width, h: r.height, id: id(el),
       parent: parent ? id(parent) : null, parentName: parent ? parent.getAttribute('data-control-name') : '',
       px: p ? p.x : 0, py: p ? p.y : 0, pw: p ? p.width : 0, ph: p ? p.height : 0,
-      scroller, transparent: !painted, truncated, broken, text: text.slice(0, 60), interactive, labelled: labelled || !!text, fg, bg});
+      scroller, transparent: !painted, truncated, broken, text: text.slice(0, 60), interactive, labelled: labelled || !!text, fg, bg,
+      lines, cut});
   }
   return out;
 }"""

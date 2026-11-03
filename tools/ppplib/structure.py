@@ -405,6 +405,9 @@ def new(root: Path, kind: str, title: str, machine: str = "MAC") -> Path:
     if kind == "package":
         changes = root / "changes"
         names = [p.name for p in changes.iterdir()] + [p.name for p in (changes / "archive").iterdir()]
+        roadmap = root / "ROADMAP.md"
+        if roadmap.is_file():  # numbers planned in the roadmap are taken too (GEN-20261102-WIN-01)
+            names += [f"{n}-" for n in re.findall(r"^\|\s*(\d{3})\s*\|", roadmap.read_text(encoding="utf-8"), re.M)]
         number = _next_number(names)
         folder = changes / f"{number}-{slug(title)}"
         folder.mkdir(parents=True)

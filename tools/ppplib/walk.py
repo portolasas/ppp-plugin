@@ -17,7 +17,9 @@ STEP_KEYS = set(ACTIONS) | set(EXPECTATIONS) | {"value", "nth", "writes", "text"
 DEFAULT_VIEWPORT = [1366, 800]
 MIN_TARGET = 24  # px, WCAG 2.2 target size minimum; layout.md asks for icons of 24-32 px
 MIN_CONTRAST = 4.5  # WCAG 2 AA for normal text
-WRITING = re.compile(r"\b(Patch|SubmitForm|Remove|RemoveIf|UpdateIf|Update)\s*\(|\.Run\s*\(")
+WRITING = re.compile(r"\b(SubmitForm\s*\(|\w+\.Run\s*\()")
+CHANGING = re.compile(r"\b(?:Patch|RemoveIf|Remove|UpdateIf|Update)\s*\(((?:\s*[\w']+\s*\()*)\s*([\w']+)")
+COLLECTION = re.compile(r"\b(?:ClearCollect|Collect)\s*\(\s*([\w']+)")
 
 
 def load(path: Path) -> dict:
@@ -96,6 +98,13 @@ def on_select(screens: str, control: str) -> str:
     return ""
 
 
+def writes_data(formula: str, screens: str) -> bool:
+    """SubmitForm, a flow's .Run, or Patch, Remove, RemoveIf, Update, UpdateIf on anything but a collection the app fills
+    with Collect or ClearCollect; a collection lives only in the app (PAPPS-20261102-WIN-02)."""
+    collections = set(COLLECTION.findall(screens))
+    return bool(WRITING.search(formula)) or any(target not in collections for _, target in CHANGING.findall(formula))
+
+
 def check(walk: dict, screens: str = "") -> Report:
     """Offline check of a walk file. screens: the text of the screen YAML, to catch wrong names and writing clicks."""
     rep = Report("ppp walk: walk file")
@@ -162,7 +171,7 @@ def check(walk: dict, screens: str = "") -> Report:
         elif action != "key":
             control = str(step[action])
             names.append(control)
-            if action == "click" and not step.get("writes") and WRITING.search(on_select(screens, control)):
+            if action == "click" and not step.get("writes") and writes_data(on_select(screens, control), screens):
                 rep.error(f"{where}: OnSelect of {control} writes data; mark the step with \"writes\": true")
 
     if writes(walk):
@@ -242,7 +251,8 @@ def contrast(foreground: list[float], background: list[float]) -> float:
 
 def layout_findings(controls: list[dict], viewport: list[int], ignore: list[str] | tuple = ()) -> list[str]:
     """Findings from the measured controls of one state. Each control: name, x, y, w, h, id, parent (id or None), px, py,
-    pw, ph (box of the parent), scroller, transparent, truncated, text, broken, interactive, labelled, fg, bg. Rows of a gallery repeat, so equal
+    pw, ph (box of the parent), scroller, transparent, truncated, text, broken, interactive, labelled, fg, bg, lines (of a clickable
+    control's label), cut (the parent that cuts its painted border, with the sides). Rows of a gallery repeat, so equal
     messages count once. The result is a hint for the look at the picture, not a verdict."""
     width, height = viewport
     seen = [c for c in controls if c["w"] > 0 and c["h"] > 0 and c["name"] not in ignore]
@@ -265,6 +275,10 @@ def layout_findings(controls: list[dict], viewport: list[int], ignore: list[str]
             add(f"L3 {name}: text is cut off: {c.get('text', '')!r}")
         if c.get("broken"):
             add(f"L5 {name}: image does not load")
+        if c.get("lines", 0) > 1:
+            add(f"L6 {name}: label on {c['lines']} lines: {c.get('text', '')!r}")
+        if c.get("cut"):
+            add(f"L7 {name}: border cut by {c['cut']}")
         if c.get("interactive"):
             if not c.get("labelled"):
                 add(f"A1 {name}: can be clicked but has no text or AccessibleLabel")
