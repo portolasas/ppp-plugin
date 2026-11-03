@@ -2,6 +2,9 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.11.1 (2026-11-03)
+- ppp-app-walk: a project copies the Word template bi-designer names (bi-design 2.12.0) instead of building its own
+
 ## 0.11.0 (2026-11-03)
 - ppp-docs: the clicks of a chapter come from its walk alone, the text holds purpose, prerequisites, result and help; ppp guide warns about numbered steps beside a walk line
 - ppp walk records the screens its pictures show; ppp check names handbook walks whose screens changed since; ppp-package and tasks.md close a package with a current handbook
