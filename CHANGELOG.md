@@ -2,6 +2,16 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.12.0 (2026-11-04)
+- ppp walk startet sofort und wartet nur auf einer Anmeldeseite bis zu zehn Minuten (--signin), jeder Schritt höchstens --timeout; Live-Zeilen für Fenster, App bereit und jeden Schritt; Fenster vorn
+- ppp walk: type stoppt sofort an einem schreibgeschützten Feld, --check meldet type auf einen DatePicker; Datum über click, key und expect (PAPPS-20261103-WIN-07)
+- ppp walk: der Mauszeiger verlässt die App vor jedem Bild, außer nach hover (PAPPS-20261104-WIN-01)
+- ppp guide: Dokumenttitel als Eigenschaft und TITLE-Feld statt STYLEREF "Title" in Kopf- und Fußzeile (GEN-20261104-WIN-02)
+- ppp new lesson: überspringt auch IDs, die Commit-Nachrichten zu lessons/ als archiviert nennen
+- ppp-app-walk: Testbeispiele für Handbücher mit echten Stammdaten, Anlage und Bereinigung per schreibendem Walk
+- ppp-docs: Fehlverhalten aus einem Handbuch-Walk auf eine Entscheidungskarte vor dem Kapiteltext
+- Agent: Startprompt eines neuen Chats im Chat über der Haltepunkt-Karte; Fehlgriff-Zeile für git diff --check mit CRLF (GEN-20261104-WIN-01)
+
 ## 0.11.1 (2026-11-03)
 - ppp-app-walk: a project copies the Word template bi-designer names (bi-design 2.12.0) instead of building its own
 

@@ -446,9 +446,11 @@ def new(root: Path, kind: str, title: str, machine: str = "MAC") -> Path:
         folder = root / "lessons"
         folder.mkdir(exist_ok=True)
         names = [p.name for p in folder.glob(f"{code}-*.md")]
-        if gitutil.is_repo(root):  # a learning session removes answered proposals; their IDs stay taken
-            names += gitutil.git(root, "log", "--all", "--format=", "--name-only", "--", "lessons/",
-                                 check=False).decode("utf-8", "replace").splitlines()
+        if gitutil.is_repo(root):  # a learning session removes answered proposals; their IDs stay taken, and so do the
+            # IDs it archived them as, which only its commit message names (PAPPS-20261103-WIN-05 twice)
+            history = gitutil.git(root, "log", "--all", "--format=%B", "--name-only", "--", "lessons/",
+                                  check=False).decode("utf-8", "replace")
+            names += [f"{found}.md" for found in re.findall(rf"\b{re.escape(code)}-\d+\b", history)]
         n = 1 + max((int(Path(name).stem.rsplit("-", 1)[1]) for name in names
                      if Path(name).name.startswith(f"{code}-") and name.endswith(".md")), default=0)
         lesson_id = f"{code}-{n:02d}"

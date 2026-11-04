@@ -242,7 +242,7 @@ def cmd_walk(a) -> int:
     work = out if a.video else work
     options = {"walk": str(path), "url": walk.resolved_url(root, str(loaded["url"])), "video": a.video, "out": str(out), "profile": str(profile), "diagnosis": str(diagnosis), "work": str(work),
                "screens": walk.screen_hashes(root, loaded),
-               "channel": a.channel, "headless": a.headless, "timeout": a.timeout}
+               "channel": a.channel, "headless": a.headless, "timeout": a.timeout, "signin": a.signin}
     return _child(TOOLS / "child" / "walk_browser.py", [json.dumps(options)], root, TOOLS)
 
 
@@ -594,7 +594,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--channel", default="msedge", help="installed browser (default: msedge)")
     c.add_argument("--headless", action="store_true", help="without a window; company sign-in usually needs the window")
     c.add_argument("--profile", default="", help="browser profile folder (default: ~/.ppp/edge-profile, per role ~/.ppp/edge-profile-<role>)")
-    c.add_argument("--timeout", type=float, default=90, help="seconds to wait for content or a control (default: 90)")
+    c.add_argument("--timeout", type=float, default=90, help="seconds to wait for the app at the start and for content or a control at each step (default: 90)")
+    c.add_argument("--signin", type=float, default=600, help="seconds to wait while a sign-in page is open, for the user to sign in (default: 600)")
 
     c = command("guide", cmd_guide, "Build a Word guide from a handbook in Markdown that names its walks with <!-- walk: <name> -->, or from walk files, one chapter per walk; with the walks' pictures. Needs the package python-docx.", False)
     c.add_argument("files", nargs="+", help="the handbook docs/handbook/<name>.md, or walk files in chapter order")

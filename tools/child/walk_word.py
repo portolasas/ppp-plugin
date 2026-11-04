@@ -2,6 +2,7 @@
 pictures. Argument: options as JSON."""
 from __future__ import annotations
 
+import copy
 import json
 import re
 import struct
@@ -22,6 +23,7 @@ WALK = re.compile(r"^<!--\s*walk:\s*(\S+)\s*-->$")
 TOC = re.compile(r"^<!--\s*toc\s*-->$")
 IMAGE = re.compile(r"^!\[([^\]]*)\]\(([^)\s]+)\)$")
 HEADINGS = {"#": "Title", "##": 1, "###": 2, "####": 3}
+TITLE_FIELD = re.compile(r'^\s*(STYLEREF\s+"?(Title|Titel)"?|TITLE)\s*$', re.I)
 
 
 def paragraph(doc, text: str, style: str | None = None):
@@ -34,6 +36,34 @@ def paragraph(doc, text: str, style: str | None = None):
         if part:
             par.add_run(part).bold = number % 2 == 1
     return par
+
+
+def title_fields(doc, title: str) -> None:
+    """The title as a document property and in a TITLE field in headers and footers: behind STYLEREF "Title" German Word
+    looked for a style "Titel" and printed an error in the footer (GEN-20261104-WIN-02)."""
+    doc.core_properties.title = title
+    for section in doc.sections:
+        for part in (section.header, section.footer, section.first_page_header, section.first_page_footer,
+                     section.even_page_header, section.even_page_footer):
+            if part.is_linked_to_previous:
+                continue  # reading it would add a definition
+            for field in part._element.iter(qn("w:fldSimple")):
+                if not TITLE_FIELD.match(field.get(qn("w:instr"), "")):
+                    continue
+                field.set(qn("w:instr"), "TITLE")
+                after = field.getnext()
+                style = after.find(qn("w:rPr")) if after is not None and after.tag == qn("w:r") else None
+                for child in list(field):
+                    field.remove(child)
+                run, text = OxmlElement("w:r"), OxmlElement("w:t")
+                if style is not None:
+                    run.append(copy.deepcopy(style))
+                text.text = title
+                run.append(text)
+                field.append(run)
+            for instruction in part._element.iter(qn("w:instrText")):
+                if TITLE_FIELD.match(instruction.text or ""):
+                    instruction.text = " TITLE "
 
 
 def plain(text: str) -> str:
@@ -171,6 +201,7 @@ def markdown(doc, root: Path, source: Path, state: dict) -> None:
             chapter["title"] = plain(title)
             if HEADINGS[mark] == "Title":
                 paragraph(doc, plain(title), "Title")
+                state.setdefault("title", plain(title))
             else:
                 doc.add_heading(plain(title), level=HEADINGS[mark])
                 state["sections"] += 1
@@ -218,6 +249,8 @@ def main(options: dict) -> int:
     except FileNotFoundError as ex:
         print(f"ERROR: {ex}", file=sys.stderr)
         return 2
+    if options.get("title") or state.get("title"):
+        title_fields(doc, options.get("title") or state["title"])
     target = Path(options["out"])
     target.parent.mkdir(parents=True, exist_ok=True)
     try:

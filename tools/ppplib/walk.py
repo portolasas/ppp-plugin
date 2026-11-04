@@ -135,6 +135,12 @@ def on_select(screens: str, control: str) -> str:
     return ""
 
 
+def control_type(screens: str, control: str) -> str:
+    """The Control: line of a control in the screen YAML, such as Classic/DatePicker@2.6.0; empty when there is none."""
+    found = re.search(rf"^\s*(- )?{re.escape(control)}:\s*\n\s*Control:\s*(\S+)", screens, re.M)
+    return found.group(2) if found else ""
+
+
 def writes_data(formula: str, screens: str) -> bool:
     """SubmitForm, a flow's .Run, or Patch, Remove, RemoveIf, Update, UpdateIf on anything but a collection the app fills
     with Collect or ClearCollect; a collection lives only in the app (PAPPS-20261102-WIN-02)."""
@@ -187,6 +193,9 @@ def check(walk: dict, screens: str = "") -> Report:
         action = found[0]
         if action == "type" and "value" not in step:
             rep.error(f"{where}: type needs a value")
+        if action == "type" and "DatePicker" in control_type(screens, str(step["type"])):
+            rep.error(f"{where}: {step['type']} is a date picker, which takes no typed date: click it, choose with "
+                      "key ArrowLeft/ArrowRight and Enter, then expect the date it shows (PAPPS-20261103-WIN-07)")
         if action == "expect":
             wanted = [k for k in EXPECTATIONS if k in step]
             if len(wanted) != 1:

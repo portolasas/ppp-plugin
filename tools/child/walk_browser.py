@@ -16,6 +16,7 @@ from ppplib import walk as W
 from ppplib.report import Report
 
 QUIET = 2.5  # seconds without a change before a state counts as settled
+SIGN_IN = ("login.microsoftonline.com", "login.microsoft.com", "login.live.com", "login.windows.net")
 
 SCAN = """() => {
   const ids = new Map();
@@ -442,12 +443,36 @@ def verify(page, walk: dict, step: dict, number: int, label: str, folder: Path, 
     record["expects"].append(entry)
 
 
-def wait_for(page, name: str, timeout: float, refresh: str = "") -> float:
-    """Wait for content; on an empty result press refresh and look again. A failed wait stops the walk, so no empty picture."""
+def progress(text: str) -> None:
+    """A line while the walk runs, so the agent sees where it stands; the report follows at the end."""
+    print(f"[RUN]   {text}", flush=True)
+
+
+def on_sign_in(page) -> bool:
+    return (urlsplit(page.url).hostname or "").lower() in SIGN_IN
+
+
+def signed_in(page, signin: float) -> None:
+    """Most starts need no sign-in, so only an open sign-in page earns the long wait (user, 2026-11-04)."""
+    progress(f"sign-in page open in the walk window: waiting up to {signin:.0f} s for the user to sign in")
+    until = time.monotonic() + signin
+    while on_sign_in(page):
+        if time.monotonic() >= until:
+            raise WalkFailed("the sign-in page is still open; the user signs in in the walk window, then run again")
+        page.wait_for_timeout(500)
+
+
+def wait_for(page, name: str, timeout: float, refresh: str = "", signin: float = 0) -> float:
+    """Wait for content; on an empty result press refresh and look again. A failed wait stops the walk, so no empty picture.
+    signin: how long an open sign-in page may hold the wait."""
     limit = timeout
     for attempt in range(3 if refresh else 1):
         deadline = time.monotonic() + limit
         while time.monotonic() < deadline:
+            if signin and on_sign_in(page):
+                signed_in(page, signin)
+                deadline = time.monotonic() + limit
+                continue
             if has_content(page, name):
                 return settle(page, timeout)
             page.wait_for_timeout(500)
@@ -490,6 +515,9 @@ def type_into(page, name: str, nth: int, value: str, timeout: float) -> None:
         control.locator("input:not([type=hidden]),textarea").first
     if not field.count():
         raise WalkFailed(f"control {name} has no input field to type into")
+    if not field.is_editable():  # fill would wait for the whole timeout (PAPPS-20261103-WIN-07)
+        raise WalkFailed(f"control {name} takes no typed value, its input is read-only as in a date picker: click it, "
+                         "choose with key ArrowLeft/ArrowRight and Enter, then expect the value it shows")
     field.fill(value)
     if field.input_value() != value:
         raise WalkFailed(f"control {name} shows {field.input_value()!r} after typing {value!r}")
@@ -597,14 +625,17 @@ def timed(record: dict, viewport: str, what: str, seconds: float, requests: dict
 
 
 def run_steps(page, walk: dict, size: list[int], folder: Path, rep: Report, record: dict, mask_seen: set, timeout: float,
-              diagnosis: Diagnosis | None, requests: dict, started: float, work: Path, video: bool) -> None:
+              diagnosis: Diagnosis | None, requests: dict, started: float, work: Path, video: bool, signin: float = 0) -> None:
     ready = walk["ready"]
     label = f"{size[0]}x{size[1]}"
-    done = wait_for(page, ready["control"], timeout, ready.get("refresh", ""))
+    done = wait_for(page, ready["control"], timeout, ready.get("refresh", ""), signin)
     timed(record, label, "start", done - started, requests)
+    progress(f"{label}: app ready after {done - started:.0f} s")
     prove_role(page, walk, record, timeout)
+    previous = ""
     for number, step in enumerate(walk["steps"], 1):
         action = W.action_of(step)
+        progress(f"{label} step {number} {action} {step.get(action, '')}".rstrip())
         begun, asked = time.monotonic(), requests["count"]
         if diagnosis:
             diagnosis.enter(number, action, step)
@@ -633,6 +664,8 @@ def run_steps(page, walk: dict, size: list[int], folder: Path, rep: Report, reco
             elif action == "shot" and video:
                 pause_on_marks(page, walk, step, timeout)
             elif action == "shot":
+                if previous != "hover":  # a button under the pointer showed its fill without text (PAPPS-20261104-WIN-01)
+                    page.mouse.move(0, 0)
                 shot = take(page, walk, step, folder, mask_seen, timeout, strict=size == W.viewports(walk)[0])
                 for hint in shot["cut"]:
                     rep.warn(f"{label} {step['shot']}: {hint}")
@@ -645,6 +678,7 @@ def run_steps(page, walk: dict, size: list[int], folder: Path, rep: Report, reco
                                         "controls": sorted({c["name"] for c in controls})})
         except WalkFailed as ex:
             raise WalkFailed(f"step {number} ({action}): {ex}")
+        previous = action
 
 
 def report_timings(record: dict, work: Path, rep: Report) -> None:
@@ -759,6 +793,8 @@ def main(options: dict) -> int:
         if video and walk.get("mask"):
             context.add_init_script(mask_script(walk["mask"]))
         page = context.pages[0] if context.pages else context.new_page()
+        page.bring_to_front()
+        progress(f"window open, profile {options['profile']}; waiting for {walk['ready']['control']}")
         page.on("console", lambda m: record["console"].append(m.text[:300]) if m.type == "error" else None)
         page.on("pageerror", lambda e: record["console"].append(str(e)[:300]))
 
@@ -790,7 +826,8 @@ def main(options: dict) -> int:
                 started = time.monotonic()
                 requests["count"] = 0
                 page.goto(options["url"], wait_until="domcontentloaded", timeout=timeout * 1000)
-                run_steps(page, walk, size, target, rep, record, mask_seen, timeout, diagnosis, requests, started, work, video)
+                run_steps(page, walk, size, target, rep, record, mask_seen, timeout, diagnosis, requests, started, work, video,
+                          float(options.get("signin", 0)))
             if not video:
                 compare(context, work, record, rep)
                 sheets(context, work, record, rep)
