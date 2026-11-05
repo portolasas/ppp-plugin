@@ -246,19 +246,51 @@ def cmd_walk(a) -> int:
     return _child(TOOLS / "child" / "walk_browser.py", [json.dumps(options)], root, TOOLS)
 
 
+def _bippt(given: str) -> Path | None:
+    """The generator bippt of the plugin bi-design: given, else from PPP_BIPPT, the plugins of Claude Code and VS Code, or a
+    clone of bi-design beside the ppp repository; the newest one found."""
+    if given:
+        path = Path(given).expanduser()
+        if not path.is_file():
+            raise ToolError(f"bippt not found: {path}")
+        return path
+    if os.environ.get("PPP_BIPPT"):
+        return _bippt(os.environ["PPP_BIPPT"])
+    home = Path.home()
+    roots = [home / ".claude" / "plugins", home / ".vscode", home / ".vscode-insiders",
+             home / "Library" / "Application Support" / "Code", Path(os.environ.get("APPDATA", home)) / "Code"]
+    found = [p for r in roots if r.is_dir() for p in r.glob("**/bi-design*/**/tools/bippt.py")]
+    found += [p for p in [TOOLS.parents[2] / "bi-design" / "plugin" / "tools" / "bippt.py"] if p.is_file()]
+    return max(found, key=lambda p: p.stat().st_mtime) if found else None
+
+
 def cmd_guide(a) -> int:
     root = find_root(a.project)
     if a.files[0].endswith(".md"):
-        if len(a.files) > 1 or a.role:
+        if len(a.files) > 1:
             raise ToolError("A handbook in Markdown comes alone; it names its walks itself with <!-- walk: <name> -->")
         source = Path(a.files[0]) if Path(a.files[0]).is_absolute() else root / a.files[0]
         if not source.is_file():
             raise ToolError(f"Handbook not found: {source}")
-        target = Path(a.out) if a.out else source.with_suffix(".docx")
+        stem = source.stem + ("" if a.kind == "handbook" else f"-{a.kind}")
+        if a.role:
+            stem += "-" + walk.profile_dir(Path(), {"role": {"name": a.role}}).name.removeprefix("edge-profile-")
+        if a.kind == "deck":
+            target = Path(a.out) if a.out else Path("docs") / "training" / f"{stem}.pptx"
+            options = {"root": str(root), "markdown": str(source), "out": str(root / target), "title": a.title,
+                       "role": a.role, "language": load_config(root).get("handbookLanguage", "en"),
+                       "bippt": "" if a.bippt == "-" else str(_bippt(a.bippt) or "")}
+            return _child(TOOLS / "child" / "walk_deck.py", [json.dumps(options)], root, TOOLS)
+        target = Path(a.out) if a.out else source.with_name(f"{stem}.docx")
         options = {"root": str(root), "markdown": str(source), "out": str(root / target), "title": a.title,
-                   "template": str(root / a.template) if a.template else "",
+                   "template": str(root / a.template) if a.template else "", "role": a.role, "kind": a.kind,
+                   "orientation": a.orientation,
                    "language": load_config(root).get("handbookLanguage", "en")}
-        return _child(TOOLS / "child" / "walk_word.py", [json.dumps(options)], root, TOOLS)
+        code = _child(TOOLS / "child" / "walk_word.py", [json.dumps(options)], root, TOOLS)
+        return _word_fields(root / target) if code == 0 and a.word else code
+    if a.kind != "handbook":
+        raise ToolError("--kind needs a handbook in Markdown with chapters marked <!-- kind: quick|exercises -->; "
+                        "a deck is built from the handbook in Markdown")
     paths = [_walk_path(root, name) for name in a.files]
     stem = ""
     if a.role:
@@ -269,9 +301,86 @@ def cmd_guide(a) -> int:
         stem = "-" + walk.profile_dir(Path(), {"role": {"name": a.role}}).name.removeprefix("edge-profile-")
     target = Path(a.out) if a.out else Path("docs") / "handbook" / f"{walk.name_of(paths[0])}{stem}.docx"
     options = {"root": str(root), "walks": [str(p) for p in paths], "out": str(root / target), "title": a.title,
-               "template": str(root / a.template) if a.template else "",
+               "template": str(root / a.template) if a.template else "", "orientation": a.orientation,
                "language": load_config(root).get("handbookLanguage", "en")}
-    return _child(TOOLS / "child" / "walk_word.py", [json.dumps(options)], root, TOOLS)
+    code = _child(TOOLS / "child" / "walk_word.py", [json.dumps(options)], root, TOOLS)
+    return _word_fields(root / target) if code == 0 and a.word else code
+
+
+WORD_MAC = """on run argv
+	set docName to item 1 of argv
+	tell application "Microsoft Word"
+		set d to document docName
+		set pageCount to missing value
+		repeat 60 times -- a large document is still loading when it shows up
+			try
+				set pageCount to compute statistics d statistic statistic pages
+				exit repeat
+			on error
+				delay 2
+			end try
+		end repeat
+		if pageCount is missing value then error docName & " did not finish loading"
+		try
+			set fieldList to (get fields of d)
+		on error
+			set fieldList to {} -- a document without fields in its text
+		end try
+		repeat with f in fieldList
+			update field f
+		end repeat
+		set pageCount to compute statistics d statistic statistic pages
+		save d
+		close d saving no
+		return pageCount
+	end tell
+end run"""
+
+WORD_WINDOWS = """$ErrorActionPreference = 'Stop'
+$word = New-Object -ComObject Word.Application
+$word.Visible = $false
+try {
+  $doc = $word.Documents.Open($args[0])
+  foreach ($toc in $doc.TablesOfContents) { $toc.Update() }
+  [void]$doc.Fields.Update()
+  foreach ($section in $doc.Sections) { foreach ($footer in $section.Footers) { [void]$footer.Range.Fields.Update() } }
+  $pages = $doc.ComputeStatistics(2)
+  $doc.Save()
+  $doc.Close()
+  Write-Output $pages
+} finally { $word.Quit() }"""
+
+
+def _word_fields(target: Path) -> int:
+    """Open the built file in Microsoft Word, update the table of contents and the other fields, save it: a reader then
+    sees page numbers without pressing F9 first. Word picks up fonts installed while it runs only after a restart."""
+    import time
+    name = target.name
+    try:
+        if sys.platform == "darwin":
+            # opened through Launch Services, Word's sandbox may write the file; an AppleScript open is refused
+            subprocess.run(["open", "-a", "Microsoft Word", str(target)], check=True, capture_output=True)
+            for _ in range(60):
+                names = subprocess.run(["osascript", "-e", 'tell application "Microsoft Word" to get name of documents'],
+                                       capture_output=True, text=True).stdout
+                if name in names:
+                    break
+                time.sleep(1)
+            else:
+                raise ToolError(f"Word did not open {name} within a minute")
+            time.sleep(2)  # the document finishes its layout before the fields count pages
+            proc = subprocess.run(["osascript", "-", name], input=WORD_MAC, capture_output=True, text=True, timeout=600)
+        elif sys.platform == "win32":
+            proc = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", WORD_WINDOWS, str(target)],
+                                  capture_output=True, text=True, timeout=600)
+        else:
+            raise ToolError("--word needs Microsoft Word on macOS or Windows")
+    except (OSError, subprocess.SubprocessError) as ex:
+        raise ToolError(f"Word could not update {name}: {ex}")
+    if proc.returncode:
+        raise ToolError(f"Word could not update {name}: {(proc.stderr or proc.stdout).strip()}")
+    print(f"{name}: fields updated in Word, {proc.stdout.strip()} pages")
+    return 0
 
 
 def cmd_init(a) -> int:
@@ -597,11 +706,15 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--timeout", type=float, default=90, help="seconds to wait for the app at the start and for content or a control at each step (default: 90)")
     c.add_argument("--signin", type=float, default=600, help="seconds to wait while a sign-in page is open, for the user to sign in (default: 600)")
 
-    c = command("guide", cmd_guide, "Build a Word guide from a handbook in Markdown that names its walks with <!-- walk: <name> -->, or from walk files, one chapter per walk; with the walks' pictures. Needs the package python-docx.", False)
+    c = command("guide", cmd_guide, "Build a Word guide from a handbook in Markdown that names its walks with <!-- walk: <name> -->, or from walk files, one chapter per walk; with the walks' pictures. From one handbook: the whole handbook, the handbook of a role (sections marked <!-- for: <roles> -->), a quick guide or an exercise sheet (chapters marked <!-- kind: quick|exercises -->), or the training deck of a role in PowerPoint (--kind deck). Needs the package python-docx.", False)
     c.add_argument("files", nargs="+", help="the handbook docs/handbook/<name>.md, or walk files in chapter order")
-    c.add_argument("--out", default="", help="Word file (default: docs/handbook/<first walk>.docx)")
-    c.add_argument("--title", default="", help="document title")
-    c.add_argument("--role", default="", help="only the walks of this role: one guide per role")
+    c.add_argument("--out", default="", help="Word file (default: docs/handbook/<name>[-<kind>][-<role>].docx, for walks <first walk>.docx); deck: docs/training/<name>-deck[-<role>].pptx, its spec beside it")
+    c.add_argument("--title", default="", help="document title (default: the handbook's # title, with ' – <role>' for a role)")
+    c.add_argument("--role", default="", help="handbook: only the sections for this role; walks: only the walks of this role")
+    c.add_argument("--kind", default="handbook", choices=("handbook", "quick", "exercises", "deck"), help="handbook (default), quick guide or exercise sheet, from the chapters of that kind; deck: a compact training deck of the role in the corporate design (handbook chapters with one slide per task, quick guide, exercises with hidden solutions), built with bippt of the plugin bi-design")
+    c.add_argument("--bippt", default="", help="deck: path to bippt.py of the plugin bi-design (default: found from PPP_BIPPT or the installed plugins); - writes the spec only")
+    c.add_argument("--orientation", default="", choices=("", "portrait", "landscape"), help="page orientation of every section (default: as the template has it)")
+    c.add_argument("--word", action="store_true", help="then open the file in Microsoft Word (macOS or Windows), update table of contents and fields, save it and print its pages")
     c.add_argument("--template", default="", help="Word template to fill, its styles apply")
 
     # one call of ppp --help shows every command with its options

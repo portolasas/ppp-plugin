@@ -2,6 +2,27 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.15.1 (2026-11-05)
+- Modellempfehlung nennt bei GPT-Modellen die kleine Kontextgröße (272k): der große Kontext kostet ab 272k das Doppelte; Claude-Modelle kosten in beiden gleich (ARBEITSWEISE A-9)
+
+## 0.15.0 (2026-11-05)
+- ppp guide --kind deck: Schulungsdeck je Rolle in PowerPoint im Corporate Design (bippt aus bi-design) aus demselben Handbuch-Markdown und denselben Bildern wie Word; eine Folie je Aufgabe mit Walk-Bild, Kurzanleitung als Kapitel, Übungen mit ausgeblendeten Lösungen, Schritttexte und Hilfelisten in den Sprechernotizen; Zeilen <!-- deck: skip|title|heads|icons|steps|tiles|ampel|shot --> steuern Abschnitte, Word ignoriert sie; --bippt, ohne bi-design nur die Spec
+- project.json: optional trainingFormat word|powerpoint|both; ppp-docs fragt es vor den Dokumenten für Nutzer ab (Nutzer 05.11.2026: bei powerpoint bleibt das Handbuch Word, Kurzanleitung und Übungen kommen ins Deck)
+- ppp-docs: ein Deck lehrt, was das Werkzeug braucht, nicht Fachwissen der Nutzer (z. B. Schichtzeiten mit deck: skip); was Nutzer im Werkzeug beurteilen müssen, etwa wie sicher eine Prognose ist, bekommt einen eigenen Abschnitt
+
+## 0.14.0 (2026-11-04)
+- ppp guide --word: Word aktualisiert Inhaltsverzeichnis und Felder und speichert (macOS über Launch Services, Windows über COM, dort noch nicht erprobt); --orientation portrait|landscape
+- ppp guide: Absatz zwischen zwei Tabellen (Word verschmolz sie), kurze Tabellen auf einer Seite, Spaltenbreiten nach Inhalt, Legende in einer Zeile, Bilder höchstens halbe Seitenhöhe, Einleitungszeilen wie 'Wenn etwas nicht klappt:' bei ihrer Liste, jede Übung auf einer Seite, Kapitelüberschrift von Kurzanleitung und Übungsblatt entfällt
+
+## 0.13.1 (2026-11-04)
+- ppp guide: wiederholte Klicks auf dasselbe Steuerelement zählen als eine Handlung; Tabellen zählen für die Prüfung auf Entwicklersprache und die Länge der Kurzanleitung
+
+## 0.13.0 (2026-11-04)
+- ppp guide: ein Handbuch in Markdown ergibt Handbuch je Rolle (--role, <!-- for: … -->), Kurzanleitung und Übungsblatt je Rolle (--kind quick|exercises, <!-- kind: … -->, Lösungen am Ende nach <!-- solution -->); Überschriften ohne Inhalt für die Rolle entfallen
+- ppp guide: Schritt, Bild, Beschriftung und Legende auf einer Seite, Bilder höchstens 60 % der Seitenhöhe, hängender Einzug der Schritte, Legende abgesetzt, Kasten für '> …', Ankreuzfeld für '- [ ] …', <!-- pagebreak -->, Tabellenkopf wiederholt
+- ppp guide warnt bei mehr als drei Klicks ohne Text in einem Walk, bei Wörtern aus <!-- avoid: … --> und bei einer Kurzanleitung über etwa einer Seite; Hinweis bei einem Walk einer anderen Rolle
+- ppp-docs: Raster je Aufgabe (Wozu, Schritte, Ergebnis, Wenn etwas nicht klappt), Schreibregeln ohne Entwicklersprache, technische Notizen in docs/handbook/README.md, Kurzanleitung und Übungsblatt je Rolle, Durchsicht je Rolle (aus einer Recherche zu DITA-Profiling, Job Aids und dem Microsoft Writing Style Guide)
+
 ## 0.12.0 (2026-11-04)
 - ppp walk startet sofort und wartet nur auf einer Anmeldeseite bis zu zehn Minuten (--signin), jeder Schritt höchstens --timeout; Live-Zeilen für Fenster, App bereit und jeden Schritt; Fenster vorn
 - ppp walk: type stoppt sofort an einem schreibgeschützten Feld, --check meldet type auf einen DatePicker; Datum über click, key und expect (PAPPS-20261103-WIN-07)

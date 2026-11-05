@@ -19,7 +19,7 @@ It works **offline from solution exports**. The agent has no tenant access, no c
 - Python 3.10 or newer.
 - Power Platform CLI `pac` (in `PATH`, from the VS Code extension Power Platform Tools, or in `~/.dotnet/tools`).
 - git; a GitHub repository per project is recommended.
-- In VS Code a model that follows the agent text: GPT-6.1 Sol for building, Claude Opus 5.5 for clarification, planning and diagnosis. Not GPT-6 Luna.
+- In VS Code a model that follows the agent text: GPT-6.1 Sol for building, Claude Opus 5.5 for clarification, planning and diagnosis. Not GPT-6 Luna. GPT models with the small context size (272k) in the model picker: the long context costs double above 272k; Claude models cost the same in both.
 
 ## Quick start
 

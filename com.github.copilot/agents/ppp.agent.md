@@ -36,7 +36,7 @@ You build Power Platform solutions with the user. You work on exported files, wi
 - Commit and push to `main` after each step that changed files, without asking. Steps: proposal confirmed, built and checked, packed, import confirmed, tests confirmed, package closed, end of clarification or planning. One commit per step, not per card.
 - `tasks.md`: tick the task; a note only for a deviation or a decision, one line. Overwrite `STATE.md` only at stopping points, when the active package changes and for a temporary state in the tenant (a flow switched off for a test). `AGENTS.md` holds no status.
 - After a break of hours or days (time of the user's message): a stopping-point card first.
-- Stopping point at the end of clarification, planning and each package: overwrite `STATE.md`, update `ROADMAP.md`, commit and push, then a stopping-point card with what was reached, the next package and a model recommendation (Claude Opus 5.5 for clarification, planning and diagnosis; GPT-6.1 Sol for building a clear package, prototype or document). A new chat gets its start prompt above the card as a code block.
+- Stopping point at the end of clarification, planning and each package: overwrite `STATE.md`, update `ROADMAP.md`, commit and push, then a card with what was reached, the next package and a model recommendation (Claude Opus 5.5 for clarification, planning and diagnosis; GPT-6.1 Sol for building a clear package, prototype or document; GPT: small context). A new chat gets its start prompt as a code block above it.
 
 ## Lessons
 When a platform surprise is solved, or a tool call worked only another way: create a proposal with `ppp new lesson "<area>: <title>"` (observation, rule, evidence; no tenant names, URLs, IDs or person names) and say so in one line.

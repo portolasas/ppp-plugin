@@ -20,6 +20,7 @@ STRUCTURE_VERSION = 1
 TEMPLATES = Path(__file__).resolve().parent.parent.parent / "templates"
 MODULES = ("power-automate", "power-apps", "sharepoint", "power-bi", "copilot-studio")
 MODES = ("small", "medium", "large")
+TRAINING_FORMATS = ("word", "powerpoint", "both")  # optional; ppp-docs asks before the documents for users are built
 ROLES = ("main", "transfer", "read-only")
 CORE_FILES = ("README.md", "AGENTS.md", "CLAUDE.md", "STATE.md", "ROADMAP.md", "project.json")
 CORE_DIRS = ("specs", "changes", "changes/archive", "decisions", "components", "solution")
@@ -136,7 +137,10 @@ def _validate_config(config: dict, rep: Report) -> None:
         if "transfer" in roles and "main" not in roles:
             rep.error("S project.json: a transfer solution needs a main solution")
     need("handbookLanguage", str)
-    extra = set(config) - {"structureVersion", "name", "prefix", "mode", "modules", "solutions", "handbookLanguage"}
+    if "trainingFormat" in config and config["trainingFormat"] not in TRAINING_FORMATS:
+        rep.error(f"S project.json: trainingFormat {config['trainingFormat']!r} is not one of {', '.join(TRAINING_FORMATS)}")
+    extra = set(config) - {"structureVersion", "name", "prefix", "mode", "modules", "solutions", "handbookLanguage",
+                           "trainingFormat"}
     if extra:
         rep.error("S project.json: unknown fields " + ", ".join(sorted(extra)))
 
@@ -314,7 +318,7 @@ def check(root: Path, *notes: str | None) -> Report:
             continue
         if changed:
             rep.warn(f"S handbook walk {p.stem}: {', '.join(changed)} changed since its pictures; run ppp walk "
-                     f"{gitutil.rel(root, p)} again and rebuild the Word file with ppp guide")
+                     f"{gitutil.rel(root, p)} again and rebuild the Word files with ppp guide")
 
     # STATE.md, CLAUDE.md
     state = root / "STATE.md"
