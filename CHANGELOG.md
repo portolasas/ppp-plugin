@@ -2,6 +2,13 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.16.0 (2026-11-05)
+- ppp walk nennt jeden Befund einmal beim ersten Bild mit der Zahl weiterer Bilder; report.json behält alle
+- ppp walk --check warnt vor key Home/End; Dropdown mit gezählten Pfeiltasten, Scroll-Ziel sichtbar (PAPPS-20261105-WIN-01)
+- ppp-app-walk: Werte und leere Zustände gehören zum Review
+- ppp canvas warnt vor Sum(/Average( mit & ohne Coalesce; ppp-power-apps: Sum einer leeren Tabelle ist Blank (PAPPS-20261105-MAC-01)
+- ppp-app-walk §6 verweist auf GEN-20261104-MAC-01
+
 ## 0.15.1 (2026-11-05)
 - Modellempfehlung nennt bei GPT-Modellen die kleine Kontextgröße (272k): der große Kontext kostet ab 272k das Doppelte; Claude-Modelle kosten in beiden gleich (ARBEITSWEISE A-9)
 

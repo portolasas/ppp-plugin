@@ -214,6 +214,13 @@ def check(files: list[Path], versions: set[str] | None, sources: re.Pattern | No
                 if len(args) >= 2 and re.search(r"\.Run\(", args[0], re.I) and args[-1].strip().lower() == "blank()":
                     rep.warn(f"{where} :: IfError(<… .Run( …>, Blank()) swallows the cause; show FirstError.Message")
                     break
+            for m in re.finditer(r"\b(Sum|Average)\(", plain):
+                end = m.end() + len(_call(plain, m.end() - 1)) + 1
+                joined = re.match(r"\s*&", plain[end:]) or re.search(r"&\s*$", plain[:m.start()])
+                if joined and not re.search(r"Coalesce\(\s*$", plain[:m.start()], re.I):
+                    rep.warn(f"{where} :: {m.group(1)}( joined with & shows no number for an empty table; "
+                             f"write Coalesce({m.group(1)}(…), 0) (PAPPS-20261105-MAC-01)")
+                    break
             if sources:
                 for m in re.finditer(r"\bFilter\(", plain):
                     inner = _call(plain, m.end() - 1)

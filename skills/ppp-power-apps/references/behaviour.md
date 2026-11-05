@@ -16,6 +16,7 @@
 - Keep `IfError` branches type-compatible: a success branch with `ClearCollect` (table) and an error branch with `Set` (Boolean) give "invalid argument type". End the action or error branch with `Blank()` and keep the error visible through status variables [B] (PAPPS-20260928-MAC-02).
 - `IfError(Flow.Run(…); Blank())` swallows the cause; show `FirstError.Message` or write it to a status variable [B] (PAPPS-20261005-MAC-01).
 - Empty text: check with `IsBlank(x)` (if needed `IsBlank(x) || x = ""`), never with `Coalesce(x; "") = ""`: `Coalesce` returns Blank for `""`, and `Blank() = ""` is false [B] (PAPPS-20260930-MAC-02).
+- `Sum` of an empty table returns Blank, and `Average`, `Min` and `Max` are expected to do the same, so `Sum(…) & " min"` shows " min" without a number [B] (PAPPS-20261105-MAC-01): join the result to text as `Coalesce(Sum(…), 0)`. A record field that a calculation leaves empty for a zero (`ThisItem.Minutes & " min"`) needs the same.
 - Long read-only text: a `TextInput` in `DisplayMode.View` cuts it off without a scroll bar; use a label with `Overflow.Scroll` and a fitting height [B] (PAPPS-20260928-MAC-03).
 
 ## Errors only in the published app: the Monitor

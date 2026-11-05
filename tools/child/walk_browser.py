@@ -671,8 +671,6 @@ def run_steps(page, walk: dict, size: list[int], folder: Path, rep: Report, reco
                     rep.warn(f"{label} {step['shot']}: {hint}")
                 controls = scan(page)
                 findings = W.layout_findings(controls, size, walk.get("ignore", [])) if step.get("check", True) else []
-                for finding in findings:
-                    rep.warn(f"{label} {step['shot']}: {finding}")
                 record["shots"].append({"viewport": label, "id": step["shot"], "file": str(folder / shot["file"]),
                                         "marks": shot["marks"], "findings": findings,
                                         "controls": sorted({c["name"] for c in controls})})
@@ -853,6 +851,8 @@ def main(options: dict) -> int:
         shutil.rmtree(raw_video, ignore_errors=True)
         rep.info(f"recording: {target}")
     record["complete"] = not aborted
+    for line in W.summarize_findings(record["shots"]):
+        rep.warn(line)
     report_timings(record, work, rep)
     if not aborted:
         for name in sorted(set(walk.get("mask", [])) - mask_seen):

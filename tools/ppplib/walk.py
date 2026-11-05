@@ -214,6 +214,9 @@ def check(walk: dict, screens: str = "") -> Report:
             names += [mark_parts(m)[0] for m in step.get("marks", [])]
             if step.get("crop"):
                 names.append(str(step["crop"]))
+        elif action == "key" and step["key"] in ("Home", "End"):
+            rep.warn(f"{where}: key {step['key']} left a classic dropdown unchanged; move with a counted number of "
+                     "ArrowUp or ArrowDown, then Enter, then expect the value (PAPPS-20261105-WIN-01)")
         elif action != "key":
             control = str(step[action])
             names.append(control)
@@ -350,3 +353,15 @@ def layout_findings(controls: list[dict], viewport: list[int], ignore: list[str]
                     first, second = sorted((a["name"], b["name"]))
                     add(f"L4 {first} and {second}: overlap by {round(overlap_w)}x{round(overlap_h)} px")
     return sorted(out)
+
+
+def summarize_findings(shots: list[dict]) -> list[str]:
+    """Each finding once, at its first picture, with the number of further pictures that show it; a run of a hundred
+    pictures had repeated the same findings 2528 times."""
+    first: dict[str, str] = {}
+    count: dict[str, int] = {}
+    for shot in shots:
+        for finding in shot.get("findings", []):
+            first.setdefault(finding, f"{shot['viewport']} {shot['id']}")
+            count[finding] = count.get(finding, 0) + 1
+    return [f"{first[f]}: {f}" + (f" (and {count[f] - 1} more pictures)" if count[f] > 1 else "") for f in first]
