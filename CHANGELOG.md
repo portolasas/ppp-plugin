@@ -2,6 +2,9 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.16.1 (2026-11-05)
+- ppp canvas meldet einzeilige Werte mit ': ' oder ' #' (YAML lehnt sie ab oder schneidet sie ab; Block |-) und warnt vor Filter(<Liste>, … in …) und Search(<Liste>, …) als nicht delegierbar (gefunden beim Bau von ppp-bench S6)
+
 ## 0.16.0 (2026-11-05)
 - ppp walk nennt jeden Befund einmal beim ersten Bild mit der Zahl weiterer Bilder; report.json behält alle
 - ppp walk --check warnt vor key Home/End; Dropdown mit gezählten Pfeiltasten, Scroll-Ziel sichtbar (PAPPS-20261105-WIN-01)

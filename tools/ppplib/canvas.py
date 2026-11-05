@@ -185,13 +185,33 @@ def parse_yaml(lines: list[str]):
     return controls, props
 
 
+def plain_scalars(lines: list[str]) -> list[tuple[int, str, str]]:
+    """(line, key, reason) for one-line values that YAML reads otherwise: `: ` ends the value with a mapping error, ` #`
+    starts a comment and cuts the formula (references/yaml.md: then a block scalar `|-`)."""
+    out = []
+    for n, z in enumerate(lines, 1):
+        m = re.match(r"^\s*([A-Za-z0-9_]+):\s+(=.*)$", z)
+        if not m:
+            continue
+        value = m.group(2)
+        if ": " in value or value.endswith(":"):
+            out.append((n, m.group(1), "': '"))
+        elif " #" in value or "\t#" in value:
+            out.append((n, m.group(1), "' #'"))
+    return out
+
+
 def check(files: list[Path], versions: set[str] | None, sources: re.Pattern | None, rep: Report) -> tuple[int, int]:
     """Findings into the report; returns (controls, formulas)."""
     n_ctl = n_fx = 0
     filters = matched = 0
     for path in files:
         short = path.name
-        controls, props = parse_yaml(path.read_bytes().decode("utf-8-sig").splitlines())
+        lines = path.read_bytes().decode("utf-8-sig").splitlines()
+        for n, key, reason in plain_scalars(lines):
+            rep.error(f"{short} :: line {n} {key} :: {reason} in a one-line value; YAML rejects or cuts it, the paste "
+                      "fails: write the value as a block scalar `|-` (references/yaml.md)")
+        controls, props = parse_yaml(lines)
         for ctl, key, value in props:
             n_fx += 1
             where = f"{short} :: {ctl}.{key}"
@@ -235,6 +255,17 @@ def check(files: list[Path], versions: set[str] | None, sources: re.Pattern | No
                     if re.search(r"\.Value\s*<>", inner, re.I):
                         rep.warn(f"{where} :: Filter({args[0].strip()}, … .Value <> …) breaks delegation on a choice column; "
                                  "join = with || over the allowed values (PAPPS-20261024-WIN-01)")
+                        break
+                    if re.search(r"\s(exact)?in\s", inner, re.I):
+                        rep.warn(f"{where} :: Filter({args[0].strip()}, … in …) is not delegable to SharePoint; the search "
+                                 "sees only the first 500 to 2,000 items: StartsWith on a simple column "
+                                 "(references/performance.md)")
+                        break
+                for m in re.finditer(r"\bSearch\(", plain):
+                    args = _args(_call(plain, m.end() - 1))
+                    if args and sources.search(args[0]):
+                        rep.warn(f"{where} :: Search({args[0].strip()}, …) is not delegable to SharePoint; StartsWith in "
+                                 "Filter( (references/performance.md)")
                         break
                 run = plain.find(".Run(")
                 if run >= 0 and not re.search(r"Refresh\(", plain, re.I):
