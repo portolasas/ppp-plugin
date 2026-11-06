@@ -2,6 +2,19 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.17.0 (2026-11-06)
+- Haltepunkt: Starttext steht im Chat über der Karte, nie im Kartentext – eine beantwortete Karte zeigt ihren Text nicht mehr (Nutzer 06.11.)
+- ppp guide --word unter Windows: Pfad über PPP_WORD_FILE, powershell -Command gab keine $args weiter und Word bekam keine Datei
+- ppp walk: expect mit "stop": true beendet den Walk; --check verlangt vor einem schreibenden Klick mit nth einen solchen expect mit derselben nth (PAPPS-20261105-WIN-03)
+- ppp walk scrollt nach einem markierten Bild die verschobenen Container zurück; markiert abweichend, unmarkiert nachstellen (GEN-20261105-WIN-04)
+- ppp walk: Nummer einer Markierung bleibt im App-Rahmen, Position in report.json (GEN-20261105-WIN-03)
+- ppp walk legt einen nicht löschbaren previous-Ordner als previous-<Zeit> beiseite (GEN-20261105-WIN-02)
+- ppp walk vergleicht Bilder mit bis zu 2 px Größenunterschied auf der gemeinsamen Fläche
+- ppp-docs: verdeckter Folientext steht noch im PDF-Text, nur das gerenderte Bild zählt (GEN-20261105-WIN-05)
+
+## 0.16.2 (2026-11-05)
+- ppp guide --kind deck: Aufgabenfolien mit Nummernmarken und Ergebnis-Kasten, Kartenfolien und Übungen als Zeilen über die ganze Folie, Prognose-Erklärung in Spalten; vorsichtige Höhenschätzung, kein Text mehr außerhalb seiner Fläche
+
 ## 0.16.1 (2026-11-05)
 - ppp canvas meldet einzeilige Werte mit ': ' oder ' #' (YAML lehnt sie ab oder schneidet sie ab; Block |-) und warnt vor Filter(<Liste>, … in …) und Search(<Liste>, …) als nicht delegierbar (gefunden beim Bau von ppp-bench S6)
 

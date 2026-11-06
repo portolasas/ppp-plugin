@@ -340,7 +340,7 @@ WORD_WINDOWS = """$ErrorActionPreference = 'Stop'
 $word = New-Object -ComObject Word.Application
 $word.Visible = $false
 try {
-  $doc = $word.Documents.Open($args[0])
+  $doc = $word.Documents.Open($env:PPP_WORD_FILE)
   foreach ($toc in $doc.TablesOfContents) { $toc.Update() }
   [void]$doc.Fields.Update()
   foreach ($section in $doc.Sections) { foreach ($footer in $section.Footers) { [void]$footer.Range.Fields.Update() } }
@@ -371,8 +371,9 @@ def _word_fields(target: Path) -> int:
             time.sleep(2)  # the document finishes its layout before the fields count pages
             proc = subprocess.run(["osascript", "-", name], input=WORD_MAC, capture_output=True, text=True, timeout=600)
         elif sys.platform == "win32":
-            proc = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", WORD_WINDOWS, str(target)],
-                                  capture_output=True, text=True, timeout=600)
+            # powershell -Command passes no further arguments to $args, so Word got no file: the path goes by environment
+            proc = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", WORD_WINDOWS],
+                                  env={**os.environ, "PPP_WORD_FILE": str(target)}, capture_output=True, text=True, timeout=600)
         else:
             raise ToolError("--word needs Microsoft Word on macOS or Windows")
     except (OSError, subprocess.SubprocessError) as ex:

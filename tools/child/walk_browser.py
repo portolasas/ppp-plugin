@@ -106,7 +106,7 @@ SCAN = """() => {
   return out;
 }"""
 
-OVERLAY = """([items, color]) => {
+OVERLAY = """([items, color, inside]) => {
   const root = document.createElement('div');
   root.id = 'ppp-overlay';
   root.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;pointer-events:none;z-index:2147483647';
@@ -117,6 +117,7 @@ OVERLAY = """([items, color]) => {
       box.style.border = `3px solid ${color}`;
       const tag = document.createElement('div');
       tag.textContent = i.n;
+      tag.className = 'ppp-tag';
       tag.style.cssText = `position:absolute;left:-3px;top:-3px;transform:translate(-75%,-75%);min-width:22px;height:22px;line-height:22px;border-radius:11px;text-align:center;font:bold 13px Segoe UI,Arial,sans-serif;color:#fff;background:${color}`;
       box.appendChild(tag);
     } else {
@@ -125,6 +126,16 @@ OVERLAY = """([items, color]) => {
     root.appendChild(box);
   }
   document.documentElement.appendChild(root);
+  // a number at the edge of the picture was cut off (GEN-20261105-WIN-03): move it inside
+  return [...root.querySelectorAll('.ppp-tag')].map(tag => {
+    let r = tag.getBoundingClientRect();
+    if (inside) {
+      const dx = Math.max(0, inside.x - r.left) - Math.max(0, r.right - inside.x - inside.width);
+      const dy = Math.max(0, inside.y - r.top) - Math.max(0, r.bottom - inside.y - inside.height);
+      if (dx || dy) { tag.style.translate = `${dx}px ${dy}px`; r = tag.getBoundingClientRect(); }
+    }
+    return {x: r.x, y: r.y, width: r.width, height: r.height};
+  });
 }"""
 
 # the part of a control its clipping parents leave visible, in its frame; a frame around the whole box landed on other
@@ -142,18 +153,29 @@ EXPOSED = """el => {
   return {x: left, y: top, width, height, ratio: width * height / Math.max(1, r.width * r.height), fullX: r.x, fullY: r.y};
 }"""
 
-# a marked control into view inside the app's scrolling containers, as little as needed; the page itself stays
+# a marked control into view inside the app's scrolling containers, as little as needed; the page itself stays. What it
+# moves is scrolled back after the picture: a marked picture left a preview outside the window and the next click without
+# effect (GEN-20261105-WIN-04)
 SCROLL_INTO_VIEW = """el => {
+  const moved = window.__pppScrolled = window.__pppScrolled || [];
   for (let a = el.parentElement; a && a !== document.body && a !== document.documentElement; a = a.parentElement) {
     const s = getComputedStyle(a), b = a.getBoundingClientRect();
     for (const [over, start, end, pos, size, edge] of [['overflowY', 'top', 'bottom', 'scrollTop', 'clientHeight', 'clientTop'],
                                                         ['overflowX', 'left', 'right', 'scrollLeft', 'clientWidth', 'clientLeft']]) {
       if (!/auto|scroll/.test(s[over])) continue;
       const r = el.getBoundingClientRect(), low = b[start] + a[edge], high = low + a[size];
+      if (r[start] < low || r[end] > high) moved.push([a, pos, a[pos]]);
       if (r[start] < low) a[pos] -= low - r[start];
       else if (r[end] > high) a[pos] += Math.min(r[end] - high, r[start] - low);
     }
   }
+}"""
+
+SCROLL_BACK = """() => {
+  const moved = window.__pppScrolled || [];
+  for (const [a, pos, value] of moved.reverse()) a[pos] = value;
+  window.__pppScrolled = [];
+  return moved.length;
 }"""
 
 # a selection painted blue over the page in a guide picture (PAPPS-20261103-WIN-06)
@@ -170,21 +192,24 @@ CLEAR_SELECTION = """() => {
 COMPARE = """async ([before, after]) => {
   const load = src => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = 'data:image/png;base64,' + src; });
   const [a, b] = [await load(before), await load(after)];
-  if (a.width !== b.width || a.height !== b.height) return {size: `${a.width}x${a.height} -> ${b.width}x${b.height}`};
-  const canvas = n => { const c = document.createElement('canvas'); c.width = n.width; c.height = n.height; const g = c.getContext('2d'); g.drawImage(n, 0, 0); return [c, g]; };
+  // the app frame came out one pixel larger in another run (1365x751 -> 1366x752): compare what both pictures cover
+  const size = a.width !== b.width || a.height !== b.height ? `${a.width}x${a.height} -> ${b.width}x${b.height}` : '';
+  if (Math.abs(a.width - b.width) > 2 || Math.abs(a.height - b.height) > 2) return {size};
+  const W = Math.min(a.width, b.width), H = Math.min(a.height, b.height);
+  const canvas = n => { const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); g.drawImage(n, 0, 0); return [c, g]; };
   const [, ga] = canvas(a), [cb, gb] = canvas(b);
-  const da = ga.getImageData(0, 0, a.width, a.height), db = gb.getImageData(0, 0, b.width, b.height);
-  let changed = 0, left = a.width, top = a.height, right = -1, bottom = -1;
-  for (let y = 0, i = 0; y < a.height; y++) for (let x = 0; x < a.width; x++, i += 4) {
+  const da = ga.getImageData(0, 0, W, H), db = gb.getImageData(0, 0, W, H);
+  let changed = 0, left = W, top = H, right = -1, bottom = -1;
+  for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i += 4) {
     const differs = Math.max(Math.abs(da.data[i] - db.data[i]), Math.abs(da.data[i+1] - db.data[i+1]), Math.abs(da.data[i+2] - db.data[i+2])) > 16;
     if (differs) {
       changed++; left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
       db.data[i] = 255; db.data[i+1] = 0; db.data[i+2] = 0;
     } else for (let k = 0; k < 3; k++) db.data[i+k] = 255 - (255 - db.data[i+k]) / 3;
   }
-  if (!changed) return {percent: 0};
+  if (!changed) return {percent: 0, size};
   gb.putImageData(db, 0, 0);
-  return {percent: 100 * changed / (a.width * a.height), box: [left, top, right - left + 1, bottom - top + 1], diff: cb.toDataURL('image/png').split(',')[1]};
+  return {size, percent: 100 * changed / (W * H), box: [left, top, right - left + 1, bottom - top + 1], diff: cb.toDataURL('image/png').split(',')[1]};
 }"""
 
 # up to six pictures side by side with their names: one image to look at instead of six, so a guide's pictures do not
@@ -424,7 +449,7 @@ def shown_texts(page, name: str) -> list[str]:
 def verify(page, walk: dict, step: dict, number: int, label: str, folder: Path, rep: Report, record: dict,
            mask_seen: set, timeout: float) -> None:
     """A value may arrive late, for example from a flow, so look again until `within`. A miss is recorded with a picture
-    and the walk goes on, so one run shows all deviations."""
+    and the walk goes on, so one run shows all deviations; with `stop` it ends the walk."""
     deadline = time.monotonic() + float(step.get("within", 30))
     while True:
         met, found = W.expectation(step, shown_texts(page, step["expect"]))
@@ -441,6 +466,8 @@ def verify(page, walk: dict, step: dict, number: int, label: str, folder: Path, 
         entry["file"] = str(folder / take(page, walk, {"shot": f"deviation-{number}"}, folder, mask_seen, timeout)["file"])
         rep.error(f"{title}: {what}, {found}; picture {entry['file']}")
     record["expects"].append(entry)
+    if not met and step.get("stop"):  # a guard before a write: no further step on the wrong row (PAPPS-20261105-WIN-03)
+        raise WalkFailed(f"stopped, {what} not met")
 
 
 def progress(text: str) -> None:
@@ -584,16 +611,32 @@ def take(page, walk: dict, step: dict, folder: Path, mask_seen: set, timeout: fl
             frame.evaluate(CLEAR_SELECTION)
         except PlaywrightError:
             continue
-    page.evaluate(OVERLAY, [items, walk.get("markColor", "#c00000")])
     target = folder / f"{step['shot']}.png"
     area, size = app_area(page), page.viewport_size
     clip = dict(area) if area else {"x": 0, "y": 0, **size}
     if step.get("crop"):
         box = locate(page, step["crop"], 0, timeout)
         clip = {"x": box["x"] - 12, "y": box["y"] - 12, "width": box["width"] + 24, "height": box["height"] + 24}
-    page.screenshot(path=str(target), clip=cut_to(clip, area, size))
+    clip = cut_to(clip, area, size)
+    badges = page.evaluate(OVERLAY, [items, walk.get("markColor", "#c00000"), clip])
+    for mark, badge in zip(marks, badges):
+        mark["badge"] = {k: round(badge[k], 1) for k in ("x", "y", "width", "height")}
+    page.screenshot(path=str(target), clip=clip)
     page.evaluate("() => document.getElementById('ppp-overlay').remove()")
+    if marked and scroll_back(page):
+        settle(page, timeout)
     return {"file": target.name, "marks": marks, "cut": cut}
+
+
+def scroll_back(page) -> int:
+    """The containers the marks scrolled return to where they were, so the next step finds the app as before."""
+    moved = 0
+    for frame in page.frames:
+        try:
+            moved += frame.evaluate(SCROLL_BACK)
+        except PlaywrightError:
+            continue
+    return moved
 
 
 def present(page, walk: dict, step: dict, action: str, timeout: float) -> None:
@@ -702,6 +745,13 @@ def keep_last_run(folder: Path, work: Path) -> None:
         return
     previous = work / "previous"
     shutil.rmtree(previous, ignore_errors=True)
+    if previous.exists():  # a sync client may hold it; keep it as evidence instead of failing (GEN-20261105-WIN-02)
+        aside = work / f"previous-{time.strftime('%Y%m%d-%H%M%S')}"
+        try:
+            previous.rename(aside)
+        except OSError as ex:
+            raise SystemExit(f"ERROR: {previous} can be neither removed nor renamed ({ex}); close what holds it, then run again")
+        progress(f"{previous} could not be removed; set aside as {aside}")
     previous.mkdir(parents=True)
     for shot in last["shots"]:
         target = previous / shot["viewport"] / f"{shot['id']}.png"
@@ -727,7 +777,8 @@ def compare(context, work: Path, record: dict, rep: Report) -> None:
             continue
         encoded = [base64.b64encode(p.read_bytes()).decode() for p in (before, Path(shot["file"]))]
         result = page.evaluate(COMPARE, encoded)
-        if result.get("size"):
+        common = f"; size changed, {result['size']}, compared on the common area" if result.get("size") else ""
+        if "percent" not in result:
             rep.info(f"{title}: size changed, {result['size']}")
         elif result["percent"]:
             diff = work / "diff" / shot["viewport"] / f"{shot['id']}.png"
@@ -735,7 +786,10 @@ def compare(context, work: Path, record: dict, rep: Report) -> None:
             diff.write_bytes(base64.b64decode(result["diff"]))
             x, y, w, h = result["box"]
             shot["changed"] = {"percent": round(result["percent"], 2), "box": result["box"], "diff": str(diff)}
-            rep.info(f"{title}: {result['percent']:.2f} % changed, area {w}x{h} at {x},{y}; {diff}")
+            rep.info(f"{title}: {result['percent']:.2f} % changed, area {w}x{h} at {x},{y}; {diff}{common}")
+        elif common:
+            rep.info(f"{title}: unchanged{common}")
+            same += 1
         else:
             same += 1
     page.close()

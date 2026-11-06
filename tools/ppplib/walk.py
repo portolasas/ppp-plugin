@@ -14,7 +14,7 @@ ACTIONS = ("click", "type", "wait", "hover", "key", "scroll", "shot", "expect")
 EXPECTATIONS = ("equals", "contains", "count", "absent")
 TOP_KEYS = {"title", "intro", "url", "viewports", "ready", "mask", "ignore", "markColor", "testData", "out", "steps", "role"}
 STEP_KEYS = set(ACTIONS) | set(EXPECTATIONS) | {"value", "nth", "writes", "text", "by", "marks", "crop", "check", "caption",
-                                                "within", "scenario"}
+                                                "within", "scenario", "stop"}
 DEFAULT_VIEWPORT = [1366, 800]
 MIN_TARGET = 24  # px, WCAG 2.2 target size minimum; layout.md asks for icons of 24-32 px
 MIN_CONTRAST = 4.5  # WCAG 2 AA for normal text
@@ -196,6 +196,13 @@ def check(walk: dict, screens: str = "") -> Report:
         if action == "type" and "DatePicker" in control_type(screens, str(step["type"])):
             rep.error(f"{where}: {step['type']} is a date picker, which takes no typed date: click it, choose with "
                       "key ArrowLeft/ArrowRight and Enter, then expect the date it shows (PAPPS-20261103-WIN-07)")
+        if "stop" in step and (action != "expect" or step["stop"] is not True):
+            rep.error(f"{where}: stop can only be true, on an expect")
+        if action == "click" and step.get("writes") and "nth" in step:
+            guard = steps[number - 2] if number > 1 else {}
+            if not (isinstance(guard, dict) and "expect" in guard and guard.get("stop") is True and guard.get("nth") == step["nth"]):
+                rep.error(f"{where}: a writing click on row {step['nth']} needs right before it an expect with \"stop\": true "
+                          "and the same nth on the row's test mark; a plain expect lets the walk go on (PAPPS-20261105-WIN-03)")
         if action == "expect":
             wanted = [k for k in EXPECTATIONS if k in step]
             if len(wanted) != 1:

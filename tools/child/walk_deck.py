@@ -6,14 +6,19 @@ Rules, the same for every project (ppp-docs, step 9):
 - the handbook chapters of the role, then the quick guide as a chapter of its own, then the exercises; the solutions on
   hidden slides after the closing slide;
 - a chapter gives a divider with the first sentence of its lead text; a section with a walk gives one task slide: the
-  walk picture with the most labelled marks uncropped on the left, on the right the section's lead-ins (**Label:** text),
-  the picture's caption, text and legend, and what follows the walk while it fits; a '> **Label:** text' box becomes the
-  band below; every step text of the walk, the lists and what did not fit go into the speaker notes;
+  walk picture with the most labelled marks uncropped on the left, what this role sees differently below it when there
+  is room; on the right on top the section's lead-ins (**Label:** text), the picture's caption as head and its text, at
+  the bottom flush with the picture the legend with numbered badges as in the picture and the result in a box with an
+  accent bar while it fits; a '> **Label:** text' box becomes the band below; every step text of the walk, the lists and
+  what did not fit go into the speaker notes;
 - a table whose first column holds the roles of the handbook gives one card per role, the reader's own highlighted; any
-  other table a table slide, with tiles instead when the section says <!-- deck: tiles -->; three list items a designed
-  slide with icons (BI Slide Library 28), two or four items cards, more a text slide; <!-- deck: steps --> makes a list a
-  process; paragraphs after a list or table become its band;
-- an exercise gives cards from its lead-ins and its boxes to tick, its solution a process of its numbered steps.
+  other table a table slide, with tiles instead when the section says <!-- deck: tiles --> (a lead-in line above them,
+  two or three paragraphs below them as columns headed by their first sentence); three list items a designed slide with
+  icons (BI Slide Library 28), two or four items rows across the slide with a large icon, head and text, filling the
+  height; more a text slide; <!-- deck: steps --> makes a list a process; paragraphs after a list or table become its
+  band;
+- an exercise gives three rows: starting point, the task highlighted, the boxes to tick as a list; its solution a
+  process of its numbered steps. No text is set larger than its field: sizes come from a cautious estimate.
 
 Lines <!-- deck: … --> below a heading (after <!-- for: … -->) steer one section or chapter: skip, title <text> ({role}
 is replaced), heads <a> | <b> | …, icons <name>, <name>, … (brand icons, bippt icons <term>), ampel G, -, Y, R, … (tiles; - keeps the neutral bar),
@@ -153,6 +158,28 @@ def text_height(paras: list[dict], width: float) -> float:
     return h
 
 
+def est(text: str, size: float, width: float, bold: bool = False) -> float:
+    """Height in inches of one text field with one paragraph, with a margin for bold type and the field's insets."""
+    return text_height([{"t": text, "groesse": size}], (width - 0.16) * 0.9) * (1.08 if bold else 1.03) + 0.08
+
+
+def band_height(b: dict | None) -> float:
+    """Height of the band below the content and its gap, as bippt draws it (at least one bar of 0.44 in)."""
+    if not b:
+        return 0.0
+    return max(0.44, est(f"{b.get('label', '')} {b.get('text', '')}", 12, XW - 0.6) + 0.1) + 0.15
+
+
+def lead_bold(text: str) -> str:
+    """A paragraph of two or more sentences without a lead-in gets its first sentence in bold, as its head."""
+    if LABEL.match(text):
+        return text
+    parts = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)
+    if len(parts) < 2:
+        return text
+    return f"**{parts[0].replace('**', '')}** {parts[1]}"
+
+
 def column_widths(rows: list[list[str]]) -> list[float]:
     """As the Word tables: a short column stays narrow, a long one does not take all."""
     width = max(len(r) for r in rows)
@@ -261,33 +288,80 @@ class Deck:
             elif kind == "table":
                 lists += [" | ".join(plain(c) for c in row) for row in value]
         caution = boxes[0] if boxes else ""
+        bottom = Y0 + pic_h if caution else Y_END
 
-        def column(size: float, keep: int) -> list[dict]:
-            paras = [{"t": bare(p), "groesse": size} for p in before]
-            paras.append({"t": bare(shot["caption"]), "fett": True, "groesse": size + 1})
-            paras.append({"t": bare(shot["text"]), "groesse": size})
-            paras += [{"t": f"**{n}**   {bare(lab)}", "groesse": size} for n, lab in shot["legend"]]
-            paras += [{"t": bare(p), "groesse": size} for p in after[:keep]]
-            return paras
+        # notes on what this role sees differently (unlabelled paragraphs right after the walk) go below the picture
+        # when there is room; the column keeps the lead-ins, the picture text, the legend and the result
+        under = []
+        for p in after:
+            if LABEL.match(p):
+                break
+            under.append(p)
+        under_h = sum(est(p, 10.5, PIC_W) for p in under)
+        below_picture = bool(under) and not caution and Y0 + pic_h + 0.06 + under_h <= Y_END + 0.1
+        beside = after[len(under):] if below_picture else after
 
-        room = (pic_h if caution else Y_END - Y0) + 0.05
-        paras, keep = column(11, len(after)), len(after)
-        for keep in range(len(after), -1, -1):
-            fitted = next((column(size, keep) for size in (11, 10.5, 10)
-                           if text_height(column(size, keep), COL_W - 0.16) <= room), None)
+        def column(size: float, keep: int) -> tuple[list[dict], float]:
+            """The right column in two blocks: on top one text field with the lead-ins, the caption as head and the
+            picture text, flowing as PowerPoint sets it; at the bottom, flush with the picture, the legend with
+            numbered badges as in the picture and the result in a box with an accent bar. Returns the elements and
+            the estimated free space between the blocks (negative: does not fit)."""
+            top = [{"t": bare(p), "groesse": size} for p in before]
+            if shot["caption"]:
+                top.append({"t": bare(shot["caption"]), "groesse": size + 1.5, "fett": True})
+            if shot["text"]:
+                top.append({"t": bare(shot["text"]), "groesse": size})
+            top_h = sum(est(a["t"], a["groesse"], COL_W, a.get("fett", False)) - 0.04 for a in top) + 0.06
+            els: list[dict] = []
+            y = bottom
+            for p in reversed(beside[:keep]):
+                if LABEL.match(p):
+                    h = est(p, size, COL_W - 0.26) + 0.06
+                    y -= h
+                    els += [{"form": "flaeche", "x": COL_X, "y": round(y, 3), "w": COL_W, "h": round(h, 3), "fill": "LG"},
+                            {"form": "flaeche", "x": COL_X, "y": round(y, 3), "w": 0.07, "h": round(h, 3), "fill": "AG"},
+                            {"form": "text", "x": round(COL_X + 0.2, 3), "y": round(y + 0.03, 3), "w": round(COL_W - 0.26, 3),
+                             "h": round(h - 0.06, 3), "t": bare(p), "groesse": size, "anker": "m"}]
+                else:
+                    h = est(p, size - 0.5, COL_W)
+                    y -= h
+                    els.append({"form": "text", "x": COL_X, "y": round(y, 3), "w": COL_W, "h": round(h, 3), "t": bare(p),
+                                "groesse": size - 0.5})
+                y -= 0.12
+            d = 0.3
+            for n, lab in reversed(shot["legend"]):
+                h = max(d + 0.06, est(lab, size, COL_W - d - 0.12))
+                y -= h
+                els += [{"form": "flaeche", "x": round(COL_X + 0.04, 3), "y": round(y + 0.03, 3), "w": d, "h": d,
+                         "fill": "DG", "t": f"**{n}**", "groesse": size - 1, "ausr": "m", "anker": "m"},
+                        {"form": "text", "x": round(COL_X + d + 0.12, 3), "y": round(y, 3), "w": round(COL_W - d - 0.12, 3),
+                         "h": round(h, 3), "t": bare(lab), "groesse": size, "anker": "m" if h <= d + 0.07 else "o"}]
+            first = Y0 - 0.04
+            els.insert(0, {"form": "text", "x": COL_X, "y": round(first, 3), "w": COL_W, "h": round(max(top_h, y - first - 0.1), 3),
+                           "t": top, "groesse": size})
+            return els, y - 0.15 - (first + top_h)
+
+        els, keep = [], len(beside)
+        for keep in range(len(beside), -1, -1):
+            fitted = next((column(size, keep)[0] for size in (12, 11.5, 11, 10.5, 10)
+                           if column(size, keep)[1] >= 0), None)
             if fitted:
-                paras = fitted
+                els = fitted
                 break
         else:
-            paras = column(10, 0)
+            els = column(10, 0)[0]
             self.warnings.append(f"slide '{plain(sec['title'])}': purpose and picture text do not fit beside the picture")
         rel = Path(_relative(picture, self.out.parent))
-        slide = {"typ": "frei", "titel": self.title(sec),
-                 "elemente": [{"form": "bild", "datei": rel.as_posix(), "x": X0, "y": Y0, "w": PIC_W, "h": pic_h, "ausr": "l"},
-                              {"form": "text", "x": COL_X, "y": Y0 - 0.04, "w": COL_W, "h": room, "t": paras,
-                               "groesse": paras[0]["groesse"]}],
-                 "beschreibung": f"Picture '{plain(shot['caption'])}' of walk {name} on the left; beside it the lead-ins, "
-                                 "picture text, legend of the numbers in the picture and what fits of the result"}
+        elements = [{"form": "bild", "datei": rel.as_posix(), "x": X0, "y": Y0, "w": PIC_W, "h": pic_h, "ausr": "l"}]
+        if below_picture:
+            elements.append({"form": "text", "x": X0, "y": round(Y0 + pic_h + 0.06, 3), "w": PIC_W, "h": round(under_h, 3),
+                             "t": [{"t": bare(p), "groesse": 10.5} for p in under], "groesse": 10.5})
+        slide = {"typ": "frei", "titel": self.title(sec), "elemente": elements + els,
+                 "beschreibung": f"Picture '{plain(shot['caption'])}' of walk {name} on the left, what this role sees "
+                                 "differently below it; beside it the lead-ins, the caption as head, the picture text, the "
+                                 "legend with numbered badges and the result in a box with an accent bar"}
+        after = under + beside if below_picture else after
+        keep = len(under) + keep if below_picture else keep
         if caution:
             slide["band"] = band([], caution)
         note = [self.t["steps"]] + [f"{i}. {plain(s)}" for i, s in enumerate(steps, 1)]
@@ -333,12 +407,21 @@ class Deck:
         lines = math.ceil(n / per_row)
         gap = 0.22
         w = (XW - gap * (per_row - 1)) / per_row
-        h = 1.9 if lines == 1 else 1.55
         widest = max(len(plain(r[0])) for r in data)
         size = 22 if widest * 22 * 0.55 / 72 <= w - 0.4 else 18 if widest * 18 * 0.55 / 72 <= w - 0.4 else 15
+        boxes = of(sec, "quote")
+        before, after = self._around(sec, "table")
         elements = []
+        top = Y0 - 0.1
+        # a lead-in such as **Wozu:** stands as one line above the tiles
+        lead = [p for p in before if LABEL.match(p)][:1]
+        h = (1.9 if lines == 1 else 1.55) - (0.2 if lead else 0)
+        if lead and est(lead[0], 14, XW) <= 0.5:
+            elements.append({"form": "text", "x": X0, "y": top, "w": XW, "h": 0.42, "t": bare(lead[0]), "groesse": 14})
+            before = [p for p in before if p != lead[0]]
+            top += 0.5
         for i, row in enumerate(data):
-            x, y = X0 + (i % per_row) * (w + gap), Y0 - 0.1 + (i // per_row) * (h + gap)
+            x, y = X0 + (i % per_row) * (w + gap), top + (i // per_row) * (h + gap)
             light = lights[i] if i < len(lights) else "-"
             elements += [{"form": "flaeche", "x": x, "y": y, "w": w, "h": h, "fill": "LG"},
                          {"form": "flaeche", "x": x, "y": y, "w": w, "h": 0.07,
@@ -349,19 +432,39 @@ class Deck:
                           "t": plain(row[1]) if len(row) > 1 else "", "groesse": 12, "fett": True},
                          {"form": "text", "x": x + 0.15, "y": y + 1.02, "w": w - 0.3, "h": h - 1.07,
                           "t": " · ".join(plain(c) for c in row[2:] if c), "groesse": 10.5}]
-        boxes = of(sec, "quote")
-        before, after = self._around(sec, "table")
-        top = Y0 - 0.1 + lines * (h + gap) + 0.1
-        bottom = Y_END - (0.44 + 0.15 if boxes or after else 0)
+        top += lines * (h + gap) + 0.12
+        b = band([], boxes[0]) if boxes else band(after)
+        bottom = Y_END - band_height(b)
+        texts = before + (after if boxes else [])
         shown, rest = [], []
-        for t in before + (after if boxes else []):
-            para = {"t": bare(t), "groesse": 13}
-            (shown if not rest and text_height(shown + [para], XW - 0.16) <= bottom - top else rest).append(para)
-        if shown:
-            elements.append({"form": "text", "x": X0, "y": top, "w": XW, "h": bottom - top, "t": shown, "groesse": 13})
+        # two or three paragraphs stand side by side in columns, each headed by its first sentence in bold
+        columns = 2 <= len(texts) <= 3
+        if columns:
+            cgap = 0.35
+            cw = (XW - cgap * (len(texts) - 1)) / len(texts)
+            for s in (13, 12.5, 12, 11.5, 11):
+                if max(est(lead_bold(t), s, cw) for t in texts) <= bottom - top - 0.12:
+                    break
+            else:
+                columns = False
+        if columns:
+            for i, t in enumerate(texts):
+                x = X0 + i * (cw + cgap)
+                elements += [{"form": "flaeche", "x": round(x, 3), "y": round(top, 3), "w": round(cw, 3), "h": 0.04,
+                              "fill": "AG"},
+                             {"form": "text", "x": round(x, 3), "y": round(top + 0.1, 3), "w": round(cw, 3),
+                              "h": round(bottom - top - 0.1, 3), "t": [{"t": bare(lead_bold(t)), "groesse": s}],
+                              "groesse": s}]
+        else:
+            for t in texts:
+                para = {"t": bare(t), "groesse": 13}
+                (shown if not rest and text_height(shown + [para], XW - 0.16) <= bottom - top else rest).append(para)
+            if shown:
+                elements.append({"form": "text", "x": X0, "y": top, "w": XW, "h": bottom - top, "t": shown, "groesse": 13})
         slide = {"typ": "frei", "titel": self.title(sec), "elemente": elements,
-                 "beschreibung": f"{n} tiles with a signal colour bar, the explanation below"}
-        if (b := band([], boxes[0]) if boxes else band(after)):
+                 "beschreibung": f"{n} tiles with a signal colour bar, the explanation below"
+                                 + (" in columns" if columns else "")}
+        if b:
             slide["band"] = b
         if rest:
             slide["notizen"] = "\n".join(plain(p["t"]) for p in rest)
@@ -395,36 +498,102 @@ class Deck:
             slide["notizen"] = "\n".join(plain(p) for p in before)
         return slide
 
+    def rows(self, top: float, bottom: float, items: list[tuple[str, str, object, bool]]) -> tuple[list[dict], float]:
+        """Items as rows across the whole width, filling the height: a dark bar on the left (the highlighted row gets an
+        accent green head field instead), a brand icon, the head in bold and the text or a list beside it, in the
+        largest size that fits every row. items: (head, icon, text or list of texts, highlighted). Returns the elements
+        and the size used."""
+        n, gap = len(items), 0.18
+        heads = any(h for h, _, _, _ in items)
+        lab_w = (4.2 if max(len(plain(h)) for h, _, _, _ in items) > 24 else 3.1) if heads else 0.95
+        bx = X0 + lab_w + 0.15
+        bw = X0 + XW - 0.25 - bx
+
+        def body_h(body: object, s: float) -> float:
+            if isinstance(body, list):
+                return sum(est(t, s, bw - 0.25) - 0.04 for t in body) + 0.04
+            return est(str(body), s, bw)
+
+        def need(s: float) -> list[float]:
+            return [max(est(h, s + 1, lab_w - 1.0, True) if h else 0.0, body_h(b, s), 0.6) + 0.3
+                    for h, _, b, _ in items]
+
+        avail = bottom - top - gap * (n - 1)
+        longest = max([len(w) for h, _, _, _ in items for w in plain(h).split()] or [0])
+        size = next((s for s in (18, 17, 16, 15, 14, 13, 12) if sum(need(s)) <= avail
+                     and (not heads or longest * (s + 1) * 0.56 / 72 <= lab_w - 1.05)), 12)
+        heights = need(size)
+        extra = min(max(0.0, (avail - sum(heights)) / n), 0.7)
+        if sum(heights) > avail:
+            self.warnings.append("rows: the text is long for the slide; shorten it")
+        els, y = [], top
+        for (head, name, body, highlight), h in zip(items, heights):
+            h += extra
+            els.append({"form": "flaeche", "x": X0, "y": round(y, 3), "w": XW, "h": round(h, 3), "fill": "LG"})
+            if highlight:
+                els.append({"form": "flaeche", "x": X0, "y": round(y, 3), "w": lab_w, "h": round(h, 3), "fill": "AG"})
+            else:
+                els.append({"form": "flaeche", "x": X0, "y": round(y, 3), "w": 0.07, "h": round(h, 3), "fill": "DG"})
+            if name:
+                els.append({"form": "icon", "name": name, "x": X0 + 0.3, "y": round(y + h / 2 - 0.25, 3), "d": 0.5})
+            if head:
+                els.append({"form": "text", "x": X0 + 0.95, "y": round(y + 0.1, 3), "w": lab_w - 1.0, "h": round(h - 0.2, 3),
+                            "t": head, "groesse": size + 1, "fett": True, "anker": "m"})
+            if isinstance(body, list):
+                els.append({"form": "text", "x": round(bx, 3), "y": round(y + 0.1, 3), "w": round(bw, 3), "h": round(h - 0.2, 3),
+                            "t": [{"t": t, "groesse": size} for t in body], "groesse": size, "punkt": True, "anker": "m"})
+            else:
+                els.append({"form": "text", "x": round(bx, 3), "y": round(y + 0.1, 3), "w": round(bw, 3), "h": round(h - 0.2, 3),
+                            "t": body, "groesse": size, "anker": "m"})
+            y += h + gap
+        return els, size
+
     def cards(self, sec: dict, items: list[str]) -> dict:
+        """Two or four items as rows across the whole width with a large brand icon, the head in bold (from deck: heads or
+        from 'Head: text') and the text; drawn as a free slide so that the rows fill the slide and no text leaves its
+        row."""
         heads, icons = listed(sec["deck"].get("heads")), listed(sec["deck"].get("icons")) or ICONS
-        split = all(":" in plain(i)[:40] for i in items) and not heads
-        cards = []
+        split = all(":" in plain(i)[:60] for i in items) and not heads
+        rows = []
         for n, item in enumerate(items):
-            title, text = (plain(item).split(":", 1) if split else (heads[n] if n < len(heads) else "", item))
-            cards.append({"titel": title.strip(), "akzent": "DG", "icon": icons[n % len(icons)], "text": bare(text).strip()})
+            if split:
+                cut = bare(item).index(":")
+                title, text = plain(bare(item)[:cut]), bare(item)[cut + 1:].strip()
+                text = text[:1].upper() + text[1:]
+            else:
+                title, text = (heads[n] if n < len(heads) else ""), bare(item)
+            rows.append((title.strip(), icons[n % len(icons)], text.strip(), False))
         before, after = self._around(sec, "ul" if of(sec, "ul") else "ol")
-        slide = {"typ": "karten", "titel": self.title(sec), "karten": cards, "groesse": 14}
+        b = band(after, style="dunkel")
+        elements, top = [], Y0 - 0.1
         if before:
-            slide["kopf"] = {"label": "", "text": " ".join(bare(p) for p in before)}
-        if (b := band(after, style="dunkel")):
+            lead = " ".join(bare(p) for p in before)
+            h = est(lead, 14, XW)
+            elements.append({"form": "text", "x": X0, "y": top, "w": XW, "h": round(h, 3), "t": lead, "groesse": 14})
+            top += h + 0.1
+        elements += self.rows(top, Y_END - band_height(b), rows)[0]
+        slide = {"typ": "frei", "titel": self.title(sec), "elemente": elements,
+                 "beschreibung": f"{len(rows)} rows across the slide with a brand icon, head and text"}
+        if b:
             slide["band"] = b
         return slide
 
     def exercise(self, sec: dict) -> dict:
-        cards = []
+        """An exercise as three rows: starting point, the task highlighted, and what shows it is done as a list."""
+        rows = []
         for kind, value in sec["blocks"]:
             m = LABEL.match(value) if kind == "p" else None
             if m and m.group(2):
-                cards.append({"titel": m.group(1), "akzent": "DG", "text": bare(m.group(2))})
+                rows.append([m.group(1), "", bare(m.group(2)), False])
             elif kind == "check":
-                cards.append({"titel": self.t["done_when"], "akzent": "DG", "icon": "clipboard-checkmarks",
-                              "punkte": [bare(v) for v in value]})
-        if len(cards) >= 2:
-            cards[1].pop("akzent")
-            cards[1]["hervor"] = True  # the task itself
-        if cards:
-            cards[0]["icon"] = "flag"
-        return {"typ": "karten", "titel": plain(sec["title"]), "karten": cards, "groesse": 13}
+                rows.append([self.t["done_when"], "clipboard-checkmarks", [bare(v) for v in value], False])
+        if len(rows) >= 2:
+            rows[1][1], rows[1][3] = "target-mark", True  # the task itself
+        if rows:
+            rows[0][1] = rows[0][1] or "flag"
+        elements = self.rows(Y0 - 0.1, Y_END, [tuple(r) for r in rows])[0] if rows else []
+        return {"typ": "frei", "titel": plain(sec["title"]), "elemente": elements,
+                "beschreibung": "Starting point, the task highlighted and the boxes to tick as rows across the slide"}
 
     def solution(self, sec: dict) -> dict:
         title = self.t["solution"].format(title=plain(sec["title"]))

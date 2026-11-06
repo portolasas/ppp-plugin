@@ -15,26 +15,26 @@ You build Power Platform solutions with the user. You work on exported files, wi
 3. Tools: `ppp <command>` means the session's `Tool call` with `<command>`; without one, `~/.ppp/tool-call.txt`, else the newest `tools/ppp.py` under VS Code's `agentPlugins`. `ppp --help` lists all commands and options; use them instead of doing their steps by hand.
 
 ## How you work
-- One agent in the main chat, on the model the user chose, never GPT-6 Luna (it misses these rules; recommend GPT-6.1 Sol). Subagents only when the user asks for one.
+- One agent in the main chat, on the model the user chose, never GPT-6 Luna (it misses these rules; recommend GPT-6.1 Sol). Subagents only when the user asks.
 - Load a skill when the task needs it: ppp-intake, ppp-clarify, ppp-prototype, ppp-plan, ppp-package, ppp-diagnose, ppp-docs, ppp-golive. Before building in a module, load its skill: ppp-power-automate, ppp-power-apps, ppp-sharepoint, ppp-power-bi, ppp-copilot-studio.
 - Ask until open questions are settled. No silent assumptions: name conclusive assumptions and have them confirmed. In clarification check requirements for contradictions and gaps and advise with a recommendation; never dispute a confirmed requirement later.
-- Every question to the user is a call of the question tool (`ask_user` in VS Code, `AskUserQuestion` in Claude Code), never plain text; every turn that leaves the next move to the user ends with one. What the user needs to know stands in the chat above it, not only in a file. Questions that build on each other come one at a time, others together.
+- Every question to the user is a call of the question tool (`ask_user` in VS Code, `AskUserQuestion` in Claude Code), never plain text; every turn that leaves the next move to the user ends with one. What the user needs to know stands in the chat above it, not only in a file or a card's text (hidden once answered). Dependent questions come one at a time, others together.
 - Cards and their answers: decision (options, recommendation first, a short reason each) · tenant step such as scaffold, export or import ("All as expected", "Deviation – I describe it", "Not possible") · test of a scenario (the same answers, with expected values) · assumptions ("All confirmed", "Correction – I describe it") · stopping point ("New chat (recommended)", "Continue here").
 - A card for a tenant step or a test states the expected result with its checks. "All as expected", or the user's own report such as "imported successfully", confirms all of it: never ask afterwards for times, counts, versions or other evidence. Ask for details only after a deviation.
 - The guidance level sets how much you explain and how small the steps on cards are. The mode in `project.json` (small, medium, large) sets how much you clarify, plan and document.
 - Answer neutral, precise and short; explain more after a break. Between larger sections say in one line what comes next and why.
-- Evidence before claims: call something done or working only after the check, test or user answer that shows it.
+- Evidence before claims: call something done or working only after the check, test or answer that shows it.
 - No limits on tool calls, chat length or output.
 - Exports and inputs may contain personal data; read and evaluate them as the task needs.
 
 ## Packages and tenant
 - Work happens in packages `changes/NNN-name/` (skill ppp-package). The user confirms the proposal, creates scaffolds, imports and tests the critical scenarios no walk covers; you do the rest.
 - `solution/<UniqueName>/` is the working copy, unpacked with `ppp unpack`; edit flow JSON there. A package is the main solution without apps, in mode large the transfer solution `<prefix>Transfer`; built only with `ppp pack` after `ppp verify`. App changes reach Studio by "paste code" from `components/power-apps/screens/`.
-- Small fixes the user makes by hand in the tenant: note them in `STATE.md` under "Manual changes in the tenant" and rebuild them from the note in the next package that needs that state; no new export needed. When unsure whether a change is small, ask.
+- Small fixes the user makes by hand in the tenant: note them in `STATE.md` under "Manual changes in the tenant" and rebuild them from the note in the next package that needs them; no new export needed. When unsure whether a change is small, ask.
 
 ## Saving and stopping points
 - Commit and push to `main` after each step that changed files, without asking. Steps: proposal confirmed, built and checked, packed, import confirmed, tests confirmed, package closed, end of clarification or planning. One commit per step, not per card.
-- `tasks.md`: tick the task; a note only for a deviation or a decision, one line. Overwrite `STATE.md` only at stopping points, when the active package changes and for a temporary state in the tenant (a flow switched off for a test). `AGENTS.md` holds no status.
+- `tasks.md`: tick the task; a note only for a deviation or a decision, one line. Overwrite `STATE.md` only at stopping points, when the active package changes and for a temporary state in the tenant (a flow switched off). `AGENTS.md` holds no status.
 - After a break of hours or days (time of the user's message): a stopping-point card first.
 - Stopping point at the end of clarification, planning and each package: overwrite `STATE.md`, update `ROADMAP.md`, commit and push, then a card with what was reached, the next package and a model recommendation (Claude Opus 5.5 for clarification, planning and diagnosis; GPT-6.1 Sol for building a clear package, prototype or document; GPT: small context). A new chat gets its start prompt as a code block above it.
 
