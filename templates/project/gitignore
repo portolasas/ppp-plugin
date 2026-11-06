@@ -1,4 +1,7 @@
 # ZIPs from and to the tenant: a package can be rebuilt from any commit (PROJEKTSTRUKTUR S-3)
 exchange/
+# Power BI Desktop: imported data and local settings of a PBIP (PLUGIN PL-22)
+**/.pbi/cache.abf
+**/.pbi/localSettings.json
 __pycache__/
 .DS_Store

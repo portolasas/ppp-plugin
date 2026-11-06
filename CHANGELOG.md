@@ -2,6 +2,10 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.18.0 (2026-11-06)
+- ppp pbi list und check: Power BI als PBIP (TMDL, PBIR), Feldreferenzen gegen das Modell, Namen, BOM, $schema, Zeitfunktionen, .pbi-Dateien in Git (PLUGIN PL-22)
+- ppp-power-bi mit references/pbip.md; .gitignore-Vorlage und ppp check mit .pbi/cache.abf und .pbi/localSettings.json
+
 ## 0.17.0 (2026-11-06)
 - Haltepunkt: Starttext steht im Chat über der Karte, nie im Kartentext – eine beantwortete Karte zeigt ihren Text nicht mehr (Nutzer 06.11.)
 - ppp guide --word unter Windows: Pfad über PPP_WORD_FILE, powershell -Command gab keine $args weiter und Word bekam keine Datei

@@ -346,6 +346,14 @@ def check(root: Path, *notes: str | None) -> Report:
         zips = [t for t in tracked if t.lower().endswith(".zip")]
         if zips:
             rep.error(f"S ZIPs in git ({len(zips)}), e.g. {zips[0]}; ZIPs belong in exchange/")
+        data = [t for t in tracked if t.endswith((".pbi/cache.abf", ".pbi/localSettings.json"))]
+        if data:
+            rep.error(f"S Power BI data files in git ({len(data)}), e.g. {data[0]}; remove them with git rm --cached")
+        probe = "components/power-bi/x.SemanticModel/.pbi/"
+        if "power-bi" in modules and not all(gitutil.git(root, "check-ignore", "--no-index", probe + n, check=False).strip()
+                                             for n in ("cache.abf", "localSettings.json")):
+            rep.error("S .gitignore needs the lines **/.pbi/cache.abf and **/.pbi/localSettings.json "
+                      "(Power BI Desktop keeps the imported data and local settings there)")
     else:
         rep.error("S not a git repository (P7)")
 

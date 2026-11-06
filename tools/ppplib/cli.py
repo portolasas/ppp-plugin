@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import VERSION, canvas, flows, gitutil, solution, structure, walk
+from . import VERSION, canvas, flows, gitutil, pbi, solution, structure, walk
 from .project import ToolError, find_root, load_config, solution_dir
 from .report import Report
 from .verify import verify
@@ -165,6 +165,30 @@ def cmd_canvas(a) -> int:
     print(f"Checked: {len(files)} files, {n_ctl} controls, {n_fx} formulas, {rep.count('INFO')} notes, "
           + (f"version table {versions_file.name} ({len(versions)} entries)" if versions_file else "without version table")
           + (f", sources {sources}" if rx else ", without sources (delegation and refresh not checked)"))
+    print(rep.result())
+    return 1 if rep.errors else 0
+
+
+def cmd_pbi(a) -> int:
+    root = _project_or_none(a.project)
+    target = Path(a.path) if a.path else (root / "components" / "power-bi" if root else None)
+    if not target or not target.exists():
+        raise ToolError(f"Nothing found at {target}. Give a folder with a PBIP, a .pbip file or a .SemanticModel/.Report folder.")
+    base = root or (target.parent if target.is_file() or target.suffix in (".SemanticModel", ".Report") else target)
+    models, reports = pbi.load(target)
+    if a.action == "list":
+        lines = pbi.listing(models, reports, base.resolve())
+        print("\n".join(lines[:a.max]))
+        if len(lines) > a.max:
+            print(f"... {len(lines) - a.max} more lines (--max {a.max})")
+        return 0
+    rep = Report("ppp pbi check")
+    summary = pbi.check(models, reports, rep, base.resolve())
+    lines = [f"[{lvl}]".ljust(8) + msg for lvl, msg in rep.lines]
+    print("\n".join(lines[:a.max]))
+    if len(lines) > a.max:
+        print(f"... {len(lines) - a.max} more findings (--max {a.max})")
+    print(summary)
     print(rep.result())
     return 1 if rep.errors else 0
 
@@ -604,6 +628,14 @@ def build_parser() -> argparse.ArgumentParser:
                                                   "else the central one); 'none' skips the check")
     c.add_argument("--sources", default=None, help="data source patterns such as 'ASUM_*' (default: <prefix>_* from project.json)")
     c.add_argument("--max", type=int, default=60, help="findings shown (default 60)")
+
+    c = command("pbi", cmd_pbi, "Power BI as PBIP: list the model (TMDL or model.bim) and the report pages compactly, or check "
+                                "them before opening in Desktop (field references, names, BOM, $schema, time functions, "
+                                ".pbi data files in git). Reads PBIP only, no PBIX and no row data.", False)
+    c.add_argument("action", choices=("list", "check"), help="list: one line per object; check: findings, exit code 1 on errors")
+    c.add_argument("path", nargs="?", default="", help="folder, .pbip file or one .SemanticModel/.Report folder "
+                                                       "(default: components/power-bi)")
+    c.add_argument("--max", type=int, default=400, help="lines shown (default 400)")
 
     c = command("formulas", cmd_formulas, "Convert App.Formulas from en-US to de-DE and check brackets.", False)
     c.add_argument("file", nargs="?", default="", help="App.Formulas in en-US (default: components/power-apps/theme/App.Formulas.en-US.txt)")

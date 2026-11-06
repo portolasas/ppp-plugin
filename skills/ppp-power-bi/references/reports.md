@@ -1,7 +1,6 @@
 # Reports
 
 ## Sources
-- Model and report as text where possible: Power BI Desktop › "Save as Power BI project" (`.pbip`, model in TMDL); depending on the Desktop version a preview feature that must be switched on. [D][V]
 - SharePoint as source: `SharePoint.Tables(<site>, [Implementation = "2.0", ViewMode = "All"])` is faster and returns fewer columns [D]. Filter early (status, valid pointer joins), remove unused columns, expand JSON columns with `Json.Document`.
 - SharePoint Online needs no gateway; the sign-in is the dataset owner's OAuth. Plan the switch to a technical account together with the flows. [D]
 - Publishing: the user publishes from Desktop into the workspace; workspace Git integration only if the tenant confirms it [O].
