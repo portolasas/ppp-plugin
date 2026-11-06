@@ -2,6 +2,10 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.18.1 (2026-11-06)
+- ppp pbi check: eine R7-Meldung je fehlender Tabelle, Spalte oder Measure mit Zahl der Verweise, gleiche Meldungen nur einmal, Seitenfilter mit Datei
+- ppp pbi folgt den Verweisen der .pbip auf den Berichtsordner und nennt fehlende Ordner; Warnung P2 bei PBIP in OneDrive (Erprobung Seqonis 06.11.)
+
 ## 0.18.0 (2026-11-06)
 - ppp pbi list und check: Power BI als PBIP (TMDL, PBIR), Feldreferenzen gegen das Modell, Namen, BOM, $schema, Zeitfunktionen, .pbi-Dateien in Git (PLUGIN PL-22)
 - ppp-power-bi mit references/pbip.md; .gitignore-Vorlage und ppp check mit .pbi/cache.abf und .pbi/localSettings.json

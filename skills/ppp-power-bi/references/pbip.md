@@ -20,6 +20,8 @@ components/power-bi/
 - An older project may keep the model as `model.bim` (TMSL). `ppp pbi` reads it; edit TMDL. [D][V]
 - Files edited by Desktop only: `definition.pbir`, legacy `report.json`, `mobileState.json`, `semanticModelDiagramLayout.json`, `diagramLayout.json`, auto date tables (`LocalDateTable_*`). [D]
 - Each file path stays under 260 characters under Windows, and the project folder lies outside OneDrive and SharePoint. [D]
+- The `.pbip` and its `.Report` and `.SemanticModel` folders move together; the `.pbip` names the report folder by a relative path, the report names the model in `definition.pbir`. [D]
+- `ppp pbi check` gives one R7 finding per missing table, column or measure with the number of references; a whole missing table usually means visuals or filters left over from an earlier model. Ask the user whether they show errors in Desktop before changing them. [B 06.11., Seqonis]
 
 ## Round trip with Desktop
 1. The user saves in Desktop before the agent edits; Desktop writes its state to the files only on save. [D]

@@ -74,6 +74,7 @@ class Page:
     hidden: bool
     visuals: list
     filters: list
+    where: str = ""
 
 
 @dataclass
@@ -432,7 +433,7 @@ def _pbir(rep: ReportDef, definition: Path, base: Path) -> None:
         if binding:
             bindings.setdefault(binding, []).append(folder.name)
         page = Page(folder.name, data.get("displayName", ""), data.get("visibility") == "HiddenInViewMode", [],
-                    _filters(data.get("filterConfig"), where, rep.findings))
+                    _filters(data.get("filterConfig"), where, rep.findings), where)
         for vf in sorted((folder / "visuals").iterdir()) if (folder / "visuals").is_dir() else []:
             if not vf.is_dir():
                 continue
@@ -487,7 +488,7 @@ def _legacy(rep: ReportDef, f: Path, base: Path) -> None:
     for s in data.get("sections") or []:
         sconf = _loads(s.get("config")) or {}
         page = Page(s.get("name", ""), s.get("displayName", ""), isinstance(sconf, dict) and sconf.get("visibility") == 1,
-                    [], _unique(refs(_loads(s.get("filters")))))
+                    [], _unique(refs(_loads(s.get("filters")))), f"{where} page {s.get('displayName') or s.get('name')}")
         for i, vc in enumerate(s.get("visualContainers") or [], 1):
             vconf = _loads(vc.get("config")) or {}
             single = vconf.get("singleVisual") or {} if isinstance(vconf, dict) else {}
@@ -504,17 +505,36 @@ def load(target: Path) -> tuple[dict, list]:
     """Models (path -> Model) and reports below target: a folder, a .pbip file or one item folder."""
     target = target.resolve()
     if target.is_file() and target.suffix.lower() == ".pbip":
+        pbips = [target]
         dirs = [d for d in (target.with_suffix(".SemanticModel"), target.with_suffix(".Report")) if d.is_dir()]
     elif target.is_dir() and target.suffix in (".SemanticModel", ".Report"):
-        dirs = [target]
+        pbips, dirs = [], [target]
     elif target.is_dir():
+        pbips = sorted(target.rglob("*.pbip"))
         dirs = sorted(d for d in target.rglob("*") if d.is_dir() and d.suffix in (".SemanticModel", ".Report")
                       and ".pbi" not in d.relative_to(target).parts)
     else:
-        dirs = []
+        pbips, dirs = [], []
+    missing = []
+    for f in pbips:  # the .pbip names its report folder; it may lie elsewhere
+        try:
+            artifacts = json.loads(f.read_text(encoding="utf-8-sig")).get("artifacts") or []
+        except (OSError, ValueError, AttributeError):
+            continue
+        for a in artifacts:
+            path = ((a or {}).get("report") or {}).get("path") if isinstance(a, dict) else None
+            if path:
+                d = (f.parent / path).resolve()
+                if d.is_dir():
+                    if d not in dirs:
+                        dirs.append(d)
+                else:
+                    missing.append(f"{f.name} -> {path}")
     if not dirs:
         pbix = sorted(target.rglob("*.pbix")) if target.is_dir() else ([target] if target.suffix.lower() == ".pbix" else [])
         hint = (f" Found PBIX ({', '.join(p.name for p in pbix[:3])}); ppp reads PBIP only." if pbix else "")
+        hint += (f" The .pbip names a missing folder ({'; '.join(missing[:3])}): move the .pbip with its "
+                 ".Report and .SemanticModel folders together." if missing else "")
         raise ToolError(f"No PBIP at {target}.{hint} Open the file in Power BI Desktop and save it with File › Save as › "
                         "Power BI project (.pbip), on a short path outside OneDrive and SharePoint.")
     models = {d: read_model(d) for d in dirs if d.suffix == ".SemanticModel"}
@@ -620,18 +640,27 @@ def check(models: dict, reports: list, rep: Report, base: Path) -> str:
         if model is None:
             rep.info(f"R7 {r.path.name}: {r.connection or 'model not found'}; field references not checked")
             continue
-        items = [(r.path.name + "/definition/report.json filters", r.filters)]
-        items += [(f"page {p.name} filters", p.filters) for p in r.pages]
-        items += [(v.where, v.refs) for p in r.pages for v in p.visuals]
-        items += [(where, found) for _, found, where in r.bookmarks]
-        for where, found in items:
+        items = [("report filters", f"{r.path.name}/definition/report.json", r.filters)]
+        items += [("page filters", p.where, p.filters) for p in r.pages]
+        items += [("visuals", v.where, v.refs) for p in r.pages for v in p.visuals]
+        items += [("bookmarks", where, found) for _, found, where in r.bookmarks]
+        problems: dict = {}  # one finding per missing object: references, places by kind, first place
+        for kind, where, found in items:
             for ref in found:
                 n_refs += 1
                 problem = _missing(ref, model, r.extension)
                 if problem:
-                    rep.error(f"R7 {where}: {problem}")
+                    entry = problems.setdefault(problem, [0, {}, where])
+                    entry[0] += 1
+                    entry[1].setdefault(kind, set()).add(where)
+        for problem, (count, places, first) in problems.items():
+            spread = ", ".join(f"{len(w)} {k}" for k, w in places.items())
+            rep.error(f"R7 {r.path.name}: {problem} ({count} references in {spread}; e.g. {first})")
     _paths(models, reports, rep, base)
+    _onedrive(models, reports, rep)
     _git(models, reports, rep)
+    seen: set = set()
+    rep.lines[:] = [line for line in rep.lines if not (line in seen or seen.add(line))]
     n_vis = sum(len(p.visuals) for r in reports for p in r.pages)
     return (f"Checked: {len(models)} models ({sum(len(m.tables) for m in models.values())} tables), {len(reports)} reports "
             f"({sum(len(r.pages) for r in reports)} pages, {n_vis} visuals, {n_refs} field references)")
@@ -654,6 +683,16 @@ def _paths(models: dict, reports: list, rep: Report, base: Path) -> None:
     elif os.name != "nt" and longest[0] > 200:
         rep.warn(f"P1 {_rel(longest[1], base)} has {longest[0]} characters; under Windows the project folder may then "
                  "use only 59 characters")
+
+
+def _onedrive(models: dict, reports: list, rep: Report) -> None:
+    roots = [Path(os.environ[k]).resolve() for k in ("OneDrive", "OneDriveCommercial", "OneDriveConsumer")
+             if os.environ.get(k)]
+    for d in [*models, *(r.path for r in reports)]:
+        if any(p.casefold().startswith("onedrive") for p in d.parts) or any(root in d.parents for root in roots):
+            rep.warn(f"P2 {d.name} lies in a OneDrive folder; Microsoft does not support saving a PBIP to OneDrive or "
+                     "SharePoint: keep the project in a local folder")
+            return
 
 
 def _git(models: dict, reports: list, rep: Report) -> None:
