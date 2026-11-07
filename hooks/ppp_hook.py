@@ -22,6 +22,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 
 LIMIT = 10_000
 TOOLS = {"copilot": "copilot", "claude": "claude-code"}  # argument of the hook file -> tool name in logs and cardguard
+# Sections of STATE.md that go first when it does not fit; the manual changes stand near the end of the template and were
+# the first to be cut (review 07.11.: in Claude Code about 3,000 characters remain beside the core rules).
+FIRST = ("Active package", "Next step", "Manual changes in the tenant")
+
+
+def state_within(content: str, room: int) -> str:
+    """STATE.md within room characters: unchanged when it fits. Else its head, the sections of FIRST in that order, then
+    the other sections in file order. Within each group whole sections go first, then the first one that did not fit, cut."""
+    if len(content) <= room:
+        return content
+    head, *sections = content.split("\n## ")
+    sections = ["## " + s.rstrip("\n") + "\n" for s in sections]
+    title = lambda s: s[3:].split("\n", 1)[0].strip()
+    rank = lambda s: next((i for i, f in enumerate(FIRST) if title(s).startswith(f)), None)
+    text, left = head.rstrip("\n")[:room] + "\n", []
+    for group in (sorted((s for s in sections if rank(s) is not None), key=rank),
+                  [s for s in sections if rank(s) is None]):
+        rest = []
+        for s in group:
+            if len(text) + len(s) <= room:
+                text += s
+            else:
+                rest.append(s)
+        for n, s in enumerate(rest):
+            if n == 0 and room - len(text) > 200:
+                text += s[:room - len(text)] + "…\n"
+                left.append(title(s) + " (cut)")
+            else:
+                left.append(title(s))
+    if len(head) > room:
+        left.insert(0, "the start (cut)")
+    names = ", ".join(left[:6]) + (f" and {len(left) - 6} more" if len(left) > 6 else "")
+    return text + f"\n[…] STATE.md is longer; read the rest from the file. Missing or cut here: {names}."
 
 
 def project_root(cwd: str):
@@ -58,10 +91,7 @@ def session_start(data: dict, root: Path, tool: str) -> dict:
     state = root / "STATE.md"
     if state.is_file():
         content = state.read_text(encoding="utf-8", errors="replace")
-        room = LIMIT - len(text) - 200
-        if len(content) > room:
-            content = content[:max(room, 0)] + "\n[…] STATE.md is longer; read the rest from the file."
-        text += "\n## STATE.md\n" + content
+        text += "\n## STATE.md\n" + state_within(content, max(LIMIT - len(text) - 400, 0))
     if tool == "copilot":  # the agent host drops hookSpecificOutput (Nachtest 4, 25.10.)
         return {"additionalContext": text[:LIMIT]}
     return {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text[:LIMIT]}}

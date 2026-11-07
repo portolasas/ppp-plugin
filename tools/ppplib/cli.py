@@ -284,7 +284,8 @@ def _bippt(given: str) -> Path | None:
     roots = [home / ".claude" / "plugins", home / ".vscode", home / ".vscode-insiders",
              home / "Library" / "Application Support" / "Code", Path(os.environ.get("APPDATA", home)) / "Code"]
     found = [p for r in roots if r.is_dir() for p in r.glob("**/bi-design*/**/tools/bippt.py")]
-    found += [p for p in [TOOLS.parents[2] / "bi-design" / "plugin" / "tools" / "bippt.py"] if p.is_file()]
+    clone = TOOLS.parents[2] / "bi-design"  # the plugin at the root since bi-design 2.13.0, before in plugin/
+    found += [p for p in (clone / "tools" / "bippt.py", clone / "plugin" / "tools" / "bippt.py") if p.is_file()]
     return max(found, key=lambda p: p.stat().st_mtime) if found else None
 
 

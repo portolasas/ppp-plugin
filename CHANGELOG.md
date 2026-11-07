@@ -2,6 +2,28 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.20.1 (2026-11-07)
+- ppp-docs: Schritt 6 verlangt references/guide.md vor dem ersten Bau aus dem Handbuch (Verhaltenstest 07.11.: der Agent las sie sonst nicht)
+- ppp-docs references/deck.md nennt --bippt
+
+## 0.20.0 (2026-11-07)
+- SessionStart: Passt STATE.md nicht in den Kontext, kommen aktives Paket, nächster Schritt und manuelle Änderungen im Tenant zuerst; bisher fielen die manuellen Änderungen am Ende als Erstes weg
+- ppp check warnt bei einer STATE.md über 6.000 Zeichen und nennt die Abschnitte, die die Vorlage nicht kennt
+- ppp check: Fehlt das Original einer Konfliktkopie, nennt die Meldung git checkout -- <Datei>
+- README: Unter Windows muss python im PATH stehen; nur mit dem Starter py landen Hooks und Werkzeugaufruf beim Platzhalter des Microsoft Store
+
+## 0.19.0 (2026-11-07)
+- ppp-app-walk aufgeteilt: der Ablauf bleibt im Skill (10,4 statt 21,5 KB), Felder und Aktionen, Befunde, Rollen und Belege stehen in references/ (PL-23)
+- ppp-docs: ppp guide in references/guide.md, das Schulungsdeck in references/deck.md (9,6 statt 11,4 KB)
+- Kernregeln 6.315 statt 6.492 Zeichen: design.md-Hinweis in ppp-package, Modell-ID in der Regel für Subagenten, Prüfung auf Widersprüche nur noch in ppp-clarify
+- Größenbudgets als Test: SKILL.md 12.000, Referenz 8.000, Zeile 1.000 Zeichen (PL-23)
+- ppp guide findet bippt im Klon von bi-design auch mit dem Plugin im Wurzelverzeichnis (bi-design 2.13.0)
+
+## 0.18.2 (2026-11-07)
+- Claude Code unter Windows: Hook-Befehl fällt von python3 (oft nur der Platzhalter des Microsoft Store) auf python zurück, sonst kamen die Kernregeln nie an; Claude Code kennt kein Feld windows
+- ppp check meldet Konfliktkopien von OneDrive und iCloud (name(1).ext, name 2.ext, name-RECHNER.ext) neben einer versionierten Datei, als Fehler wenn das Original fehlt
+- README: 15 Skills
+
 ## 0.18.1 (2026-11-06)
 - ppp pbi check: eine R7-Meldung je fehlender Tabelle, Spalte oder Measure mit Zahl der Verweise, gleiche Meldungen nur einmal, Seitenfilter mit Datei
 - ppp pbi folgt den Verweisen der .pbip auf den Berichtsordner und nennt fehlende Ordner; Warnung P2 bei PBIP in OneDrive (Erprobung Seqonis 06.11.)

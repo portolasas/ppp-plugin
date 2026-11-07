@@ -6,7 +6,7 @@ It works **offline from solution exports**. The agent has no tenant access, no c
 
 ## What you get
 - **Agent `ppp`** with the core rules: questions as cards with a recommendation first, no silent assumptions, a commit after each confirmed step, stopping points with a model recommendation.
-- **14 skills**, loaded when a task needs them:
+- **15 skills**, loaded when a task needs them:
   - phases: `ppp-intake`, `ppp-clarify`, `ppp-prototype`, `ppp-plan`, `ppp-package`, `ppp-diagnose`, `ppp-docs`, `ppp-golive`;
   - platform knowledge, each statement marked observed, documented, open or version-dependent: `ppp-power-automate`, `ppp-power-apps`, `ppp-sharepoint`, `ppp-power-bi`, `ppp-copilot-studio`;
   - `ppp-app-walk`: walks through your running app in Edge with automated clicks, reviews layout and usability from measurements and pictures, checks expected values and load times, reproduces errors, compares with the last run, and builds the illustrated Word handbook from its Markdown text, and training videos (optional packages `playwright`, `python-docx`).
@@ -16,7 +16,7 @@ It works **offline from solution exports**. The agent has no tenant access, no c
 
 ## Requirements
 - VS Code with GitHub Copilot and agent plugins enabled, or Claude Code.
-- Python 3.10 or newer.
+- Python 3.10 or newer. On Windows `python` must start it from `PATH` (installer option "Add python.exe to PATH"): the hooks and the tool call run `python`, and with only the launcher `py` both reach the placeholder of the Microsoft Store. `python --version` in a new terminal shows it.
 - Power Platform CLI `pac` (in `PATH`, from the VS Code extension Power Platform Tools, or in `~/.dotnet/tools`).
 - git; a GitHub repository per project is recommended.
 - In VS Code a model that follows the agent text: GPT-6.1 Sol for building, Claude Opus 5.5 for clarification, planning and diagnosis. Not GPT-6 Luna. GPT models with the small context size (272k) in the model picker: the long context costs double above 272k; Claude models cost the same in both.

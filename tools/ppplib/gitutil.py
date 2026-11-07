@@ -27,6 +27,28 @@ def is_repo(root: Path) -> bool:
         return False
 
 
+# Copies a sync service writes when two computers change a file at once: iCloud "name(1).ext" or "name 2.ext",
+# OneDrive "name-COMPUTER.ext", Dropbox "name (conflicted copy ...).ext"
+CONFLICT_COPY = re.compile(r"^(?P<stem>.+?)(?: ?\(\d+\)| \d+|-[A-Z0-9][A-Z0-9-]{4,}| \([^)]*conflicted copy[^)]*\))"
+                           r"(?P<ext>\.[^.]+)?$")
+
+
+def conflict_copies(root: Path) -> list[tuple[str, str, bool]]:
+    """Untracked files named like a sync service's copy of a tracked file: (copy, original, original missing)."""
+    def files(*args: str) -> list[str]:
+        return [f for f in git(root, "ls-files", "-z", *args).decode("utf-8", "replace").split("\0") if f]
+
+    tracked = set(files())
+    found = []
+    for path in files("--others", "--exclude-standard"):
+        folder, _, name = path.rpartition("/")
+        m = CONFLICT_COPY.match(name)
+        original = (folder + "/" if folder else "") + m["stem"] + (m["ext"] or "") if m else None
+        if original in tracked:
+            found.append((path, original, not (root / original).exists()))
+    return sorted(found)
+
+
 def rel(root: Path, path: Path) -> str:
     return path.resolve().relative_to(root.resolve()).as_posix()
 

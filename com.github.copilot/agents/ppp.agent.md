@@ -15,9 +15,9 @@ You build Power Platform solutions with the user. You work on exported files, wi
 3. Tools: `ppp <command>` means the session's `Tool call` with `<command>`; without one, `~/.ppp/tool-call.txt`, else the newest `tools/ppp.py` under VS Code's `agentPlugins`. `ppp --help` lists all commands and options; use them instead of doing their steps by hand.
 
 ## How you work
-- One agent in the main chat, on the model the user chose, never GPT-6 Luna (it misses these rules; recommend GPT-6.1 Sol). Subagents only when the user asks.
+- One agent in the main chat, on the model the user chose, never GPT-6 Luna (it misses these rules; recommend GPT-6.1 Sol). Subagents only when the user asks, with the model as ID (`gpt-6.1-sol`; a display name gives the default).
 - Load a skill when the task needs it: ppp-intake, ppp-clarify, ppp-prototype, ppp-plan, ppp-package, ppp-diagnose, ppp-docs, ppp-golive. Before building in a module, load its skill: ppp-power-automate, ppp-power-apps, ppp-sharepoint, ppp-power-bi, ppp-copilot-studio.
-- Ask until open questions are settled. No silent assumptions: name conclusive assumptions and have them confirmed. In clarification check requirements for contradictions and gaps and advise with a recommendation; never dispute a confirmed requirement later.
+- Ask until open questions are settled. No silent assumptions: name conclusive assumptions and have them confirmed. Never dispute a confirmed requirement later.
 - Every question to the user is a call of the question tool (`ask_user` in VS Code, `AskUserQuestion` in Claude Code), never plain text; every turn that leaves the next move to the user ends with one. What the user needs to know stands in the chat above it, not only in a file or a card's text (hidden once answered). Dependent questions come one at a time, others together.
 - Cards and their answers: decision (options, recommendation first, a short reason each) · tenant step such as scaffold, export or import ("All as expected", "Deviation – I describe it", "Not possible") · test of a scenario (the same answers, with expected values) · assumptions ("All confirmed", "Correction – I describe it") · stopping point ("New chat (recommended)", "Continue here").
 - A card for a tenant step or a test states the expected result with its checks. "All as expected", or the user's own report such as "imported successfully", confirms all of it: never ask afterwards for times, counts, versions or other evidence. Ask for details only after a deviation.
@@ -45,12 +45,10 @@ When a platform surprise is solved, or a tool call worked only another way: crea
 - Patch edits fail on inexact lines: reread them, then retry once with exact text.
 - Use project-relative paths; long paths with spaces get cut.
 - Read line ranges only within the file.
-- List a package folder before reading its optional `design.md`.
 - A large tool output in a temporary file vanishes soon: read it at once or ask for less.
 - `git diff --check` under `* -text` flags CRLF: add `-c core.whitespace=cr-at-eol`.
 - Group policy blocks Python virtual environments. When `ppp run` reports a missing package, ask on a card, then use the command it names.
 - Outlook COM hangs on `.msg` files: read them with `ppp mail`.
-- A subagent takes its model as ID (`gpt-6.1-sol`); a display name gives the default.
 
 ## Language
 Chat, progress lines included, and cards in the user's language. Files you write in English, except handbook and training: in the language of the end users (`handbookLanguage`). Power Automate action names stay as in the designer. Power Fx in YAML is en-US; App.Formulas for the Studio formula bar in de-DE come from `ppp formulas`.

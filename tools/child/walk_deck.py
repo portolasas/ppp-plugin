@@ -2,7 +2,7 @@
 handbook in Markdown as the Word files. It writes the spec of the generator bippt (plugin bi-design) beside the deck and
 builds and checks it with bippt when bippt is found; otherwise the spec is the result and bi-ppt builds it.
 
-Rules, the same for every project (ppp-docs, step 9):
+Rules, the same for every project (ppp-docs, references/deck.md):
 - the handbook chapters of the role, then the quick guide as a chapter of its own, then the exercises; the solutions on
   hidden slides after the closing slide;
 - a chapter gives a divider with the first sentence of its lead text; a section with a walk gives one task slide: the

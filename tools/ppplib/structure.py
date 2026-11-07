@@ -28,6 +28,9 @@ OPTIONAL_DIRS = ("exchange", "inputs", "environments", "tests", "prototype", "le
 DOCS_DIRS = ("handbook", "training", "six-sigma", "project")
 STATE_SECTIONS = ("Mode", "Active package", "Next step", "Open questions and assumptions to confirm",
                   "Manual changes in the tenant", "Last export")
+# STATE.md holds the current state only; the session start passes about 3,000 characters of it in Claude Code and 9,000
+# in VS Code, the sections that matter first (ppp_hook). Above this a warning (review 07.11.: projects with 9 and 22 KB).
+STATE_BUDGET = 6_000
 MODULE_PARTS = {
     "power-automate": {"README.md", "templates", "generator"},
     "power-apps": {"README.md", "screens", "theme", "assets", "generator"},
@@ -234,7 +237,18 @@ def check(root: Path, *notes: str | None) -> Report:
         (root / "exchange").mkdir()
         rep.info("S exchange/ was missing and is created (not in git)")
     repo = gitutil.is_repo(root)
+    copies = gitutil.conflict_copies(root) if repo else []
+    for copy, original, missing in copies:
+        # a project in OneDrive or iCloud Drive: two computers changed the same file before it synced
+        text = f"S {copy}: conflict copy of a sync service (OneDrive, iCloud) beside {original}"
+        if missing:
+            rep.error(f"{text}, and {original} is missing: restore it with git checkout -- {original}, compare it with "
+                      f"the copy, keep the right content in {original}, delete the copy after a card")
+        else:
+            rep.warn(f"{text}: compare both, keep the right content in {original}, delete the copy after a card")
     for p, local in _outside(root):
+        if p.name in {c for c, _, _ in copies}:
+            continue
         empty = _empty_tree(p) if local and p.is_dir() else None
         if empty is not None:
             rep.error(f"S not part of the structure: {p.name}/ (not in git: a local leftover without files, {empty} folders; "
@@ -328,6 +342,11 @@ def check(root: Path, *notes: str | None) -> Report:
         for s in STATE_SECTIONS:
             if s not in headings:
                 rep.error(f"S STATE.md: section '## {s}' missing (keep the headings of the template)")
+        if len(text) > STATE_BUDGET:
+            extra = [h for h in headings if h not in STATE_SECTIONS]
+            rep.warn(f"S STATE.md: {len(text):,} characters, more than {STATE_BUDGET:,}: keep only the current state, "
+                     "move evidence and history to the package's tasks.md, to decisions/ or leave them to git"
+                     + (f"; sections beyond the template: {', '.join(extra[:4])}" if extra else ""))
         m = re.search(r"^## Mode\s*\n+(\w+)", text, re.M)
         if m and config.get("mode") and m.group(1) != config["mode"]:
             rep.error(f"S STATE.md: mode {m.group(1)} differs from project.json ({config['mode']})")
