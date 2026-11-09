@@ -3,7 +3,9 @@
 A learning session on another computer reads them from a clone of that repository like a home folder (--home).
 Copilot keeps each session in ~/.copilot/session-state/<id>/. `ppp sessions` copies the sessions whose working folder
 holds a project.json and that changed since the last upload of this computer to <repository>/.copilot/session-state/<id>/,
-commits and pushes. Lock files and the agent's scratch folder files/ stay behind; a file over 95 MB is stored gzipped as
+commits and pushes, only for projects that lie on GitHub (storage github, or none in structure version 1): the logs
+hold project data, so those of local and Bitbucket projects stay on this computer (ABLAGE AB-7). Lock files and the
+agent's scratch folder files/ stay behind; a file over 95 MB is stored gzipped as
 <name>.gz, because GitHub refuses files over 100 MB. The repository folder is `sessionsRepo` in ~/.ppp/settings.json,
 the time of the last upload ~/.ppp/sessions.json; it advances only after a push.
 """
@@ -53,16 +55,30 @@ def places(folder: Path) -> list[str]:
     return [p for p in out if p]
 
 
-def pick(home: Path, since: float) -> list[tuple[float, Path, str]]:
-    """Sessions of ppp projects whose log changed at or after since: (time, folder, project), oldest first."""
+def on_github(project: Path) -> bool:
+    """True when project.json names storage github or none; unreadable counts as not on GitHub."""
+    try:
+        config = json.loads((project / "project.json").read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(config, dict) and (config.get("storage") or "github") == "github"
+
+
+def pick(home: Path, since: float, skipped: list | None = None) -> list[tuple[float, Path, str]]:
+    """Sessions of ppp projects on GitHub whose log changed at or after since: (time, folder, project), oldest first.
+    Sessions of other ppp projects go to skipped as (time, folder, project)."""
     picked = []
     for events in (home / ".copilot" / "session-state").glob("*/events.jsonl"):
         mtime = events.stat().st_mtime
         if mtime < since:
             continue
         where = [p for p in places(events.parent) if (Path(p) / "project.json").is_file()]
-        if where:
+        if not where:
+            continue
+        if on_github(Path(where[0])):
             picked.append((mtime, events.parent, _project(where[0])))
+        elif skipped is not None:
+            skipped.append((mtime, events.parent, _project(where[0])))
     return sorted(picked)
 
 
@@ -113,9 +129,13 @@ def upload(repo: Path, home: Path, since: float | None = None, dry_run: bool = F
                         "ppp settings --sessions <folder>.")
     started = time.time()
     since = last_upload() if since is None else since
-    picked = pick(home, since)
+    skipped: list = []
+    picked = pick(home, since, skipped)
     after = datetime.fromtimestamp(since).strftime("%Y-%m-%d %H:%M") if since else "the start"
     out = [f"  {datetime.fromtimestamp(m):%Y-%m-%d %H:%M}  {folder.name}  {project}" for m, folder, project in picked]
+    if skipped:
+        out.append(f"Skipped {_count(len(skipped))} of projects not on GitHub ({', '.join(sorted({p for *_, p in skipped}))}): "
+                   "their logs hold project data and stay on this computer (ABLAGE AB-7)")
     out.append(f"{_count(len(picked))} of ppp projects changed since {after}" + (" (dry run: nothing copied)" if dry_run else ""))
     if dry_run:
         return out

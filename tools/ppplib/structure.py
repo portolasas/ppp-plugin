@@ -11,12 +11,12 @@ import stat
 from datetime import date
 from pathlib import Path
 
-from . import gitutil
+from . import gitutil, storage
 from . import walk as walkfile
 from .project import ToolError
 from .report import Report
 
-STRUCTURE_VERSION = 1
+STRUCTURE_VERSION = 2  # 2 since 09.11.: storage in project.json (ABLAGE AB-9)
 TEMPLATES = Path(__file__).resolve().parent.parent.parent / "templates"
 MODULES = ("power-automate", "power-apps", "sharepoint", "power-bi", "copilot-studio")
 MODES = ("small", "medium", "large")
@@ -59,8 +59,9 @@ def slug(title: str) -> str:
 
 # ------------------------------------------------------------------ init
 def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, language: str,
-         solution: str | None) -> list[str]:
-    """Create the missing core of a project; existing files stay untouched. Returns the lines to print."""
+         solution: str | None, kind: str = "github") -> list[str]:
+    """Create the missing core of a project with its storage (ABLAGE AB-1); existing files stay untouched. Returns the
+    lines to print."""
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", prefix):
         raise ToolError(f"Prefix must be letters and digits, starting with a letter: {prefix}")
     unknown = [m for m in modules if m not in MODULES]
@@ -68,10 +69,15 @@ def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, lang
         raise ToolError(f"Unknown modules {unknown}; known: {', '.join(MODULES)}")
     if mode not in MODES:
         raise ToolError(f"Mode must be one of {', '.join(MODES)}")
+    if kind == "bitbucket":
+        raise ToolError(storage.BITBUCKET_LATER)
+    if kind not in storage.STORAGES:
+        raise ToolError("Storage must be github or local")
     root.mkdir(parents=True, exist_ok=True)
     if (root / "project.json").exists():
         raise ToolError(f"{root / 'project.json'} exists already; this is a ppp project. Use ppp check.")
-    config = {"structureVersion": STRUCTURE_VERSION, "name": name, "prefix": prefix, "mode": mode, "modules": modules,
+    config = {"structureVersion": STRUCTURE_VERSION, "name": name, "prefix": prefix, "mode": mode, "storage": kind,
+              "modules": modules,
               "solutions": [{"uniqueName": solution, "role": "main"}] if solution else [], "handbookLanguage": language}
     module_lines = "\n".join(f"  - {m}: [components/{m}/README.md](components/{m}/README.md)" for m in modules) or "  - none yet"
     values = {"name": name, "mode": mode, "module_lines": module_lines}
@@ -102,6 +108,13 @@ def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, lang
     if not gitutil.is_repo(root):
         gitutil.git(root, "init", "-q", "-b", "main")
         out.append("Initialized a git repository on main.")
+    if kind == "github":
+        out.append("Storage github: set the remote origin (gh repo create --private --source . --remote origin, or "
+                   "ppp storage github --remote <url>), then commit and push.")
+    else:
+        out.append("Storage local: git without a remote; commit after each step, never push. Back up on request with "
+                   "ppp backup" + ("." if storage.backup_folder(config) else
+                                   "; no backup folder yet: ask for one on a card, ppp settings --backup <folder>."))
     return out
 
 
@@ -140,10 +153,13 @@ def _validate_config(config: dict, rep: Report) -> None:
         if "transfer" in roles and "main" not in roles:
             rep.error("S project.json: a transfer solution needs a main solution")
     need("handbookLanguage", str)
+    if config.get("structureVersion", 0) >= 2 or "storage" in config:
+        if need("storage", str) and config["storage"] not in storage.STORAGES:
+            rep.error(f"S project.json: storage {config['storage']!r} is not one of {', '.join(storage.STORAGES)}")
     if "trainingFormat" in config and config["trainingFormat"] not in TRAINING_FORMATS:
         rep.error(f"S project.json: trainingFormat {config['trainingFormat']!r} is not one of {', '.join(TRAINING_FORMATS)}")
-    extra = set(config) - {"structureVersion", "name", "prefix", "mode", "modules", "solutions", "handbookLanguage",
-                           "trainingFormat"}
+    extra = set(config) - {"structureVersion", "name", "prefix", "mode", "storage", "modules", "solutions",
+                           "handbookLanguage", "trainingFormat"}
     if extra:
         rep.error("S project.json: unknown fields " + ", ".join(sorted(extra)))
 
@@ -373,6 +389,8 @@ def check(root: Path, *notes: str | None) -> Report:
                                              for n in ("cache.abf", "localSettings.json")):
             rep.error("S .gitignore needs the lines **/.pbi/cache.abf and **/.pbi/localSettings.json "
                       "(Power BI Desktop keeps the imported data and local settings there)")
+        if config:
+            storage.check(root, config, rep)
     else:
         rep.error("S not a git repository (P7)")
 
@@ -385,7 +403,27 @@ def check(root: Path, *notes: str | None) -> Report:
 
 
 # ------------------------------------------------------------------ migrate
-MIGRATIONS: dict = {}  # from version n to n + 1: function(root, config) -> list of lines
+def _storage_from_remote(root: Path, config: dict) -> list[str]:
+    """1 -> 2: storage from the remote origin (ABLAGE AB-9); a value written by hand stays."""
+    if config.get("storage") in storage.STORAGES:
+        return [f"storage {config['storage']} kept"]
+    url = storage.remote_url(root)
+    kind = storage.kind_of(url) if url else "local"
+    if kind is None:
+        raise ToolError(f"The remote origin {url} is neither on GitHub nor on Bitbucket: write \"storage\" into "
+                        "project.json by hand (github, bitbucket or local), then run ppp migrate again.")
+    items = list(config.items())
+    config.clear()
+    for key, value in items:
+        config[key] = value
+        if key == "mode":
+            config["storage"] = kind
+    config.setdefault("storage", kind)
+    return [f"storage {kind}: " + (f"from the remote origin {url}" if url else
+                                   "no remote, so a local folder; if it belongs on GitHub: ppp storage github --remote <url>")]
+
+
+MIGRATIONS: dict = {1: _storage_from_remote}  # from version n to n + 1: function(root, config) -> list of lines
 
 
 def migrate(root: Path) -> list[str]:

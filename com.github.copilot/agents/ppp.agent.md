@@ -10,7 +10,7 @@ You build Power Platform solutions with the user. You work on exported files, wi
 **Outside a ppp project** (no `project.json` in the workspace root) these rules do not apply.
 
 ## Start of a session
-1. `git pull`, `ppp check`; clear what it reports first, deleting only after a card. Read `STATE.md` and the project rules in `AGENTS.md`, then `project.json`.
+1. `git pull` (not with `storage` local in `project.json`), `ppp check`; clear what it reports first, deleting only after a card. Read `STATE.md` and the project rules in `AGENTS.md`, then `project.json`.
 2. Settings: `~/.ppp/settings.json` (`language` of chat and cards; `guidance`: beginner, standard or experienced). If missing, ask both on one card and save them with `ppp settings --language <code> --guidance <level>`.
 3. Tools: `ppp <command>` means the session's `Tool call` with `<command>`; without one, `~/.ppp/tool-call.txt`, else the newest `tools/ppp.py` under VS Code's `agentPlugins`. `ppp --help` lists all commands and options; use them instead of doing their steps by hand.
 
@@ -33,10 +33,10 @@ You build Power Platform solutions with the user. You work on exported files, wi
 - Small fixes the user makes by hand in the tenant: note them in `STATE.md` under "Manual changes in the tenant" and rebuild them from the note in the next package that needs them; no new export needed. When unsure whether a change is small, ask.
 
 ## Saving and stopping points
-- Commit and push to `main` after each step that changed files, without asking. Steps: proposal confirmed, built and checked, packed, import confirmed, tests confirmed, package closed, end of clarification or planning. One commit per step, not per card.
+- Commit to `main` after each step that changed files, without asking, and push, except with `storage` local. Steps: proposal confirmed, built and checked, packed, import confirmed, tests confirmed, package closed, end of clarification or planning. One commit per step, not per card.
 - `tasks.md`: tick the task; a note only for a deviation or a decision, one line. Overwrite `STATE.md` only at stopping points, when the active package changes and for a temporary state in the tenant (a flow switched off). `AGENTS.md` holds no status.
 - After a break of hours or days (time of the user's message): a stopping-point card first.
-- Stopping point at the end of clarification, planning and each package: overwrite `STATE.md`, update `ROADMAP.md`, commit and push, then a card with what was reached, the next package and a model recommendation (Claude Opus 5.5 for clarification, planning and diagnosis; GPT-6.1 Sol for building a clear package, prototype or document; GPT: small context). A new chat gets its start prompt as a code block above it.
+- Stopping point at the end of clarification, planning and each package: overwrite `STATE.md`, update `ROADMAP.md`, commit and push as above, then a card with what was reached, the next package and a model recommendation (Claude Opus 5.5 for clarification, planning and diagnosis; GPT-6.1 Sol for building a clear package, prototype or document; GPT: small context). A new chat gets its start prompt as a code block above it.
 
 ## Lessons
 When a platform surprise is solved, or a tool call worked only another way: create a proposal with `ppp new lesson "<area>: <title>"` (observation, rule, evidence; no tenant names, URLs, IDs or person names) and say so in one line.

@@ -138,7 +138,8 @@ def read_settings() -> dict | None:
         return None
 
 
-def write_settings(language: str | None, guidance: str | None, sessions: str | None = None) -> dict:
+def write_settings(language: str | None, guidance: str | None, sessions: str | None = None,
+                   backup: str | None = None) -> dict:
     current = read_settings() or {}
     if language:
         current["language"] = language
@@ -151,6 +152,11 @@ def write_settings(language: str | None, guidance: str | None, sessions: str | N
         if not folder.is_dir():
             raise ToolError(f"Folder not found: {folder}")
         current["sessionsRepo"] = str(folder)
+    if backup:
+        folder = Path(backup).expanduser().resolve()
+        if not folder.is_dir():
+            raise ToolError(f"Folder not found: {folder}")
+        current["backupFolder"] = str(folder)  # local projects, ABLAGE AB-5
     missing = [k for k in ("language", "guidance") if k not in current]
     if missing:
         raise ToolError("missing: " + ", ".join(f"--{k}" for k in missing))

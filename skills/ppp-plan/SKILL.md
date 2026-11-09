@@ -16,4 +16,4 @@ The plan is `ROADMAP.md`: every package with number, goal and status (planned, a
 Done when every requirement of `specs/` belongs to a package and every package has a goal the user can test.
 
 ## Confirm and close
-Show the plan in the chat and confirm it with one decision card. Then the stopping point of planning: overwrite `STATE.md` (next step: package 001 with ppp-package), commit, push, stopping-point card with a model recommendation for building.
+Show the plan in the chat and confirm it with one decision card. Then the stopping point of planning: overwrite `STATE.md` (next step: package 001 with ppp-package), commit and push as the core rules say, stopping-point card with a model recommendation for building.

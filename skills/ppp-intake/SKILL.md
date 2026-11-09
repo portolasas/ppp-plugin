@@ -16,15 +16,15 @@ Ask on one round of cards, each with your recommendation:
 - modules: power-automate, power-apps, sharepoint, power-bi, copilot-studio;
 - mode: recommend **small** for a few flows or a single screen, **medium** for a typical solution (an app with 5–6 screens and 3–4 flows), **large** when several teams, many lists or a formal concept are involved; the user confirms;
 - language of handbook and training (the end users' language);
-- whether a GitHub repository exists, or whether you create one with `gh repo create` (private) after confirmation.
+- storage, where the project data lives: **GitHub** (private repository), **local folder** (git without a remote, no server, backups on request) or **Bitbucket** (in preparation: starts as local folder); recommend the storage of the user's other ppp projects. Each one's way: [references/storage.md](references/storage.md).
 
 Done when every fact has an answer and the mode is confirmed.
 
 ## 2. Create the structure
-1. `ppp init --name "<name>" --prefix <PREFIX> --modules <list> --mode <mode> --language <code>` in the project folder. Existing files stay untouched.
+1. `ppp init --name "<name>" --prefix <PREFIX> --modules <list> --mode <mode> --language <code> --storage <github|local>` in the project folder; Bitbucket takes `local`. Existing files stay untouched.
 2. Material the user hands over goes unchanged to `inputs/` (transcripts, SOPs, mails, presentations with their slide description `<name>.md`, data files). A Power BI report comes as PBIP into `components/power-bi/`, a `.pbix` is saved as PBIP by the user (skill ppp-power-bi).
 3. Write the purpose into `README.md` and the five lines into `AGENTS.md`.
-4. Set the remote, commit "Intake" and push.
+4. Save the start as references/storage.md says for the storage: GitHub with remote, commit "Intake" and push; local folder and Bitbucket with commit "Intake" and the backup folder of this computer.
 
 Done when `ppp check` reports no deviation.
 
@@ -37,4 +37,4 @@ Done when `ppp check` reports no deviation.
 Done when every component of the export appears in an inventory README and every inferred statement is either confirmed or listed as an assumption.
 
 ## 4. Hand over to clarification
-Overwrite `STATE.md`: mode, next step "clarification (ppp-clarify)", open questions. Commit and push. Continue with ppp-clarify in the same chat.
+Overwrite `STATE.md`: mode, next step "clarification (ppp-clarify)", open questions. Commit and push as the core rules say. Continue with ppp-clarify in the same chat.

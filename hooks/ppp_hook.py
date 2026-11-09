@@ -81,7 +81,8 @@ def session_start(data: dict, root: Path, tool: str) -> dict:
         config = {}
     head = [] if tool == "copilot" else [agent.body()]
     head += ["## This session",
-             f"- Project: {config.get('name', root.name)} in {root}",
+             f"- Project: {config.get('name', root.name)} in {root}"
+             + (" (storage local: commit, never pull or push; ppp backup on request)" if config.get("storage") == "local" else ""),
              f"- Tool call: {agent.tool_command()} <command>"]
     if settings:
         head.append(f"- Settings: language {settings.get('language')}, guidance {settings.get('guidance')}")

@@ -18,7 +18,7 @@ It works **offline from solution exports**. The agent has no tenant access, no c
 - VS Code with GitHub Copilot and agent plugins enabled, or Claude Code.
 - Python 3.10 or newer. On Windows `python` must start it from `PATH` (installer option "Add python.exe to PATH"): the hooks and the tool call run `python`, and with only the launcher `py` both reach the placeholder of the Microsoft Store. `python --version` in a new terminal shows it.
 - Power Platform CLI `pac` (in `PATH`, from the VS Code extension Power Platform Tools, or in `~/.dotnet/tools`).
-- git; a GitHub repository per project is recommended.
+- git. Each project chooses its storage at intake: a private GitHub repository, or a local folder without any server (git without a remote, backed up on request with `ppp backup` into a folder you choose, restored with `ppp restore`). Bitbucket is prepared.
 - In VS Code a model that follows the agent text: GPT-6.1 Sol for building, Claude Opus 5.5 for clarification, planning and diagnosis. Not GPT-6 Luna. GPT models with the small context size (272k) in the model picker: the long context costs double above 272k; Claude models cost the same in both.
 
 ## Quick start
@@ -64,7 +64,7 @@ What changed is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Project layout
 ```
-project.json          name, prefix, modules, mode, solutions
+project.json          name, prefix, modules, mode, storage, solutions
 STATE.md              where the work stands; read first in every session
 AGENTS.md             project rules for the agent
 ROADMAP.md            all packages with goal and status
@@ -77,7 +77,7 @@ inputs/, docs/, ...   material as handed over; handbook and training; created wh
 ```
 
 ## Data
-ppp keeps everything in your project folder and its git repository. Exports can contain personal data and tenant details; keep project repositories private. The plugin itself holds no tenant, personal or customer data. Session logs leave the computer only when you ask for an upload, and only to the repository you name (`ppp settings --sessions <clone>`); keep it private.
+ppp keeps everything in your project folder and its git repository. Exports can contain personal data and tenant details; keep project repositories private, or choose the local folder, which stores no project data on GitHub. Backups of a local project go only to the folder you set (`ppp settings --backup <folder>`). The plugin itself holds no tenant, personal or customer data. Session logs leave the computer only when you ask for an upload, only to the repository you name (`ppp settings --sessions <clone>`), and only for projects on GitHub; keep it private.
 
 ## More
 - [CHANGELOG.md](CHANGELOG.md): versions and changes.

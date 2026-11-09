@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import VERSION, canvas, flows, gitutil, pbi, solution, structure, walk
+from . import VERSION, canvas, flows, gitutil, pbi, solution, storage, structure, walk
 from .project import ToolError, find_root, load_config, solution_dir
 from .report import Report
 from .verify import verify
@@ -412,7 +412,7 @@ def _word_fields(target: Path) -> int:
 def cmd_init(a) -> int:
     root = Path(a.folder).resolve() if a.folder else Path.cwd()
     modules = _split(a.modules)
-    lines = structure.init(root, a.name, a.prefix, modules, a.mode, a.language, a.solution or None)
+    lines = structure.init(root, a.name, a.prefix, modules, a.mode, a.language, a.solution or None, a.storage)
     print("\n".join(lines))
     rep = structure.check(root)
     print(rep.text())
@@ -427,12 +427,12 @@ def cmd_setup(a) -> int:
 
 def cmd_settings(a) -> int:
     from . import agent
-    if not a.language and not a.guidance and not a.sessions:
+    if not a.language and not a.guidance and not a.sessions and not a.backup:
         current = agent.read_settings()
         print(f"{agent.SETTINGS}: {current}" if current else f"{agent.SETTINGS} is missing. "
               "Set it with --language <code> --guidance beginner|standard|experienced.")
         return 0
-    print(f"Saved {agent.SETTINGS}: {agent.write_settings(a.language, a.guidance, a.sessions)}")
+    print(f"Saved {agent.SETTINGS}: {agent.write_settings(a.language, a.guidance, a.sessions, a.backup)}")
     return 0
 
 
@@ -443,6 +443,22 @@ def cmd_check(a) -> int:
     rep = structure.check(root, update, agent.agent_note())
     print(rep.text())
     return 1 if rep.errors else 0
+
+
+def cmd_storage(a) -> int:
+    print("\n".join(storage.switch(find_root(a.project), a.kind, a.remote or None)))
+    return 0
+
+
+def cmd_backup(a) -> int:
+    root = find_root(a.project)
+    print("\n".join(storage.listing(root) if a.list else storage.backup(root)))
+    return 0
+
+
+def cmd_restore(a) -> int:
+    print("\n".join(storage.restore(Path(a.source), Path(a.target))))
+    return 0
 
 
 def cmd_migrate(a) -> int:
@@ -661,11 +677,36 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--mode", default="medium", choices=structure.MODES)
     c.add_argument("--language", default="de", help="language of handbook and training (default de)")
     c.add_argument("--solution", default="", help="unique name of the main solution, if it exists already")
+    c.add_argument("--storage", required=True, choices=storage.STORAGES,
+                   help="where the project lives: github (git with a remote, pushed) or local (git without a remote, "
+                        "backed up with ppp backup); bitbucket is prepared and starts as local (ABLAGE AB-6)")
     c.set_defaults(func=cmd_init)
 
-    command("check", cmd_check, "Report deviations from the project structure (target: none) and an old agent copy "
-                                "that hides the agent of the plugin; updates the ppp clone (git pull --ff-only) when it "
-                                "is behind its upstream and clean; creates a missing exchange/.", False)
+    command("check", cmd_check, "Report deviations from the project structure (target: none), the storage with its "
+                                "remote and, for a local project, the backup reminder, and an old agent copy that hides "
+                                "the agent of the plugin; updates the ppp clone (git pull --ff-only) when it is behind "
+                                "its upstream and clean; creates a missing exchange/.", False)
+
+    c = command("storage", cmd_storage, "Show the storage of the project (github, bitbucket, local), or switch it: set or "
+                                        "remove the remote origin and write project.json. Never pushes: the first "
+                                        "push after a switch to github or bitbucket follows a card.", False)
+    c.add_argument("kind", nargs="?", choices=storage.STORAGES, default=None, help="new storage (default: show it)")
+    c.add_argument("--remote", default="", help="address of the empty repository on GitHub or Bitbucket")
+
+    c = command("backup", cmd_backup, "Back up a local project on request: the whole git history as one checked bundle "
+                                      "<prefix>_<time>_<commit>.bundle in <backupFolder>/<prefix>/ (ppp settings "
+                                      "--backup); only without uncommitted changes, none when nothing is new; the "
+                                      "newest 10 stay.", False)
+    c.add_argument("--list", action="store_true", help="list the backups with time, size and commit instead")
+
+    c = sub.add_parser("restore", help="Restore a backup into a new folder; never overwrites.",
+                       description="Clone a backup bundle, or the newest one in a folder, into a new folder, remove the "
+                                   "remote that points to the bundle and create exchange/. Never overwrites a project; "
+                                   "an older single state comes from the project's own history (git restore --source).",
+                       epilog=EPILOG)
+    c.add_argument("source", help="a .bundle file, or the project's folder inside the backup folder (takes the newest)")
+    c.add_argument("target", help="new or empty folder for the restored project")
+    c.set_defaults(func=cmd_restore)
 
     c = sub.add_parser("setup", help="Remove an old agent copy (~/.copilot/agents/ppp.agent.md) and show the installation entries.",
                        description="Remove the agent copy of ppp before 0.2.0 (~/.copilot/agents/ppp.agent.md), which hides "
@@ -674,12 +715,15 @@ def build_parser() -> argparse.ArgumentParser:
     c.set_defaults(func=cmd_setup)
     c = sub.add_parser("settings", help="Show or save the personal settings (~/.ppp/settings.json).",
                        description="Show or save the personal settings in ~/.ppp/settings.json: language of chat and cards, "
-                                   "guidance level, folder of the sessions repository.", epilog=EPILOG)
+                                   "guidance level, folder of the sessions repository, backup folder.", epilog=EPILOG)
     c.add_argument("--language", default="", help="language of chat and cards, e.g. de or en")
     c.add_argument("--guidance", default="", help="beginner, standard or experienced")
     c.add_argument("--sessions", default="", help="folder of the clone of the private sessions repository (ppp sessions)")
+    c.add_argument("--backup", default="", help="backup folder for local projects, outside this computer's disk "
+                                                "(OneDrive, a network drive); one subfolder per prefix (ppp backup)")
     c.set_defaults(func=cmd_settings)
-    command("migrate", cmd_migrate, "Bring the project to the current structure version.", False)
+    command("migrate", cmd_migrate, "Bring the project to the current structure version (2: storage in "
+                                    "project.json, taken from the remote origin).", False)
 
     c = command("new", cmd_new, "Create a file from a template with the next free number.", False)
     c.add_argument("kind", choices=("package", "design", "decision", "spec", "spec-delta", "lesson"),

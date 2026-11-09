@@ -2,6 +2,14 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.21.0 (2026-11-09)
+- Ablage je Projekt (entwurf/ABLAGE.md): project.json hat storage (github, bitbucket, local), Strukturversion 2; bestehende Projekte einmal mit ppp migrate nachziehen, es trägt die Ablage aus dem Remote ein
+- Ordner-Weg ohne Server: lokales Git ohne Remote, Commit nach jedem Schritt ohne Pull und Push; ppp init --storage local; ppp check meldet ein Remote als Fehler und warnt bei einem Ordner-Projekt in OneDrive, iCloud Drive, Dropbox oder Google Drive
+- ppp backup sichert auf Zuruf den ganzen Verlauf als geprüftes Git-Bundle in den Sicherungsordner (ppp settings --backup), die letzten 10 bleiben, ppp backup --list zeigt sie; ppp check erinnert nach 7 Tagen; ppp restore stellt in einen neuen Ordner wieder her
+- ppp storage zeigt und wechselt die Ablage, setzt oder entfernt das Remote und pusht nie; Bitbucket vorbereitet: neue Projekte beginnen bis zur Anbindung im Ordner-Weg
+- ppp sessions lädt nur Chats aus GitHub-Projekten und nennt die übrigen als übersprungen
+- Kernregeln: kein git pull und kein Push bei storage local; ppp-intake fragt die Ablage ab (references/storage.md); SessionStart nennt die lokale Ablage
+
 ## 0.20.1 (2026-11-07)
 - ppp-docs: Schritt 6 verlangt references/guide.md vor dem ersten Bau aus dem Handbuch (Verhaltenstest 07.11.: der Agent las sie sonst nicht)
 - ppp-docs references/deck.md nennt --bippt
