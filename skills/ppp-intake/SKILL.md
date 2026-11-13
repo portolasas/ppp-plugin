@@ -17,11 +17,14 @@ Ask on one round of cards, each with your recommendation:
 - mode: recommend **small** for a few flows or a single screen, **medium** for a typical solution (an app with 5–6 screens and 3–4 flows), **large** when several teams, many lists or a formal concept are involved; the user confirms;
 - language of handbook and training (the end users' language);
 - storage, where the project data lives: **GitHub** (private repository), **local folder** (git without a remote, no server, backups on request) or **Bitbucket** (in preparation: starts as local folder); recommend the storage of the user's other ppp projects. Each one's way: [references/storage.md](references/storage.md).
+- tenant: **offline** (the user exports and imports by hand, guided by cards) or **connected** to one environment, which `ppp` then exports from and imports into itself. Connected needs pac signed in on this computer; the environment is named by its display name (default "Citizen Developments"). Recommend what the user's other ppp projects use;
+- publisher of the solution: show the one from `ppp settings` for confirmation. Without one, ask on the same card: does the user already have a publisher (take it from an existing solution with `ppp settings --publisher-from solution/<Name>`, or name its four values), or is a new one needed (fix the values, then `ppp settings --publisher-name … --publisher-prefix … --publisher-option-prefix …`)? Rules: [../ppp-package/references/solutions.md](../ppp-package/references/solutions.md), "Publisher". With an existing solution it comes from its export (step 3);
+- only when connected: the card before an import, **before every import** (recommended) or **only on a deviation** in the tenant and on a first import.
 
 Done when every fact has an answer and the mode is confirmed.
 
 ## 2. Create the structure
-1. `ppp init --name "<name>" --prefix <PREFIX> --modules <list> --mode <mode> --language <code> --storage <github|local>` in the project folder; Bitbucket takes `local`. Existing files stay untouched.
+1. `ppp init --name "<name>" --prefix <PREFIX> --modules <list> --mode <mode> --language <code> --storage <github|local> --publisher <UniqueName>` in the project folder (the publisher defaults to the one in the settings); Bitbucket takes `local`. Existing files stay untouched. Connected: add `--environment "<display name>" --confirm-import <yes|no>`, then run `ppp connect`; it finds the environment's address and says which solutions are online. For an existing solution `ppp connect` takes `--role test` when the user calls it a test environment and `--in-use yes` when the solution is in productive use there. When `ppp connect` ends with `AUTH`, ask on a card: the user signs in (`pac auth create` in a terminal), or the project starts offline (`ppp connect --off`).
 2. Material the user hands over goes unchanged to `inputs/` (transcripts, SOPs, mails, presentations with their slide description `<name>.md`, data files). A Power BI report comes as PBIP into `components/power-bi/`, a `.pbix` is saved as PBIP by the user (skill ppp-power-bi).
 3. Write the purpose into `README.md` and the five lines into `AGENTS.md`.
 4. Save the start as references/storage.md says for the storage: GitHub with remote, commit "Intake" and push; local folder and Bitbucket with commit "Intake" and the backup folder of this computer.
@@ -29,7 +32,7 @@ Done when every fact has an answer and the mode is confirmed.
 Done when `ppp check` reports no deviation.
 
 ## 3. Existing solution (only this branch)
-1. Ask for a fresh solution export (tenant-step card: Solutions › the solution › Export › Unmanaged; file into `exchange/`). `ppp unpack exchange/<file>.zip` unpacks, registers the solution and commits it.
+1. Ask for a fresh solution export (tenant-step card: Solutions › the solution › Export › Unmanaged; file into `exchange/`). `ppp unpack exchange/<file>.zip` unpacks, registers the solution and commits it. Connected: `ppp export --solution <UniqueName>` does all of this without a card. Without a stored publisher take it from the solution: `ppp settings --publisher-from solution/<Name>`.
 2. `ppp inventory` gives every flow compactly; read only the line ranges you need. Fill the inventory READMEs in `components/` and one `components/power-automate/<flow>.md` per flow (purpose, inputs and outputs, sequence, error handling).
 3. An app inside the solution: its screens come into `components/power-apps/screens/` only when they are rebuilt; note the app in the inventory now.
 4. Derive first drafts of `specs/` from export and material. Mark everything you inferred as an assumption in `STATE.md` under "Open questions and assumptions to confirm".

@@ -44,3 +44,13 @@ components/power-bi/
 - Report-level measures live in `reportExtensions.json`. [D]
 - Filter values, slicer selections and series formatting carry data values into `visual.json` and bookmarks; check them before a commit when the data is confidential. [D]
 - A copied bookmark keeps only the visuals that exist on its page. [D]
+- An AppSource visual is listed in `publicCustomVisuals` of `report.json`; its `visualType` is the GUID and the query roles are the names of its `capabilities.json` (public repository). Whether Desktop takes hand-written objects of such a visual: [O]; see [visuals.md](visuals.md).
+
+## Copy of a project (prototype)
+To try a change without touching the report in use, copy the project and rewire it: [B 11.11., by text, Desktop open]
+1. Copy `<Name>.pbip`, `<Name>.Report/` and `<Name>.SemanticModel/` to the new name, without `.pbi/cache.abf` and `localSettings.json`.
+2. In the `.pbip` the report path, in `definition.pbir` the model path `../<New>.SemanticModel`.
+3. In both `.platform` files `displayName` and a new `logicalId` (GUID).
+4. A new table needs its file in `definition/tables/` and a line `ref table <Name>` in `model.tmdl`; a new page its folder and an entry in `pages/pages.json` (`pageOrder`, optionally `activePageName`).
+5. Keep the line endings of each file as they are; on Windows write files as bytes, not in text mode.
+6. `ppp pbi check` on the copy reports exactly the findings of the original.

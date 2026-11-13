@@ -11,9 +11,9 @@ import stat
 from datetime import date
 from pathlib import Path
 
-from . import gitutil, storage
+from . import gitutil, solution, storage
 from . import walk as walkfile
-from .project import ToolError
+from .project import ToolError, check_publisher_name
 from .report import Report
 
 STRUCTURE_VERSION = 2  # 2 since 09.11.: storage in project.json (ABLAGE AB-9)
@@ -22,7 +22,12 @@ MODULES = ("power-automate", "power-apps", "sharepoint", "power-bi", "copilot-st
 MODES = ("small", "medium", "large")
 TRAINING_FORMATS = ("word", "powerpoint", "both")  # optional; ppp-docs asks before the documents for users are built
 ROLES = ("main", "transfer", "read-only")
-CORE_FILES = ("README.md", "AGENTS.md", "CLAUDE.md", "STATE.md", "ROADMAP.md", "project.json")
+# A connected project (VERBUNDEN VB-1, VB-2, VB-11): project.json names its environment by an alias, and
+# environments/<alias>.json says where it is, what it is for and whether the solution is in productive use there
+ENVIRONMENT_ROLES = ("development", "test", "production")
+ALIAS = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+ENVIRONMENT_URL = re.compile(r"https://[A-Za-z0-9.-]+/?")
+CORE_FILES =("README.md", "AGENTS.md", "CLAUDE.md", "STATE.md", "ROADMAP.md", "project.json")
 CORE_DIRS = ("specs", "changes", "changes/archive", "decisions", "components", "solution")
 OPTIONAL_DIRS = ("exchange", "inputs", "environments", "tests", "prototype", "lessons", "docs", "legacy")
 DOCS_DIRS = ("handbook", "training", "six-sigma", "project")
@@ -59,11 +64,16 @@ def slug(title: str) -> str:
 
 # ------------------------------------------------------------------ init
 def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, language: str,
-         solution: str | None, kind: str = "github") -> list[str]:
-    """Create the missing core of a project with its storage (ABLAGE AB-1); existing files stay untouched. Returns the
-    lines to print."""
+         solution: str | None, kind: str = "github", environment: str | None = None, confirm_import: bool = True,
+         publisher: str | None = None) -> list[str]:
+    """Create the missing core of a project with its storage (ABLAGE AB-1); existing files stay untouched. With the
+    display name of an environment the project is connected to it (VERBUNDEN VB-1 to VB-3); without one it is offline.
+    With the unique name of the Publisher project.json names it (the four values are in ~/.ppp/settings.json).
+    Returns the lines to print."""
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", prefix):
         raise ToolError(f"Prefix must be letters and digits, starting with a letter: {prefix}")
+    if publisher:
+        check_publisher_name(publisher)
     unknown = [m for m in modules if m not in MODULES]
     if unknown:
         raise ToolError(f"Unknown modules {unknown}; known: {', '.join(MODULES)}")
@@ -76,8 +86,10 @@ def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, lang
     root.mkdir(parents=True, exist_ok=True)
     if (root / "project.json").exists():
         raise ToolError(f"{root / 'project.json'} exists already; this is a ppp project. Use ppp check.")
-    config = {"structureVersion": STRUCTURE_VERSION, "name": name, "prefix": prefix, "mode": mode, "storage": kind,
-              "modules": modules,
+    alias = slug(environment) if environment else None
+    config = {"structureVersion": STRUCTURE_VERSION, "name": name, "prefix": prefix,
+              **({"publisher": publisher} if publisher else {}), "mode": mode, "storage": kind,
+              **({"environment": alias, "confirmImport": confirm_import} if alias else {}), "modules": modules,
               "solutions": [{"uniqueName": solution, "role": "main"}] if solution else [], "handbookLanguage": language}
     module_lines = "\n".join(f"  - {m}: [components/{m}/README.md](components/{m}/README.md)" for m in modules) or "  - none yet"
     values = {"name": name, "mode": mode, "module_lines": module_lines}
@@ -93,6 +105,9 @@ def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, lang
         created.append(rel)
 
     write("project.json", json.dumps(config, indent=2, ensure_ascii=False) + "\n")
+    if alias:  # the environment the work starts in; its address comes from the tenant, the plugin holds none
+        write(f"environments/{alias}.json", json.dumps({"name": environment, "role": "development", "inUse": False},
+                                                       indent=2, ensure_ascii=False) + "\n")
     for tpl in sorted((TEMPLATES / "project").iterdir()):
         target = {"gitignore": ".gitignore", "gitattributes": ".gitattributes"}.get(tpl.name, tpl.name)
         write(target, fill(tpl.read_text(encoding="utf-8"), values))
@@ -115,6 +130,10 @@ def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, lang
         out.append("Storage local: git without a remote; commit after each step, never push. Back up on request with "
                    "ppp backup" + ("." if storage.backup_folder(config) else
                                    "; no backup folder yet: ask for one on a card, ppp settings --backup <folder>."))
+    if alias:
+        out.append(f"Connected to the environment {environment}: environments/{alias}.json with role development, not in use; "
+                   "its address (environmentUrl) is still missing. Card before each import: "
+                   + ("always." if confirm_import else "only on a deviation in the tenant."))
     return out
 
 
@@ -158,10 +177,63 @@ def _validate_config(config: dict, rep: Report) -> None:
             rep.error(f"S project.json: storage {config['storage']!r} is not one of {', '.join(storage.STORAGES)}")
     if "trainingFormat" in config and config["trainingFormat"] not in TRAINING_FORMATS:
         rep.error(f"S project.json: trainingFormat {config['trainingFormat']!r} is not one of {', '.join(TRAINING_FORMATS)}")
+    # optional, without a new structure version (like trainingFormat): a project without environment is offline
+    if "environment" in config and not (isinstance(config["environment"], str) and ALIAS.fullmatch(config["environment"])):
+        rep.error(f"S project.json: environment {config['environment']!r} is not an alias of lower-case letters, digits and "
+                  "hyphens (the name of its file in environments/)")
+    # optional, without a new structure version: the unique name of the Publisher of the solutions (its four values are
+    # kept once per computer in ~/.ppp/settings.json); the prefix above is the project's own, not the Publisher's
+    if "publisher" in config:
+        try:
+            check_publisher_name(config["publisher"])
+        except ToolError:
+            rep.error(f"S project.json: publisher {config['publisher']!r} is not the unique name of a Publisher: a text of "
+                      "letters, digits and underscores, not starting with a digit")
+    if "confirmImport" in config:
+        if not isinstance(config["confirmImport"], bool):
+            rep.error("S project.json: confirmImport must be true or false")
+        elif "environment" not in config:
+            rep.error("S project.json: confirmImport needs environment; a project without environment is offline")
     extra = set(config) - {"structureVersion", "name", "prefix", "mode", "storage", "modules", "solutions",
-                           "handbookLanguage", "trainingFormat"}
+                           "handbookLanguage", "trainingFormat", "environment", "confirmImport", "publisher"}
     if extra:
         rep.error("S project.json: unknown fields " + ", ".join(sorted(extra)))
+
+
+def _environments(root: Path, config: dict, rep: Report) -> None:
+    """environments/<alias>.json holds the IDs of an environment as the project needs them. Three keys have a fixed
+    meaning: environmentUrl, role and inUse. The file of the environment a connected project names must have role
+    and inUse; its address may still be missing."""
+    alias = config.get("environment") if isinstance(config.get("environment"), str) else None
+    folder = root / "environments"
+    files = {p.stem: p for p in sorted(folder.glob("*.json"))} if folder.is_dir() else {}
+    if alias and alias not in files:
+        rep.error(f"S environments/{alias}.json missing: project.json names {alias} as the environment of this project")
+    for name, path in files.items():
+        where = f"S environments/{path.name}"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
+        except ValueError as ex:
+            rep.error(f"{where} is not valid JSON: {ex}")
+            continue
+        if not isinstance(data, dict):
+            rep.error(f"{where} must be a JSON object")
+            continue
+        own, before = name == alias, rep.errors
+        if ("role" in data or own) and data.get("role") not in ENVIRONMENT_ROLES:
+            rep.error(f"{where}: role must be one of {', '.join(ENVIRONMENT_ROLES)}")
+        if ("inUse" in data or own) and not isinstance(data.get("inUse"), bool):
+            rep.error(f"{where}: inUse must be true or false (true: the solution is in productive use there)")
+        url = data.get("environmentUrl")
+        if url is not None and not (isinstance(url, str) and ENVIRONMENT_URL.fullmatch(url)):
+            rep.error(f"{where}: environmentUrl must be the address of the environment, https://<name>.crm<n>.dynamics.com")
+        elif url is None and own:
+            rep.warn(f"{where}: environmentUrl missing; nothing reaches the tenant until the address of the environment is known")
+        if own and rep.errors == before:
+            confirm = config.get("confirmImport", True) or data["inUse"]
+            rep.info(f"S connected project: environment {alias}, role {data['role']}" + (", in productive use" if data["inUse"] else "")
+                     + f"; card before each import: {'always' if confirm else 'only on a deviation in the tenant'}. Never call pac "
+                       "against the tenant yourself: only ppp connect, export, import and tenant reach it.")
 
 
 def _numbered(entries: list[str], where: str, rep: Report, suffix: str = "") -> None:
@@ -230,7 +302,35 @@ def remove_leftovers(root: Path, dry_run: bool = False) -> list[str]:
     return out
 
 
-def check(root: Path, *notes: str | None) -> Report:
+def _publisher(root: Path, config: dict, in_settings: str | None, rep: Report) -> None:
+    """The Publisher in project.json against the unpacked solutions of the project and against the settings of this
+    computer; at most one line for each. Silent when the settings have none (the session start says so)."""
+    named = config.get("publisher") if isinstance(config.get("publisher"), str) and config.get("publisher") else None
+    found = []  # (solution, unique name of its Publisher), in the order of project.json
+    for entry in config.get("solutions") or []:
+        name = entry.get("uniqueName") if isinstance(entry, dict) else None
+        if isinstance(name, str) and name and (root / "solution" / name / solution.SOLUTION_XML).is_file():
+            try:
+                publisher = solution.read_publisher(root / "solution" / name)
+            except (ToolError, OSError):
+                continue
+            if publisher:
+                found.append((name, publisher["uniqueName"]))
+    if "publisher" not in config and found:
+        rep.info(f"S solution/{found[0][0]} has the Publisher {found[0][1]}, project.json names none: add "
+                 f'"publisher": "{found[0][1]}" to project.json')
+    elif named:
+        other = [(n, p) for n, p in found if p != named]
+        if other:
+            rep.warn(f"S solution/{other[0][0]} has the Publisher {other[0][1]}, project.json names {named}"
+                     + (f" (and {len(other) - 1} more solutions with another Publisher)" if len(other) > 1 else "")
+                     + ": fix the publisher in project.json, or the solution was created under the wrong Publisher")
+        if in_settings and in_settings != named:
+            rep.info(f"S project.json names the Publisher {named}, the settings of this computer {in_settings}: the project's "
+                     "publisher stands for this project (ppp settings --publisher-name changes the settings)")
+
+
+def check(root: Path, *notes: str | None, settings_publisher: str | None = None) -> Report:
     rep = Report(f"ppp check | {root.name} | structure version {STRUCTURE_VERSION}")
     try:
         config = json.loads((root / "project.json").read_text(encoding="utf-8-sig"))
@@ -276,6 +376,8 @@ def check(root: Path, *notes: str | None) -> Report:
     for name in OPTIONAL_DIRS:
         if (root / name).exists() and not (root / name).is_dir():
             rep.error(f"S {name} must be a folder")
+    if config:
+        _environments(root, config, rep)
 
     # components/
     modules = [m for m in config.get("modules") or [] if m in MODULES]
@@ -332,6 +434,9 @@ def check(root: Path, *notes: str | None) -> Report:
         for n in names:
             if n and not (sol / n).is_dir():
                 rep.info(f"S solution/{n}: not exported yet")
+
+    if config:
+        _publisher(root, config, settings_publisher, rep)
 
     # docs/
     docs = root / "docs"

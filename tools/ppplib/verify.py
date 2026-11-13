@@ -5,7 +5,7 @@ Flow checks C7–C13 run on changed flows; with check_all on every flow.
 """
 from __future__ import annotations
 
-import hashlib
+import html
 import json
 import re
 import xml.dom.minidom
@@ -24,8 +24,40 @@ CHANGE_VARIABLE = SET_VARIABLE + ("IncrementVariable", "DecrementVariable")
 SOLUTION_XML = "Other/Solution.xml"
 
 
-def _sha(b: bytes) -> str:
-    return hashlib.sha256(b).hexdigest()
+VOLATILE = re.compile(r"CanvasApps/[^/]+\.meta\.xml")
+
+
+def stable(name: str, data: bytes) -> bytes:
+    """The content of a file that counts as a change. In CanvasApps/<app>.meta.xml the server writes three values anew
+    on every export and import, while the .msapp and the flows stay byte-identical (pac test 12.11., VERBUNDEN VB-9):
+    the text of AppVersion, workflowName under parameterHints and parameterHintsV2, every iconUri. They are blanked
+    here; everything else counts. JSON inside an element is read; if it cannot be read, the element stays as it is
+    and a difference in it counts."""
+    if not VOLATILE.fullmatch(name):
+        return data
+
+    def blank(node) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "iconUri":
+                    node[key] = ""
+                elif key in ("parameterHints", "parameterHintsV2") and isinstance(value, dict) and isinstance(value.get("workflowName"), dict):
+                    value["workflowName"]["value"] = ""
+                blank(node[key])
+        elif isinstance(node, list):
+            for value in node:
+                blank(value)
+
+    def element(m: re.Match) -> bytes:
+        try:
+            content = json.loads(html.unescape(m.group(3).decode("utf-8")))
+        except ValueError:
+            return m.group(0)
+        blank(content)
+        return m.group(1) + json.dumps(content, sort_keys=True, ensure_ascii=False).encode("utf-8") + m.group(4)
+
+    data = re.sub(rb"(<AppVersion>)[^<]*(</AppVersion>)", rb"\1\2", data)
+    return re.sub(rb"(<(\w+)>)\s*([\[{].*?[\]}])\s*(</\2>)", element, data, flags=re.S)
 
 
 def _bom(b: bytes) -> bool:
@@ -286,9 +318,13 @@ def verify(root: Path, folder: Path, base: str, *, allowed: list[str] | None = N
     if not bad:
         rep.ok("C2/C3 all JSON and XML files parsable")
 
-    # C4 changed files
-    changed = [f for f in current if f in base_data and _sha(data[f]) != _sha(base_data[f])]
+    # C4 changed files; the values the server rewrites in an app's metadata are no change (stable)
+    changed = [f for f in current if f in base_data and stable(f, data[f]) != stable(f, base_data[f])]
     rep.info(f"C4 changed files ({len(changed)}): " + (", ".join(changed) or "-"))
+    volatile = [f for f in current if f in base_data and data[f] != base_data[f] and f not in changed]
+    if volatile:
+        rep.info("C4 not counted, only values the server rewrites differ (AppVersion, workflowName hints, iconUri): "
+                 + ", ".join(volatile))
     if allowed:
         # C4 names files relative to the solution; a bare file name released nothing (SOL-20261025-WIN-01)
         released = set()

@@ -2,7 +2,9 @@
 the other packages built with ppp pack and the older exports of each solution are deleted, everything else is listed.
 
 Deleting is safe for these files only: every package can be rebuilt from its commit and every unpacked export is in
-git (PROJEKTSTRUKTUR S-3). exchange/archive/ itself is never touched.
+git (PROJEKTSTRUKTUR S-3). exchange/archive/ itself is never touched, and neither is exchange/tenant/: there a connected
+project keeps the backup taken before an import and the record of its imports (VERBUNDEN VB-12, VB-14), which no commit
+can rebuild.
 """
 from __future__ import annotations
 
@@ -13,9 +15,10 @@ import stat
 import zipfile
 from pathlib import Path
 
-from .project import ToolError, load_config, solution_with_role
+from .project import ToolError, load_config, package_solution
 from .solution import zip_manifest
 
+UNTOUCHED = ("archive", "tenant")
 PACKAGE = re.compile(r"^(?P<stem>.+)_IMPORTABLE\.zip$", re.I)
 REPORT = re.compile(r"^(?P<stem>.+)_REPORT\.md$", re.I)
 
@@ -55,7 +58,7 @@ def tidy(root: Path, keep: list[str] | None = None, dry_run: bool = False) -> li
     archive = exchange / "archive"
     if not exchange.is_dir():
         raise ToolError(f"No exchange/ in {root}.")
-    entries = sorted(p for p in exchange.iterdir() if not p.name.startswith(".") and p.name != "archive")
+    entries = sorted(p for p in exchange.iterdir() if not p.name.startswith(".") and p.name not in UNTOUCHED)
     packages, exports, reports, other = {}, {}, {}, []
     for p in entries:
         m = REPORT.match(p.name)
@@ -83,9 +86,8 @@ def tidy(root: Path, keep: list[str] | None = None, dry_run: bool = False) -> li
         if missing:
             raise ToolError("Not a package in exchange/: " + ", ".join(sorted(missing)))
     else:
-        config = load_config(root)
-        name = solution_with_role(config, "transfer") or solution_with_role(config, "main")
-        own = [(version, stem) for stem, (unique, version, _) in packages.items() if unique == name]
+        name = package_solution(load_config(root))
+        own =[(version, stem) for stem, (unique, version, _) in packages.items() if unique == name]
         if not own:
             raise ToolError(f"No package of {name or 'the package solution'} in exchange/; name the imported one with --keep. "
                             "A package of screens only imported no ZIP: skip tidy.")

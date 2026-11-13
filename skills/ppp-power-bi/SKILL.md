@@ -20,3 +20,4 @@ Status per statement: **[B]** observed in the tenant, **[D]** documentation, not
 | PBIP: folders, TMDL and PBIR rules, external editing, pitfalls | [references/pbip.md](references/pbip.md) |
 | Sources, refresh, visuals, embedding, licences, tests | [references/reports.md](references/reports.md) |
 | Time: UTC, conversion Europe/Berlin, shifts, data state | [references/time.md](references/time.md) |
+| Gantt and timelines: choice of visual, segment table, Deneb, local preview | [references/visuals.md](references/visuals.md) |

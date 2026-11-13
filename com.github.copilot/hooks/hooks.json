@@ -24,6 +24,14 @@
         "windows": "python -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact copilot",
         "timeout": 15
       }
+    ],
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreToolUse copilot",
+        "windows": "python -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreToolUse copilot",
+        "timeout": 15
+      }
     ]
   }
 }

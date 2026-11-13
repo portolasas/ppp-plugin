@@ -9,7 +9,7 @@ The plan is `ROADMAP.md`: every package with number, goal and status (planned, a
 
 ## Cut the packages
 1. **Size by mode**: small, usually one package; medium, a few; large, a rough plan with sections, detailed plans per section when it begins.
-2. **Order by dependency**: lists and setup flow first (SharePoint), then the flows that write, then the app and the flows it calls, then reports. Scaffolds the user creates in the tenant (an empty flow with its trigger and one action per connector, an empty app, the solution) belong to the first package that needs them.
+2. **Order by dependency**: lists and setup flow first (SharePoint), then the flows that write, then the app and the flows it calls, then reports. Scaffolds the user creates in the tenant (an empty flow with its trigger and one action per connector, an empty app, the solution with its publisher, ppp-package step 2) belong to the first package that needs them.
 3. **One package = one import the user can test.** It ends with critical scenarios the user can check in a few minutes. A package that would need a long test is two packages.
 4. Each line: number (`001`, `002`, …), short name, goal in one sentence, status "planned".
 

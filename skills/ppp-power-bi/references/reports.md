@@ -11,7 +11,7 @@
 
 ## Visuals and embedding
 - Standard visuals first; custom visuals only if the tenant allows them.
-- Deneb (Vega-Lite) for special charts such as Gantt: specification as JSON file, field names as in the spec, mind the row limit of the visual [D]. Inside an app a Gantt view is better built in the app (skill ppp-power-apps, layout).
+- Deneb (Vega or Vega-Lite) for special charts such as Gantt and timelines: choice of the visual, segment table, Deneb facts and local preview in [visuals.md](visuals.md). Inside an app a Gantt view is better built in the app (skill ppp-power-apps, layout).
 - Brand: the theme JSON from the skill bi-designer.
 - The Power Apps "Power BI tile" shows a pinned dashboard tile, not a whole report page; open the report through a link. [D]
 - Viewers need Pro or PPU unless the workspace runs on Premium P or Fabric F64 and above; smaller F SKUs still need Pro. [D]
@@ -23,4 +23,5 @@
 | Row counts | table rows = source rows after the filters |
 | Time | a night of the clock change (last Sunday of March or October) shows 7 h or 9 h without a 1–2 h shift, in the service |
 | Values | page values = the expectation file of the reference calculation |
+| Special visual | same records as the existing visual under the same slicer; net and gross durations explained for one record over the off-time |
 | Access | a viewer without edit rights sees the report |

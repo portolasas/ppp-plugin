@@ -1,4 +1,4 @@
-"""Hooks of ppp (PLUGIN PL-12): SessionStart, Stop, PreCompact. Only in ppp projects (project.json).
+"""Hooks of ppp (PLUGIN PL-12): SessionStart, Stop, PreCompact, PreToolUse. Only in ppp projects (project.json).
 Each tool has its own hook file that names it (PL-5, PL-18): hooks/hooks.json passes `claude` for Claude Code,
 com.github.copilot/hooks/hooks.json passes `copilot` for VS Code, which runs them in the Agents view (agent host);
 in the session target Local the policy ChatHooks switches them off (PL-16).
@@ -8,12 +8,17 @@ SessionStart  core rules (only Claude Code; in VS Code the plugin agent ppp brin
               at the top level, for Claude Code in hookSpecificOutput. Keeps the tool call in ~/.ppp/tool-call.txt.
 Stop          card guard: a question in plain text sends the agent back once (A-10); usage note per session (PL-13).
 PreCompact    tells the user to save the state and start a new chat; the model gets nothing.
+PreToolUse    in a connected project (project.json names an environment) refuses a command line that calls pac itself;
+              the tenant is reached through ppp only (VERBUNDEN VB-17). It reads the command line and nothing else: it
+              catches the habit, not every detour. For a direct call it is the only technical guard; the allowlist in
+              ppplib/tenant.py protects the calls ppp makes itself, a direct pac call of the agent goes past it.
 A hook never blocks because of its own error: when in doubt it lets the turn pass.
 Call: python -I ppp_hook.py <event> <copilot|claude>, hook input as JSON on stdin (keys in snake_case or camelCase).
 """
 from __future__ import annotations
 
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +30,20 @@ TOOLS = {"copilot": "copilot", "claude": "claude-code"}  # argument of the hook 
 # Sections of STATE.md that go first when it does not fit; the manual changes stand near the end of the template and were
 # the first to be cut (review 07.11.: in Claude Code about 3,000 characters remain beside the core rules).
 FIRST = ("Active package", "Next step", "Manual changes in the tenant")
+# pac where a shell takes its command from: at the start, after a separator, after a shell keyword (do, then, else, !),
+# after a wrapper such as cmd /c, bash -lc, xargs, iex or dotnet tool run; by name or by path, quoted or not. A word pac
+# further back (an argument, a text in quotes) is not a call.
+_WRAPPER = (r"(?:(?:sudo|call|exec|start|command|env|time|nohup|winpty|xargs|do|then|else|elif|if|while|until"
+            r"|iex|invoke-expression|dotnet(?:\s+tool\s+run)?|start-process(?:\s+-filepath)?|cmd(?:\.exe)?\s+/[ck]"
+            r"|(?:bash|sh|zsh|pwsh|powershell)(?:\.exe)?(?:\s+-\w+)*\s+-(?:\w*c|command))\s+[\"']?|!\s*|\w+=\S*\s+)*")
+PAC_CALL = re.compile(r"(?:^|[\n;|&({`]|\$\()\s*" + _WRAPPER
+                      + r"""(?:"[^"\n]*[\\/]|'[^'\n]*[\\/]|[^\s"'|;&()]*[\\/]|["'])?pac(?:\.exe|\.cmd|\.bat)?["']?(?=\s|$|[;|&)])""",
+                      re.I)
+TERMINAL = re.compile(r"bash|shell|terminal|command|exec", re.I)
+DENIED = ("ppp: this project is connected to the tenant (environment {alias}), and this command calls pac itself. Never call pac "
+          "there: the tool carries the checks a direct call skips. The tenant: ppp connect, ppp export, ppp import, ppp tenant. "
+          "An export or a package on disk: ppp unpack, ppp pack. What these do not offer goes to the user on a card. If the "
+          "command only quotes pac in a text, write that text with the file tool.")
 
 
 def state_within(content: str, room: int) -> str:
@@ -57,11 +76,22 @@ def state_within(content: str, room: int) -> str:
     return text + f"\n[…] STATE.md is longer; read the rest from the file. Missing or cut here: {names}."
 
 
+def is_ppp_config(path: Path) -> bool:
+    """A project.json of ppp: a JSON object with structureVersion (int) and prefix (str). Both are required by
+    structure.py for every ppp project and together they are in no Nx or .NET project.json."""
+    try:
+        config = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return False
+    return (isinstance(config, dict) and isinstance(config.get("structureVersion"), int)
+            and not isinstance(config.get("structureVersion"), bool) and isinstance(config.get("prefix"), str))
+
+
 def project_root(cwd: str):
     start = Path(cwd or ".").resolve()
     for folder in (start, *start.parents):
         if (folder / "project.json").is_file():
-            return folder
+            return folder if is_ppp_config(folder / "project.json") else None  # a foreign project.json: not ours
     return None
 
 
@@ -84,10 +114,16 @@ def session_start(data: dict, root: Path, tool: str) -> dict:
              f"- Project: {config.get('name', root.name)} in {root}"
              + (" (storage local: commit, never pull or push; ppp backup on request)" if config.get("storage") == "local" else ""),
              f"- Tool call: {agent.tool_command()} <command>"]
-    if settings:
-        head.append(f"- Settings: language {settings.get('language')}, guidance {settings.get('guidance')}")
+    if isinstance(settings, dict) and settings:
+        publisher = agent.publisher_of(settings)  # a broken entry counts as not set
+        head.append(f"- Settings: language {settings.get('language')}, guidance {settings.get('guidance')}"
+                    + (f", publisher {publisher['uniqueName']} (prefix {publisher['prefix']})" if publisher else ""))
+        if not publisher:
+            head.append("- Publisher: not set. Before a solution is created, ask for it on one card (ppp-intake) and save it "
+                        "with ppp settings.")
     else:
-        head.append("- ~/.ppp/settings.json is missing: before anything else ask language and guidance on one card.")
+        head.append("- ~/.ppp/settings.json is missing: before anything else ask language, guidance and publisher on one card "
+                    "(the publisher may be skipped if the user has none yet).")
     text = "\n".join(head) + "\n"
     state = root / "STATE.md"
     if state.is_file():
@@ -135,6 +171,38 @@ def pre_compact(data: dict, root: Path, tool: str) -> dict:
     return {"systemMessage": message}
 
 
+def command_lines(data: dict) -> list[str]:
+    """What a tool call would run: the field command; for a terminal tool that names it otherwise, every text it passes."""
+    given = data.get("tool_input", data.get("toolInput"))
+    if isinstance(given, str):
+        try:
+            given = json.loads(given)
+        except ValueError:
+            given = {"command": given}
+    if not isinstance(given, dict):
+        return []
+    if isinstance(given.get("command"), str):
+        return [given["command"]]
+    name = str(data.get("tool_name") or data.get("toolName") or "")
+    return [v for v in given.values() if isinstance(v, str)] if TERMINAL.search(name) else []
+
+
+def pre_tool_use(data: dict, root: Path, tool: str) -> dict | None:
+    lines = command_lines(data)
+    if not any(PAC_CALL.search(line) for line in lines):
+        return None
+    try:
+        alias = json.loads((root / "project.json").read_text(encoding="utf-8-sig")).get("environment")
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not isinstance(alias, str) or not alias:
+        return None  # offline: the tenant is out of reach anyway, and the rules name ppp pack and ppp unpack
+    answer = {"permissionDecision": "deny", "permissionDecisionReason": DENIED.format(alias=alias)}
+    if tool == "copilot":  # both forms refuse in the agent host (pac test round 1, H3 and H4); this one names no event
+        return answer
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", **answer}}
+
+
 def main() -> int:
     event = sys.argv[1] if len(sys.argv) > 1 else ""
     tool = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] in TOOLS else "claude"
@@ -144,7 +212,7 @@ def main() -> int:
         root = project_root(data.get("cwd") or "")
         if root is None:
             return 0
-        handler = {"SessionStart": session_start, "Stop": stop, "PreCompact": pre_compact}.get(event)
+        handler = {"SessionStart": session_start, "Stop": stop, "PreCompact": pre_compact, "PreToolUse": pre_tool_use}.get(event)
         out = handler(data, root, tool) if handler else None
         if out:
             sys.stdout.reconfigure(encoding="utf-8")

@@ -16,7 +16,8 @@ import sys
 from pathlib import Path
 
 from . import VERSION
-from .project import ToolError
+from .project import (ToolError, check_option_prefix, check_publisher_display, check_publisher_name,
+                      check_publisher_prefix)
 
 PLUGIN = Path(__file__).resolve().parent.parent.parent
 SOURCE = PLUGIN / "com.github.copilot" / "agents" / "ppp.agent.md"
@@ -138,8 +139,42 @@ def read_settings() -> dict | None:
         return None
 
 
+def publisher_of(settings: object) -> dict | None:
+    """The publisher in the settings (uniqueName, displayName, prefix, optionValuePrefix) when all four values are valid;
+    None when there is none, it is no object or a value is wrong. Never raises: the hook relies on that."""
+    given = settings.get("publisher") if isinstance(settings, dict) else None
+    if not isinstance(given, dict):
+        return None
+    try:
+        return {"uniqueName": check_publisher_name(given.get("uniqueName")),
+                "displayName": check_publisher_display(given.get("displayName")),
+                "prefix": check_publisher_prefix(given.get("prefix")),
+                "optionValuePrefix": check_option_prefix(given.get("optionValuePrefix"))}
+    except ToolError:
+        return None
+
+
+def merge_publisher(current: object, given: dict) -> dict:
+    """The publisher after a change: the saved one with the given values (None means not given) put over it. Without a
+    saved publisher, name, prefix and option value prefix must come together; the display name is then the name."""
+    saved = publisher_of(current)
+    merged = dict(saved or {})
+    merged.update({k: v for k, v in given.items() if v is not None})
+    if not saved:
+        missing = [flag for key, flag in (("uniqueName", "--publisher-name"), ("prefix", "--publisher-prefix"),
+                                          ("optionValuePrefix", "--publisher-option-prefix")) if key not in merged]
+        if missing:
+            raise ToolError("No publisher saved yet: give --publisher-name, --publisher-prefix and --publisher-option-prefix "
+                            "together (missing: " + ", ".join(missing) + "), or --publisher-from <unpacked solution>.")
+        merged.setdefault("displayName", merged["uniqueName"])
+    return {"uniqueName": check_publisher_name(merged["uniqueName"]),
+            "displayName": check_publisher_display(merged["displayName"]),
+            "prefix": check_publisher_prefix(merged["prefix"]),
+            "optionValuePrefix": check_option_prefix(merged["optionValuePrefix"])}
+
+
 def write_settings(language: str | None, guidance: str | None, sessions: str | None = None,
-                   backup: str | None = None) -> dict:
+                   backup: str | None = None, publisher: dict | None = None) -> dict:
     current = read_settings() or {}
     if language:
         current["language"] = language
@@ -157,6 +192,8 @@ def write_settings(language: str | None, guidance: str | None, sessions: str | N
         if not folder.is_dir():
             raise ToolError(f"Folder not found: {folder}")
         current["backupFolder"] = str(folder)  # local projects, ABLAGE AB-5
+    if publisher:  # uniqueName, displayName, prefix, optionValuePrefix; None for a value not given
+        current["publisher"] = merge_publisher(current, publisher)
     missing = [k for k in ("language", "guidance") if k not in current]
     if missing:
         raise ToolError("missing: " + ", ".join(f"--{k}" for k in missing))

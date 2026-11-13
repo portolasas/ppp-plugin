@@ -26,19 +26,31 @@ def cmd_unpack(a) -> int:
     zip_path = Path(a.zip).resolve()
     if not zip_path.is_file():
         raise ToolError(f"ZIP not found: {zip_path}")
+    return _take_export(root, zip_path, force=a.force, no_commit=a.no_commit, message=a.message)
+
+
+def _take_export(root: Path, zip_path: Path, *, force: bool = False, no_commit: bool = False, message: str = "") -> int:
+    """Take an export ZIP into solution/<UniqueName>/, show what changed against the last commit and commit it as
+    'Export <name> <version>'. The one way an export enters the project, whoever fetched the ZIP."""
     info = solution.zip_manifest(zip_path)
     target = root / "solution" / info["uniqueName"]
     repo = gitutil.is_repo(root)
-    if repo and target.exists() and not a.force:
+    if repo and target.exists() and not force:
         dirty = gitutil.git(root, "status", "--porcelain", "--", gitutil.rel(root, target)).decode().strip()
         if dirty:
             raise ToolError(f"Uncommitted changes in {gitutil.rel(root, target)} would be lost. Commit them or use --force.")
     solution.unpack(zip_path, target)
     print(f"Unpacked {zip_path.name} to {gitutil.rel(root, target)}")
+    kept = solution.keep_volatile(root, target) if repo else []
+    if kept:
+        print("Kept as committed, only values the server rewrites on every export differ: " + ", ".join(kept))
     note = structure.register_solution(root, info["uniqueName"])
     if note:
         print(note)
     print("\n".join(solution.summary(target)))
+    warning = _publisher_warning(root, info["uniqueName"], target)
+    if warning:
+        print(warning)
     if not repo:
         print("Not a git repository: nothing committed.")
         return 0
@@ -56,14 +68,27 @@ def cmd_unpack(a) -> int:
             print("  " + line)
         if len(changes) > 40:
             print(f"  … {len(changes) - 40} more")
-    if a.no_commit:
+    if no_commit:
         return 0
-    message = a.message or f"Export {info['uniqueName']} {info['version']}"
+    message = message or f"Export {info['uniqueName']} {info['version']}"
     paths = [gitutil.rel(root, target)] + (["project.json"] if note else [])
     gitutil.git(root, "add", "-A", "--", *paths)
     gitutil.git(root, "commit", "-q", "-m", message, "--", *paths)
     print(f"Committed: {gitutil.describe(root, 'HEAD')}")
     return 0
+
+
+def _publisher_warning(root: Path, name: str, folder: Path) -> str | None:
+    """A WARNING line when the unpacked solution has another Publisher than project.json names. Nothing is changed."""
+    try:
+        named = load_config(root).get("publisher")
+        found = solution.read_publisher(folder)
+    except (ToolError, OSError, AttributeError):
+        return None
+    if not (isinstance(named, str) and named and found and found["uniqueName"] != named):
+        return None
+    return (f"WARNING solution {name} has the Publisher {found['uniqueName']}, project.json names {named}; project.json is "
+            "unchanged: check which of the two is right")
 
 
 def cmd_inventory(a) -> int:
@@ -111,7 +136,9 @@ def cmd_pack(a) -> int:
     stem = f"{info['uniqueName']}_{a.version.replace('.', '_')}" + (f"_{a.label}" if a.label else "")
     out = root / "exchange" / f"{stem}_IMPORTABLE.zip"
     report_path = root / "exchange" / f"{stem}_REPORT.md"
-    lines = [f"Base: {gitutil.describe(root, base)}", rep.text()]
+    # ppp import refuses a package packed before the last export: it checks this commit's history (VERBUNDEN VB-8)
+    head = gitutil.git(root, "rev-parse", "--verify", "HEAD").decode().strip()
+    lines = [f"Base: {gitutil.describe(root, base)}", f"Packed on: {head}", rep.text()]
     if rep.errors:
         print("\n".join(lines))
         print("Not packed. The version stays set; fix the errors and run ppp pack again.")
@@ -412,8 +439,18 @@ def _word_fields(target: Path) -> int:
 def cmd_init(a) -> int:
     root = Path(a.folder).resolve() if a.folder else Path.cwd()
     modules = _split(a.modules)
-    lines = structure.init(root, a.name, a.prefix, modules, a.mode, a.language, a.solution or None, a.storage)
+    connected = a.environment.strip().lower() != "offline"
+    if a.confirm_import and not connected:
+        raise ToolError("--confirm-import needs --environment <name>: an offline project has no environment to import into.")
+    from . import agent
+    publisher, source = a.publisher.strip(), "--publisher"
+    if not publisher:  # the developer's publisher from the settings of this computer, if there is one
+        publisher, source = (agent.publisher_of(agent.read_settings()) or {}).get("uniqueName", ""), str(agent.SETTINGS)
+    lines = structure.init(root, a.name, a.prefix, modules, a.mode, a.language, a.solution or None, a.storage,
+                           a.environment.strip() if connected else None, a.confirm_import != "no", publisher or None)
     print("\n".join(lines))
+    if publisher:
+        print(f"Publisher {publisher} in project.json (from {source}).")
     rep = structure.check(root)
     print(rep.text())
     return 1 if rep.errors else 0
@@ -427,22 +464,73 @@ def cmd_setup(a) -> int:
 
 def cmd_settings(a) -> int:
     from . import agent
-    if not a.language and not a.guidance and not a.sessions and not a.backup:
+    options = {"uniqueName": a.publisher_name, "displayName": a.publisher_display, "prefix": a.publisher_prefix,
+               "optionValuePrefix": a.publisher_option_prefix}
+    given = {k: v for k, v in options.items() if v is not None}
+    if a.publisher_from is not None and given:
+        raise ToolError("--publisher-from takes all four values from the solution: not together with --publisher-name, "
+                        "--publisher-display, --publisher-prefix or --publisher-option-prefix.")
+    if a.publisher_from is not None:
+        found = solution.read_publisher(Path(a.publisher_from).expanduser())
+        if not found:
+            raise ToolError(f"No <Publisher> block in {a.publisher_from}: give the folder of an unpacked solution or the path to "
+                            "its Other/Solution.xml.")
+        if found["optionValuePrefix"] is None:
+            raise ToolError(f"The Publisher {found['uniqueName']} in {a.publisher_from} has no CustomizationOptionValuePrefix "
+                            "that is a number.")
+        given = {**found, "displayName": found["displayName"] or found["uniqueName"]}
+    if not a.language and not a.guidance and not a.sessions and not a.backup and not given:
         current = agent.read_settings()
         print(f"{agent.SETTINGS}: {current}" if current else f"{agent.SETTINGS} is missing. "
               "Set it with --language <code> --guidance beginner|standard|experienced.")
+        if current:
+            found = agent.publisher_of(current)
+            print(f"Publisher: {found['uniqueName']} ({found['displayName']}), prefix {found['prefix']}, option value prefix "
+                  f"{found['optionValuePrefix']}" if found else "Publisher: not set. Set it with --publisher-name <UniqueName> "
+                  "--publisher-prefix <prefix> --publisher-option-prefix <10000-99999> [--publisher-display <text>], or take it "
+                  "from an unpacked solution with --publisher-from <folder or Other/Solution.xml>.")
         return 0
-    print(f"Saved {agent.SETTINGS}: {agent.write_settings(a.language, a.guidance, a.sessions, a.backup)}")
+    print(f"Saved {agent.SETTINGS}: {agent.write_settings(a.language, a.guidance, a.sessions, a.backup, given or None)}")
     return 0
 
 
 def cmd_check(a) -> int:
-    from . import agent
+    from . import agent, connected
     root = find_root(a.project)
     update = agent.update_clone()
-    rep = structure.check(root, update, agent.agent_note())
+    rep = structure.check(root, update, agent.agent_note(),
+                          settings_publisher=(agent.publisher_of(agent.read_settings()) or {}).get("uniqueName"))
+    for level, message in connected.check_lines(root):  # a connected project: does the tenant still have what the project has?
+        rep.add(level, message)
     print(rep.text())
     return 1 if rep.errors else 0
+
+
+def _yes(value: str | None) -> bool | None:
+    return None if value is None else value == "yes"
+
+
+def cmd_connect(a) -> int:
+    from . import connected
+    print("\n".join(connected.connect(find_root(a.project), a.name or None, a.role, _yes(a.in_use), _yes(a.confirm_import), a.off)))
+    return 0
+
+
+def cmd_export(a) -> int:
+    from . import connected
+    return connected.export(find_root(a.project), _take_export, a.solution, a.compare, a.no_commit, a.force, a.wait)
+
+
+def cmd_import(a) -> int:
+    from . import connected
+    if a.restore:
+        return connected.restore(find_root(a.project), a.package or None, a.confirmed, a.with_apps, a.wait)
+    return connected.import_package(find_root(a.project), a.package or None, a.confirmed, a.accept_drift, a.with_apps, a.wait)
+
+
+def cmd_tenant(a) -> int:
+    from . import connected
+    return connected.status(find_root(a.project), a.log, a.values, a.write)
 
 
 def cmd_storage(a) -> int:
@@ -639,6 +727,54 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--label", default="", help="short label in the file name")
     check_args(c)
 
+    c = command("connect", cmd_connect, "Connect the project to an environment by its display name, or refresh the "
+                                        "connection: find it in the tenant, write its address, role and use into "
+                                        "environments/<alias>.json and the alias into project.json, and list which solutions "
+                                        "of the project are online. Needs the sign-in of pac on this computer.", False)
+    c.add_argument("name", nargs="?", default="", help="display name of the environment (default: the connected one, else "
+                                                       "'Citizen Developments')")
+    c.add_argument("--role", choices=structure.ENVIRONMENT_ROLES, default=None,
+                   help="what the environment is for (default: as before, else development); ppp import refuses production")
+    c.add_argument("--in-use", choices=("yes", "no"), default=None,
+                   help="yes: the solution is in productive use there, so a card comes before every import")
+    c.add_argument("--confirm-import", choices=("yes", "no"), default=None,
+                   help="card before every import (yes, default), or only on a deviation in the tenant and on a first import (no)")
+    c.add_argument("--off", action="store_true", help="make the project offline again; the environment file stays")
+
+    c = command("export", cmd_export, "Connected projects: fetch the solution (default: the transfer solution, else the main "
+                                      "solution) from the tenant, unpack it to solution/<UniqueName>/ and commit it as "
+                                      "'Export <name> <version>'; what changed against the last commit was changed by hand "
+                                      "in the tenant. Refuses when the folder holds work the tenant does not have.")
+    c.add_argument("--compare", action="store_true", help="only list the files in which tenant and project differ; changes nothing")
+    c.add_argument("--no-commit", action="store_true", help="unpack only")
+    c.add_argument("--force", action="store_true", help="replace the folder even with work that is not imported")
+    c.add_argument("--wait", type=float, default=540, help="seconds to wait for the export (default 540)")
+
+    c = command("import", cmd_import, "Connected projects: import a package built by ppp pack. Checks first: it is the "
+                                      "project's package solution, unmanaged, the file its report names, its version above the "
+                                      "one online, no import running, no drift in the tenant (the export taken for this check "
+                                      "stays as backup in exchange/tenant/). Reads the result from the server: version, import "
+                                      "record, flow switches, bindings. Never into an environment of role production.", False)
+    c.add_argument("package", nargs="?", default="", help="the ZIP (default: the newest package of the package solution in exchange/)")
+    c.add_argument("--confirmed", action="store_true", help="the user confirmed this import on a card; without it the command "
+                                                            "says when a card is needed and what it shows")
+    c.add_argument("--accept-drift", action="store_true", help="import although the tenant differs from the state the package "
+                                                               "was built on; overwrites those changes, after a card")
+    c.add_argument("--with-apps", action="store_true", help="the package may contain apps (move to test only)")
+    c.add_argument("--restore", action="store_true",
+                   help="instead of a package bring back a backup taken before an import (default: the newest in "
+                        "exchange/tenant/<Name>/, else the file named): its content returns under a version above the one "
+                        "online; what an import added since stays. Always after a card")
+    c.add_argument("--wait", type=float, default=100, help="seconds until the command returns with RUNNING (default 100; the "
+                                                           "same command again waits further, it starts no second import)")
+
+    c = command("tenant", cmd_tenant, "Connected projects: what the tenant holds of this project, without the account: versions "
+                                      "against the project, flows that are off, connection references without a connection or "
+                                      "with a broken one. Exit code 1 when something deviates.", False)
+    c.add_argument("--log", action="store_true", help="also the record of the last import: results and the texts of errors and warnings")
+    c.add_argument("--values", action="store_true", help="also the current values of the environment variables (on the user's request only)")
+    c.add_argument("--write", action="store_true", help="write the bindings and the flow switches as read into environments/<alias>.json")
+
     c = command("canvas", cmd_canvas, "Check screen YAML before pasting: formulas, en-US, control versions, containers, delegation.", False)
     c.add_argument("path", nargs="?", default="", help="folder or .pa.yaml (default: components/power-apps/screens)")
     c.add_argument("--versions", default="", help="file with Type@Version entries (default: the project's generator/versionen.py, "
@@ -680,6 +816,16 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--storage", required=True, choices=storage.STORAGES,
                    help="where the project lives: github (git with a remote, pushed) or local (git without a remote, "
                         "backed up with ppp backup); bitbucket is prepared and starts as local (ABLAGE AB-6)")
+    c.add_argument("--environment", default="offline",
+                   help="display name of the environment the work starts in, e.g. 'Citizen Developments': connects the "
+                        "project to it (environment in project.json, environments/<alias>.json with role development); "
+                        "offline (default): the user exports and imports by hand")
+    c.add_argument("--confirm-import", choices=("yes", "no"), default=None,
+                   help="with --environment: a card before every import (yes, default), or only on a deviation in the "
+                        "tenant and on the first import into an environment (no)")
+    c.add_argument("--publisher", default="",
+                   help="unique name of the Publisher of the solutions (publisher in project.json); without it the unique "
+                        "name from ~/.ppp/settings.json (ppp settings --publisher-name), if there is one")
     c.set_defaults(func=cmd_init)
 
     command("check", cmd_check, "Report deviations from the project structure (target: none), the storage with its "
@@ -715,12 +861,24 @@ def build_parser() -> argparse.ArgumentParser:
     c.set_defaults(func=cmd_setup)
     c = sub.add_parser("settings", help="Show or save the personal settings (~/.ppp/settings.json).",
                        description="Show or save the personal settings in ~/.ppp/settings.json: language of chat and cards, "
-                                   "guidance level, folder of the sessions repository, backup folder.", epilog=EPILOG)
+                                   "guidance level, folder of the sessions repository, backup folder, and the Publisher of the "
+                                   "developer (one for all his projects, once per computer).", epilog=EPILOG)
     c.add_argument("--language", default="", help="language of chat and cards, e.g. de or en")
     c.add_argument("--guidance", default="", help="beginner, standard or experienced")
     c.add_argument("--sessions", default="", help="folder of the clone of the private sessions repository (ppp sessions)")
     c.add_argument("--backup", default="", help="backup folder for local projects, outside this computer's disk "
                                                 "(OneDrive, a network drive); one subfolder per prefix (ppp backup)")
+    c.add_argument("--publisher-name", default=None, help="unique name of the Publisher: letters, digits and underscores, no digit "
+                                                          "first, at most 256 characters")
+    c.add_argument("--publisher-display", default=None, help="display name of the Publisher (default: the unique name)")
+    c.add_argument("--publisher-prefix", default=None, help="customization prefix of the Publisher: 2 to 8 letters and digits, "
+                                                            "a letter first, not mscrm...")
+    c.add_argument("--publisher-option-prefix", default=None, help="option value prefix of the Publisher: a whole number from "
+                                                                   "10000 to 99999")
+    c.add_argument("--publisher-from", default=None, metavar="FOLDER_OR_SOLUTION_XML",
+                   help="take all four values from the Publisher of an unpacked solution (its folder or Other/Solution.xml); "
+                        "not together with the other --publisher-* options. Without a saved Publisher --publisher-name, "
+                        "--publisher-prefix and --publisher-option-prefix come together; else single values change")
     c.set_defaults(func=cmd_settings)
     command("migrate", cmd_migrate, "Bring the project to the current structure version (2: storage in "
                                     "project.json, taken from the remote origin).", False)

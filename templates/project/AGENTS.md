@@ -2,7 +2,7 @@
 
 <The project in five lines: purpose, users, solution parts, special features. No current status here; that is in STATE.md.>
 
-**Read [STATE.md](STATE.md) first.** Prefix, solutions, modules and mode are in [project.json](project.json) only.
+**Read [STATE.md](STATE.md) first.** Prefix, solutions, modules, mode and the unique name of the Publisher (`publisher`) are in [project.json](project.json) only.
 In VS Code work with the agent "ppp" (agent picker); it carries the rules of ppp.
 
 ## Folders
@@ -10,8 +10,8 @@ In VS Code work with the agent "ppp" (agent picker); it carries the rules of ppp
 - `changes/`: development packages `NNN-name/`; finished ones in `changes/archive/`
 - `decisions/`: one file per decision, `NNN-name.md`
 - `components/`: what ppp builds and maintains, one folder per active module with an inventory README
-- `solution/`: tenant state, unpacked from the last export with `ppp unpack`
-- `exchange/`: ZIPs from and to the tenant, not in git; `exchange/archive/` keeps the imported package of each finished package
+- `solution/`: tenant state, unpacked from the last export with `ppp unpack` (connected project: fetched with `ppp export`)
+- `exchange/`: ZIPs from and to the tenant, not in git; `exchange/archive/` keeps the imported package of each finished package, `exchange/tenant/` the backup before an import and the record of imports (connected project)
 - only when present: `inputs/` source material unchanged · `environments/` IDs per environment · `tests/` local tests · `prototype/` click mock-up · `lessons/` lesson proposals · `docs/` handbook, training, six-sigma, project material · `legacy/` old files of an adopted project, unchanged; read there only when a question about the history cannot be answered from `specs/`, `decisions/` and `components/`
 
 ## Project rules

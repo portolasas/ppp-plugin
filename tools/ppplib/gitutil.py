@@ -89,18 +89,37 @@ def version_of(solution_xml: bytes) -> str | None:
     return m.group(1).decode() if m else None
 
 
-def base_commit(root: Path, folder: Path) -> str:
-    """The commit that brought the version now committed in Other/Solution.xml: last export or last package."""
+def tenant_commit(root: Path, folder: Path, version: str | None = None) -> str:
+    """The commit that holds the tenant's state of a version (default: the version committed now): the commit that
+    brought the version into Other/Solution.xml, or the latest one after it with the subject 'Export <name> <version>'
+    that still has this version. An export from the portal raises the version; an export with pac keeps it. Taken
+    after an import, it holds what the server rewrote, and without this rule it would never become the base
+    (VERBUNDEN VB-8). A commit of work in between has another subject and stays out."""
     path = rel(root, folder) + "/Other/Solution.xml"
-    head = read_blobs(root, "HEAD", [path]).get(path) if git(root, "rev-parse", "--verify", "-q", "HEAD", check=False) else None
-    if head is None:
-        raise ToolError(f"{path} is not committed. Commit the export first (ppp unpack does it).")
-    tag = f"<Version>{version_of(head)}</Version>"
-    for commit in git(root, "log", "--format=%H", "-S", tag, "--", path).decode().split():
-        blob = read_blobs(root, commit, [path]).get(path) or b""
-        if tag.encode() in blob:
+    if version is None:
+        head = read_blobs(root, "HEAD", [path]).get(path) if git(root, "rev-parse", "--verify", "-q", "HEAD", check=False) else None
+        if head is None:
+            raise ToolError(f"{path} is not committed. Commit the export first (ppp unpack does it).")
+        version = version_of(head)
+    tag = f"<Version>{version}</Version>"
+
+    def has_version(commit: str) -> bool:
+        return tag.encode() in (read_blobs(root, commit, [path]).get(path) or b"")
+
+    introduced = next((c for c in git(root, "log", "--format=%H", "-S", tag, "--", path).decode().split() if has_version(c)), None)
+    if introduced is None:
+        raise ToolError(f"No commit found that introduced {tag} in {path}. Use --base <ref>.")
+    later = git(root, "log", "--format=%H%x09%s", f"{introduced}..HEAD", "--", rel(root, folder)).decode("utf-8", "replace")
+    for line in later.splitlines():  # newest first
+        commit, _, subject = line.partition("\t")
+        if subject == f"Export {folder.name} {version}" and has_version(commit):
             return commit
-    raise ToolError(f"No commit found that introduced {tag} in {path}. Use --base <ref>.")
+    return introduced
+
+
+def base_commit(root: Path, folder: Path) -> str:
+    """The comparison base of the solution folder: the tenant's state of the version committed now (tenant_commit)."""
+    return tenant_commit(root, folder)
 
 
 def describe(root: Path, ref: str) -> str:

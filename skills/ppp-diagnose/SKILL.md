@@ -7,10 +7,12 @@ metadata:
 
 # Diagnosis
 
-The tenant is out of reach, so the whole skill is getting a **feedback loop** that runs here: a local run that goes **red** on exactly the symptom the user reported.
+No flow runs here, so the whole skill is getting a **feedback loop** that runs here: a local run that goes **red** on exactly the symptom the user reported.
 
 ## 1. What is already here, then evidence from the tenant
-Start with what needs no tenant step: the error message the user reported, the definition in `solution/` (`ppp inventory <flow>`, search for the action and expression the message names), the list schema and earlier exports in `inputs/`. When message and definition explain the error, go straight to the feedback loop.
+In a connected project (`ppp check` names it) start with `ppp tenant`, after a rejected import with `--log`: versions against the project, flows that are off, connection references without a connection or with a broken one, the error texts of the import record. `ppp export --compare` lists the files in which the tenant differs from `solution/` and changes nothing; it replaces the card for a fresh solution export below. Runs and list data stay exports by card.
+
+Then what needs no tenant step: the error message the user reported, the definition in `solution/` (`ppp inventory <flow>`, search for the action and expression the message names), the list schema and earlier exports in `inputs/`. When message and definition explain the error, go straight to the feedback loop.
 
 When an app misbehaves and a walk is possible (skill ppp-app-walk), reproduce the user's steps with `ppp walk <file> --diagnose` before asking: it records the errors behind the app's message per step.
 

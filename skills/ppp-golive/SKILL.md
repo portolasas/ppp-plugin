@@ -22,4 +22,4 @@ Environments: citizen development, an own test environment, production through t
 Handbook and training ready (ppp-docs). During hypercare the user reports errors; diagnose with exports (ppp-diagnose). Small fixes the user makes by hand are noted in `STATE.md` and rebuilt in the next package; everything else is a package.
 
 ## 4. Maintenance
-Maintenance runs through the same package cycle. Before the first package after a longer break: a fresh export and `ppp unpack`, so that manual changes in the tenant show up in the diff.
+Maintenance runs through the same package cycle. Before the first package after a longer break: a fresh export and `ppp unpack` (connected: `ppp export`), so that manual changes in the tenant show up in the diff.

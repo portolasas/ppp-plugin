@@ -1,5 +1,5 @@
 {
-  "description": "ppp: session start with core rules and STATE.md, card guard and usage note, hint before compaction. Only in ppp projects.",
+  "description": "ppp: session start with core rules and STATE.md, card guard and usage note, hint before compaction, no direct pac call in a connected project. Only in ppp projects.",
   "hooks": {
     "SessionStart": [
       {
@@ -29,6 +29,18 @@
           {
             "type": "command",
             "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact claude || python -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact claude",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" PreToolUse claude || python -I \"${CLAUDE_PLUGIN_ROOT}/hooks/ppp_hook.py\" PreToolUse claude",
             "timeout": 15
           }
         ]

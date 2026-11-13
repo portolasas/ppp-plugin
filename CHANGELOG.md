@@ -2,6 +2,19 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.22.0 (2026-11-13)
+- Verbundener Modus (entwurf/VERBUNDEN.md): Ein Projekt mit environment in project.json exportiert und importiert selbst über pac; offline bleibt der Standard. ppp connect findet die Umgebung am Namen und schreibt Adresse, Rolle und Nutzung nach environments/<alias>.json; ppp init --environment und --confirm-import
+- ppp export holt die Paket-Solution, entpackt und committet sie; --compare zeigt nur die Unterschiede; weist uncommittete Änderungen im Solution-Ordner immer ab, committete Arbeit, die der Tenant nicht hat, nur mit --force
+- ppp import prüft Paket (SHA im Bericht), Version, committeten Solution-Ordner, Alter gegen den letzten Export, laufende Importe und Drift, legt eine Sicherung ab und liest das Ergebnis vom Server (Version, Protokoll, Flow-Status, Bindungen); Antworten IMPORTED, CONFIRM FIRST, DRIFT, RUNNING, FAILED; eine gescheiterte Version bleibt verbraucht; nie in eine Umgebung der Rolle production; --restore spielt die Sicherung zurück
+- ppp tenant zeigt Versionen, ausgeschaltete Flows und Verbindungsreferenzen ohne oder mit gebrochener Verbindung; --log, --values, --write
+- Hook vor dem Werkzeugaufruf: weist in einem verbundenen Projekt einen direkten pac-Aufruf ab
+- Ein Export-Commit gleicher Version wird Prüfbasis; flüchtige Werte der meta.xml einer App zählen nicht als Änderung (C4, ppp unpack); ppp tidy lässt exchange/tenant/ aus; ppp check meldet eine abweichende Version im Tenant
+- ppp-package: references/connected.md; ppp-intake fragt Anbindung und Karte vor dem Import ab; ppp-diagnose beginnt verbunden mit ppp tenant; Kernregeln: zwei Halbsätze
+- Geschärft nach unabhängiger Prüfung: ppp connect verbindet nur am exakten Anzeigenamen, Typ Production ergibt die Rolle production; ein Import gilt nur mit dem Job dieses Imports als gescheitert oder 30 Minuten ohne Job; Fehlschläge im Importprotokoll sind eine WARNING-Zeile; AUTH, SYNTAX und BUSY verbrauchen die ZIP nicht
+- Hook vor dem Werkzeugaufruf erkennt mehr Umwege (do, then, else, !, bash -lc, cmd /k, xargs, iex, dotnet pac) und gilt nur in Ordnern, deren project.json structureVersion und prefix hat
+- Publisher: ppp settings --publisher-name, --publisher-display, --publisher-prefix, --publisher-option-prefix und --publisher-from; ppp init --publisher; project.json hält den Namen; ppp check und ppp unpack melden einen abweichenden Publisher; der SessionStart-Hook nennt ihn
+- ppp-power-bi: references/visuals.md für Gantt und Zeitleisten (Wahl des Visuals, Segmenttabelle, Deneb, lokale Vorschau); pbip.md und reports.md ergänzt (GEN-20261111-WIN-01, GEN-20261111-WIN-02, PBI-20261111-WIN-01, PBI-20261111-WIN-02)
+
 ## 0.21.0 (2026-11-09)
 - Ablage je Projekt (entwurf/ABLAGE.md): project.json hat storage (github, bitbucket, local), Strukturversion 2; bestehende Projekte einmal mit ppp migrate nachziehen, es trägt die Ablage aus dem Remote ein
 - Ordner-Weg ohne Server: lokales Git ohne Remote, Commit nach jedem Schritt ohne Pull und Push; ppp init --storage local; ppp check meldet ein Remote als Fehler und warnt bei einem Ordner-Projekt in OneDrive, iCloud Drive, Dropbox oder Google Drive

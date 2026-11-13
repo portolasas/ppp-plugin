@@ -11,9 +11,11 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
+from xml.etree import ElementTree
 
+from .gitutil import read_blobs, rel, tracked_files
 from .project import ToolError
-from .verify import SOLUTION_XML, canvas_apps, files_of
+from .verify import SOLUTION_XML, canvas_apps, files_of, stable
 
 PAC_EXTENSION = "microsoft-isvexptools.powerplatform-vscode"
 
@@ -69,6 +71,39 @@ def run_pac(*args: str) -> str:
 def manifest(xml: bytes) -> dict:
     get = lambda tag: (re.search(rb"<" + tag + rb">([^<]*)</" + tag + rb">", xml) or [None, b""])[1].decode()
     return {"uniqueName": get(b"UniqueName"), "version": get(b"Version"), "managed": get(b"Managed") == "1"}
+
+
+def publisher_of(xml: bytes | str) -> dict | None:
+    """The <Publisher> block of a Solution.xml: uniqueName, displayName (description of its first LocalizedName, empty
+    when there is none), prefix (CustomizationPrefix) and optionValuePrefix (CustomizationOptionValuePrefix as a number,
+    None when it is not one). None when there is no block with a unique name, or the text is not XML."""
+    data = xml.encode("utf-8") if isinstance(xml, str) else xml
+    if data.startswith(b"\xef\xbb\xbf"):
+        data = data[3:]
+    try:
+        root = ElementTree.fromstring(data)
+    except ElementTree.ParseError:
+        return None
+    block = next(iter(root.findall("./SolutionManifest/Publisher")), None)
+    if block is None:
+        return None
+    text = lambda path: (block.findtext(path) or "").strip()
+    name = text("UniqueName")
+    if not name:
+        return None
+    named = block.find("./LocalizedNames/LocalizedName")
+    option = text("CustomizationOptionValuePrefix")
+    return {"uniqueName": name, "displayName": (named.get("description") or "").strip() if named is not None else "",
+            "prefix": text("CustomizationPrefix"), "optionValuePrefix": int(option) if re.fullmatch(r"\d{1,9}", option) else None}
+
+
+def read_publisher(source: Path) -> dict | None:
+    """publisher_of for the Solution.xml of an unpacked solution: source is its folder or the file itself.
+    A missing file is an error; no Publisher block gives None."""
+    path = source / SOLUTION_XML if source.is_dir() else source
+    if not path.is_file():
+        raise ToolError(f"No {SOLUTION_XML} in {source}: give the folder of an unpacked solution or the path to {SOLUTION_XML}.")
+    return publisher_of(path.read_bytes())
 
 
 def zip_manifest(path: Path) -> dict:
@@ -155,6 +190,29 @@ def unpack(zip_path: Path, target: Path) -> None:
     finally:
         if temp.exists():
             remove_tree(temp)
+
+
+def keep_volatile(root: Path, folder: Path) -> list[str]:
+    """After unpacking an export: the metadata file of an app that differs from the committed one only in the values the
+    server rewrites on every export (verify.stable) gets its committed bytes back, if every other file of the app is
+    as committed. So an app nobody changed is no change in git and no commit. Returns the files put back."""
+    apps = folder / "CanvasApps"
+    tracked = [f for f in tracked_files(root, "HEAD", folder, missing_ok=True) if f.startswith("CanvasApps/")] if apps.is_dir() else []
+    if not tracked:
+        return []
+    prefix = rel(root, folder) + "/"
+    committed = {k[len(prefix):]: v for k, v in read_blobs(root, "HEAD", [prefix + f for f in tracked]).items()}
+    kept = []
+    for meta in sorted(apps.glob("*.meta.xml")):
+        name, app = f"CanvasApps/{meta.name}", meta.name[:-len(".meta.xml")] + "_"
+        old, new = committed.get(name), meta.read_bytes()
+        if old is None or old == new or stable(name, old) != stable(name, new):
+            continue
+        now = {f"CanvasApps/{p.name}": p.read_bytes() for p in apps.iterdir() if p.is_file() and p.name.startswith(app)}
+        if now == {f: data for f, data in committed.items() if f.startswith("CanvasApps/" + app)}:
+            meta.write_bytes(old)
+            kept.append(name)
+    return kept
 
 
 def pack(folder: Path, out: Path) -> None:

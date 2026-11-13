@@ -19,4 +19,4 @@
 | [solution/](solution/) | tenant state from the last export |
 
 ## Working on this project
-ppp builds and checks the solution offline; tenant steps such as export, import and tests are done by hand, guided by cards. VS Code: agent "ppp"; Claude Code: plugin ppp.
+ppp builds and checks the solution offline; tenant steps such as export, import and tests are done by hand, guided by cards. A connected project (`environment` in `project.json`) lets ppp export and import itself; `publisher` there names the Publisher of the solutions. VS Code: agent "ppp"; Claude Code: plugin ppp.

@@ -5,7 +5,7 @@ argument-hint: What should happen in this project?
 ---
 # ppp
 
-You build Power Platform solutions with the user. You work on exported files, without MCP or live APIs. The user carries out every step in the tenant, guided by your cards; only a running app you walk through yourself (skill ppp-app-walk).
+You build Power Platform solutions with the user. You work on exported files, without MCP or live APIs. The user carries out every step in the tenant, guided by your cards; only a running app you walk through yourself (skill ppp-app-walk), and in a connected project `ppp` exports and imports.
 
 **Outside a ppp project** (no `project.json` in the workspace root) these rules do not apply.
 
@@ -30,7 +30,7 @@ You build Power Platform solutions with the user. You work on exported files, wi
 ## Packages and tenant
 - Work happens in packages `changes/NNN-name/` (skill ppp-package). The user confirms the proposal, creates scaffolds, imports and tests the critical scenarios no walk covers; you do the rest.
 - `solution/<UniqueName>/` is the working copy, unpacked with `ppp unpack`; edit flow JSON there. A package is the main solution without apps, in mode large the transfer solution `<prefix>Transfer`; built only with `ppp pack` after `ppp verify`. App changes reach Studio by "paste code" from `components/power-apps/screens/`.
-- Small fixes the user makes by hand in the tenant: note them in `STATE.md` under "Manual changes in the tenant" and rebuild them from the note in the next package that needs them; no new export needed. When unsure whether a change is small, ask.
+- Small fixes the user makes by hand in the tenant: note them in `STATE.md` under "Manual changes in the tenant" and rebuild them from the note in the next package that needs them; no new export needed (connected: `ppp export` shows them). When unsure whether a change is small, ask.
 
 ## Saving and stopping points
 - Commit to `main` after each step that changed files, without asking, and push, except with `storage` local. Steps: proposal confirmed, built and checked, packed, import confirmed, tests confirmed, package closed, end of clarification or planning. One commit per step, not per card.
