@@ -9,6 +9,10 @@ What pac prints is known from the pac test on the company computer (grundlage/we
   (not-null) and take the values of a row as words; no reader cuts columns by position.
 - A choice value stands there as a word of the display language, a time without seconds, a number with a thousands
   separator, an empty result as "No results returned.".
+Two calls change more than an import of a package and go only through their own function, which checks them first:
+pac solution add-solution-component through add_member (check, guarded), a settings file through start_import, which
+hands check the path and SHA-256 of the file it checked (check, settings). Each release opens only its own lock.
+A reader that gets a row it cannot read raises SYNTAX; only no row (pac prints "No results returned.") means nothing found.
 """
 from __future__ import annotations
 
@@ -20,6 +24,7 @@ import sys
 import tempfile
 import threading
 import time
+import zipfile
 from pathlib import Path
 from xml.sax.saxutils import quoteattr
 
@@ -31,18 +36,33 @@ KINDS = ("AUTH", "DENIED", "SYNTAX", "TIMEOUT", "BUSY", "FAILED")
 # The commands of pac that ppp runs against the tenant, each with the options it may carry, written out and in lower
 # case. Anything else is refused: pac reads options without regard to case and takes the last of a repeated one, so a
 # list of forbidden options could be written past. Never in this list: delete, publish, --force-overwrite, sign-in,
-# admin commands, --publish-changes (it publishes every unpublished change of the whole environment).
+# admin commands, --publish-changes (it publishes every unpublished change of the whole environment),
+# --addrequiredcomponents (it takes components ppp did not name into a solution).
 ALLOWED = {
     ("env", "list"): {"--json"},
     ("env", "fetch"): {"--environment", "--xmlfile"},
     ("solution", "list"): {"--environment", "--json"},
     ("solution", "export"): {"--environment", "--name", "--path", "--overwrite", "--async", "--max-async-wait-time"},
     ("solution", "import"): {"--environment", "--path", "--async", "--max-async-wait-time", "--activate-plugins",
-                             "--skip-lower-version"},
+                             "--skip-lower-version", "--settings-file"},
     ("connectivity", "list-connections"): {"--environment", "--json"},
+    ("solution", "add-solution-component"): {"--environment", "--solutionuniquename", "--component", "--componenttype"},
 }
 FLAGS = {"--json", "--overwrite", "--async", "--activate-plugins", "--skip-lower-version"}
 IMPORT_SWITCHES = ("--async", "--activate-plugins", "--skip-lower-version")  # VERBUNDEN VB-15, decided 2026-11-13
+# Two parts of the list go only through the one function that checks them first (ERWEITERUNGEN B.2, C.2), each with a
+# release of its own: add_member calls run with guarded=True, which opens add-solution-component and nothing else;
+# start_import hands check the settings file it checked (path and SHA-256), and only exactly that file passes. run never
+# takes a settings file.
+ADD_MEMBER = ("solution", "add-solution-component")     # only through add_member
+SETTINGS_FILE = "--settings-file"                       # only through start_import(..., settings=...)
+# The kinds of component ppp adds to the transfer solution, in exactly the form pac took them (pac test, T, T4, T6): the
+# type code of a connection reference differs per environment (VERBUNDEN VB-13), its name does not.
+MEMBER_KINDS = {"flow": "29", "variable": "380", "reference": "connectionreference"}
+SOLUTION_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+ALIAS = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")         # the form of structure.slug, the name of environments/<alias>.json
+CONNECTOR_ID = "/providers/Microsoft.PowerApps/apis/"
+SETTINGS_SECTIONS = {"EnvironmentVariables": ("SchemaName", "Value"), "ConnectionReferences": ("LogicalName", "ConnectionId", "ConnectorId")}
 
 
 class TenantError(ToolError):
@@ -63,21 +83,52 @@ NEXT = {    # what the agent does after a failure it cannot repair itself
 }
 
 
-def check(args: list[str]) -> tuple[str, str]:
-    """Refuse every call that is not on the list, before pac starts."""
+def check(args: list[str], guarded: bool = False, settings: tuple[str, str] | None = None) -> tuple[str, str]:
+    """Refuse every call that is not on the list, before pac starts (ERWEITERUNGEN B.2, C.2). No value of an option
+    begins with --: pac would read it as the next option. guarded: the release of add_member, for pac solution
+    add-solution-component only. settings: the release of start_import, the path and SHA-256 of the settings file it
+    checked; --settings-file passes only with exactly that path, and only while the file still has that SHA-256."""
     verb = tuple(args[:2])
     if verb not in ALLOWED:
         raise ToolError(f"pac {' '.join(args[:2])} is not a command ppp runs against the tenant.")
-    seen, i = set(), 2
+    if verb == ADD_MEMBER and not guarded:
+        raise ToolError("pac solution add-solution-component runs only through tenant.add_member.")
+    if guarded and verb != ADD_MEMBER:
+        raise ToolError(f"pac {' '.join(verb)}: the release of tenant.add_member opens pac solution add-solution-component only.")
+    if settings is not None and verb != ("solution", "import"):
+        raise ToolError(f"pac {' '.join(verb)}: the release of tenant.start_import opens --settings-file of pac solution import only.")
+    seen, values, i = set(), {}, 2
     while i < len(args):
         option = args[i].lower()
         # the environment is ppp's to name: a second one in the call would be read by pac instead of the first
         if not args[i].startswith("--") or option not in ALLOWED[verb] or option in seen or option == "--environment":
             raise ToolError(f"pac {' '.join(verb)}: {args[i]} is not an option ppp uses, or it stands twice.")
         seen.add(option)
+        if option not in FLAGS:
+            if i + 1 >= len(args):
+                raise ToolError(f"pac {' '.join(verb)}: {option} needs a value.")
+            if args[i + 1].startswith("--"):
+                raise ToolError(f"pac {' '.join(verb)}: the value of {option} is {args[i + 1]}, which pac would read as an option.")
+            values[option] = args[i + 1]
         i += 1 if option in FLAGS else 2
-        if i > len(args):
-            raise ToolError(f"pac {' '.join(verb)}: {option} needs a value.")
+    if SETTINGS_FILE in values:
+        if settings is None:
+            raise ToolError("pac solution import: --settings-file goes only through tenant.start_import, which checks the file first.")
+        path, sha = settings
+        if values[SETTINGS_FILE] != str(path):
+            raise ToolError(f"pac solution import: --settings-file {values[SETTINGS_FILE]} is not the file tenant.start_import checked.")
+        if not Path(path).is_file() or solution.sha256(Path(path)).lower() != str(sha).lower():
+            raise ToolError(f"pac solution import: the settings file {Path(path).name} changed after tenant.start_import checked it.")
+    if verb == ADD_MEMBER:      # the values too: a component at its ID, of one of the three kinds, into a named solution
+        if seen != {"--solutionuniquename", "--component", "--componenttype"}:
+            raise ToolError("pac solution add-solution-component needs --solutionUniqueName, --component and --componentType.")
+        if not SOLUTION_NAME.fullmatch(values["--solutionuniquename"]):
+            raise ToolError(f"pac solution add-solution-component: {values['--solutionuniquename']!r} is not the unique name of a solution.")
+        if not GUID.fullmatch(values["--component"]):
+            raise ToolError(f"pac solution add-solution-component: --component takes the ID of a component, not {values['--component']!r}.")
+        if values["--componenttype"] not in MEMBER_KINDS.values():
+            raise ToolError(f"pac solution add-solution-component: --componentType {values['--componenttype']} is none of "
+                            + ", ".join(MEMBER_KINDS.values()) + ".")
     return verb
 
 
@@ -114,8 +165,8 @@ def problem(code: int | None, out: str) -> tuple[str, str] | None:
     return kind, (reason or error or (lines[-1] if lines else f"pac ended with exit code {code}"))[:400]
 
 
-def _command(url: str | None, args: list[str]) -> list[str]:
-    verb = check(args)
+def _command(url: str | None, args: list[str], guarded: bool = False, settings: tuple[str, str] | None = None) -> list[str]:
+    verb = check(args, guarded, settings)
     if "--environment" in ALLOWED[verb]:
         if not url:
             raise ToolError(f"pac {' '.join(verb)} needs the address of the environment.")
@@ -123,9 +174,10 @@ def _command(url: str | None, args: list[str]) -> list[str]:
     return [solution.pac(), *args]
 
 
-def run(url: str | None, args: list[str], timeout: float = 600) -> str:
-    """The one way ppp calls pac against the tenant: the environment is named in the call, never taken from pac's profile."""
-    command = _command(url, args)
+def run(url: str | None, args: list[str], timeout: float = 600, *, guarded: bool = False) -> str:
+    """The one way ppp calls pac against the tenant: the environment is named in the call, never taken from pac's profile.
+    guarded only from add_member (check); a settings file never goes through run, only through start_import."""
+    command = _command(url, args, guarded)
     try:
         proc = subprocess.run(command, capture_output=True, stdin=subprocess.DEVNULL, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -138,23 +190,35 @@ def run(url: str | None, args: list[str], timeout: float = 600) -> str:
 
 
 # ------------------------------------------------------------------ the project's environment
-def environment(root: Path) -> dict:
-    """The environment a connected project works in: alias, url, role, inUse, confirmImport (VERBUNDEN VB-1, VB-11)."""
+def environment(root: Path, alias: str | None = None) -> dict:
+    """The environment a connected project works in: alias, url, role, inUse, confirmImport (VERBUNDEN VB-1, VB-11).
+    With alias the environment of environments/<alias>.json instead, a move target say (ERWEITERUNGEN C.2); its
+    confirmImport is the project's. own: it is the project's environment."""
     config = load_config(root)
-    alias = config.get("environment")
-    if not alias:
-        raise ToolError("This project is offline (no environment in project.json): the user exports and imports by hand, "
-                        "guided by cards. ppp connect connects it.")
+    own = config.get("environment")
+    if alias is None:
+        alias = own
+        if not alias:
+            raise ToolError("This project is offline (no environment in project.json): the user exports and imports by hand, "
+                            "guided by cards. ppp connect connects it.")
+    elif not (isinstance(alias, str) and ALIAS.fullmatch(alias)):
+        raise ToolError(f"{alias!r} is not the alias of an environment: the name of a file in environments/ without .json, "
+                        "in lower case letters, digits and hyphens.")
+    elif not (root / "environments" / f"{alias}.json").is_file():
+        raise ToolError(f"environments/{alias}.json does not exist: ppp connect \"<Name>\" --role test --target writes the file of "
+                        "a move target.")
     path = root / "environments" / f"{alias}.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
+        if not isinstance(data, dict):
+            raise ValueError("not a JSON object")
     except (OSError, ValueError) as ex:
         raise ToolError(f"environments/{alias}.json cannot be read ({ex}); ppp check names what is wrong.") from ex
     url = str(data.get("environmentUrl") or "").rstrip("/")
     if not url:
         raise ToolError(f"environments/{alias}.json has no environmentUrl yet: run ppp connect.")
     return {"alias": alias, "name": data.get("name") or alias, "url": url, "role": data.get("role"), "inUse": bool(data.get("inUse")),
-            "confirmImport": config.get("confirmImport", True), "data": data, "path": path}
+            "confirmImport": config.get("confirmImport", True), "data": data, "path": path, "own": alias == own}
 
 
 # ------------------------------------------------------------------ readers: JSON
@@ -196,10 +260,12 @@ def find_environment(name: str) -> dict:
 
 
 def solutions(url: str, timeout: float = 600) -> dict[str, dict]:
-    """The solutions of the environment by unique name in lower case: name, version, managed."""
+    """The solutions of the environment by unique name in lower case: name, version, managed, publisher (its unique name,
+    pac test round 2, N8)."""
     data = _read_json(url, ["solution", "list"], timeout)
     return {str(s["SolutionUniqueName"]).lower(): {"name": str(s["SolutionUniqueName"]), "version": str(s.get("VersionNumber") or ""),
-                                                  "managed": bool(s.get("IsManaged"))}
+                                                  "managed": bool(s.get("IsManaged")),
+                                                  "publisher": str(s.get("PublisherUniqueName") or "")}
             for s in data if isinstance(s, dict) and s.get("SolutionUniqueName")}
 
 
@@ -302,6 +368,93 @@ def variables(url: str, names: list[str]) -> dict[str, dict]:
     return {n: {"exists": n.lower() in keys, "value": values.get(n.lower())} for n in names}
 
 
+def _unreadable(what: str, row: str) -> TenantError:
+    """A row came back that is not in the form the reader knows: an error, never taken for "nothing found". The message
+    names its shape, not its values (names and IDs of the tenant stay out of chat)."""
+    words, ids = GUID.sub(" ", row).split(), GUID.findall(row)
+    return TenantError("SYNTAX", f"pac env fetch returned a row of {what} that ppp cannot read ({len(words)} words, {len(ids)} IDs); "
+                                 "pac may have changed.")
+
+
+def _first_words(rows: list[str], what: str) -> list[str]:
+    """The first word of each row, a name before the key of the row; a row that begins with an ID has no name."""
+    words = []
+    for row in rows:
+        if len(row.split()) < 2 or GUID.fullmatch(row.split()[0]):
+            raise _unreadable(what, row)
+        words.append(row.split()[0])
+    return words
+
+
+def publisher(url: str, unique_name: str, prefix: str, option_prefix: int | str) -> dict:
+    """The publisher of this unique name in the environment, and the other publishers that have its prefix or its option
+    value prefix (ERWEITERUNGEN A.3). Four queries, none cut by position: the values of a row as words, the display name,
+    which has blanks, in a query of its own as the text before the key of the row (the column of the condition may follow
+    the key, VERBUNDEN). The option value prefix stands with a thousands separator (pac test round 2, N8: 77,777); its
+    digits count. Returns found (uniqueName, displayName, prefix, optionValuePrefix as a number; None: no such publisher,
+    only when no row came back), prefix_others and option_others (unique names, sorted, without this publisher). A row
+    that came back but is not name, prefix, number and key raises SYNTAX: it is never taken for a missing publisher."""
+    columns = ["uniquename", "customizationprefix", "customizationoptionvalueprefix"]
+    found = None
+    for row in fetch(url, query("publisher", columns, eq("uniquename", unique_name))):
+        words = GUID.sub(" ", row).split()
+        digits = re.sub(r"\D", "", " ".join(words[2:]))
+        if len(words) < 3 or words[0].lower() != unique_name.lower() or not re.fullmatch(r"\d[\d,.  ']*", " ".join(words[2:])):
+            raise _unreadable("the publisher", row)
+        found = {"uniqueName": words[0], "displayName": "", "prefix": words[1], "optionValuePrefix": int(digits)}
+        break
+    if found:
+        named = fetch(url, query("publisher", ["friendlyname"], eq("uniquename", unique_name)))
+        found["displayName"] = GUID.split(named[0], 1)[0].strip() if named else ""
+    others = lambda rows: sorted({n for n in _first_words(rows, "a publisher") if n.lower() != unique_name.lower()}, key=str.lower)
+    return {"found": found,
+            "prefix_others": others(fetch(url, query("publisher", ["uniquename"], eq("customizationprefix", str(prefix).lower())))),
+            "option_others": others(fetch(url, query("publisher", ["uniquename"],
+                                                     eq("customizationoptionvalueprefix", int(option_prefix)))))}
+
+
+def members(url: str, solution: str) -> dict[str, str]:
+    """The components of a solution (ERWEITERUNGEN B.3): per objectid, in lower case, its kind as the table shows it, a word
+    or several of the display language, empty for a connection reference (pac test round 2, T6, W1). The objectid is the
+    first ID of the row, the key of the row the last; nothing is filtered by the kind, whose type code for a connection
+    reference differs per environment (VERBUNDEN VB-13). A row without the objectid before its key (one ID only, or a
+    word before the first ID) raises SYNTAX."""
+    link = ('<link-entity name="solution" from="solutionid" to="solutionid" link-type="inner"><filter>'
+            + eq("uniquename", solution) + "</filter></link-entity>")
+    found = {}
+    for row in fetch(url, query("solutioncomponent", ["objectid", "componenttype"], more=link)):
+        ids = list(GUID.finditer(row))
+        if len(ids) < 2 or row[:ids[0].start()].strip():
+            raise _unreadable(f"the members of {solution}", row)
+        found[ids[0].group().lower()] = " ".join(row[ids[0].end():ids[-1].start()].split())
+    return found
+
+
+COMPONENT_TABLES = {"reference": ("connectionreference", "connectionreferencelogicalname"),
+                    "variable": ("environmentvariabledefinition", "schemaname")}
+
+
+def component_ids(url: str, kind: str, names: list[str]) -> dict[str, list[str]]:
+    """The IDs of connection references (kind reference) or environment variables (kind variable) by their logical or
+    schema name (ERWEITERUNGEN B.3): per name as given every ID found, in lower case, the key of the row. One ID per name
+    is the only good answer; the caller names any other as an error. A flow's ID is the one in its file name. A row that
+    is not one of the names followed by its key raises SYNTAX: the server filters by the names, so it is no empty result."""
+    if kind not in COMPONENT_TABLES:
+        raise ToolError(f"component_ids reads connection references and environment variables, not {kind!r}.")
+    if not names:
+        return {}
+    entity, column = COMPONENT_TABLES[kind]
+    found = {n: [] for n in names}
+    for row in fetch(url, query(entity, [column], among(column, names))):
+        word = _first_words([row], f"a {column}")[0].lower()
+        hits = [n for n in names if n.lower() == word]
+        if not hits:
+            raise _unreadable(f"a {column}", row)
+        for n in hits:
+            found[n].append(GUID.findall(row)[-1].lower())
+    return found
+
+
 def running_imports(url: str, name: str, hours: int = 12) -> list[str]:
     """The progress of each import job of the solution that has no end yet."""
     rows = fetch(url, query("importjob", ["solutionname", "progress"], eq("solutionname", name), empty("completedon"),
@@ -334,14 +487,94 @@ def import_log(url: str, name: str, hours: int = 12, exclude: list[str] | None =
             "texts": sorted({t.strip()[:300] for t in texts if t.strip()})[:8]}
 
 
+# ------------------------------------------------------------------ members of a solution
+def add_member(url: str, solution: str, component: str, kind: str, timeout: float = 600) -> str:
+    """Add one component at its ID to a solution (ERWEITERUNGEN B.2): the one way to pac solution add-solution-component.
+    kind is flow, variable or reference, given to pac as 29, 380 and connectionreference; never --AddRequiredComponents,
+    never --async. Returns what pac printed; a failed call raises TenantError as run does. Whether the component is a
+    member afterwards says members, not the exit code of pac."""
+    if kind not in MEMBER_KINDS:
+        raise ToolError(f"add_member adds a flow, variable or reference, not {kind!r}.")
+    if not (isinstance(component, str) and GUID.fullmatch(component)):
+        raise ToolError(f"add_member takes the ID of a component, not {component!r}.")
+    if not (isinstance(solution, str) and SOLUTION_NAME.fullmatch(solution)):
+        raise ToolError(f"add_member needs the unique name of a solution, not {solution!r}.")
+    return run(url, ["solution", "add-solution-component", "--solutionUniqueName", solution, "--component", component,
+                     "--componentType", MEMBER_KINDS[kind]], timeout, guarded=True)
+
+
 # ------------------------------------------------------------------ import
-def start_import(url: str, package: Path, wait: float) -> dict:
+def _settings_refused(settings: Path, why: str) -> ToolError:
+    return ToolError(f"The settings file {settings.name} is not imported: {why}. Only ppp import --environment writes it.")
+
+
+def check_settings(package: Path, settings: Path, settings_sha: str | None) -> None:
+    """The checks of a settings file before pac starts (ERWEITERUNGEN C.2): settings_<version of the package>.json in
+    exchange/tenant/<target>/<solution of the package>/, beside the package, with the SHA-256 ppp noted when it wrote it;
+    a JSON object with the sections EnvironmentVariables (entries SchemaName, Value) and ConnectionReferences (entries
+    LogicalName, ConnectionId, ConnectorId) only; every name a component of the package; every connection named, of a
+    connector of the Power Platform. A ToolError names the first that fails."""
+    info = solution.zip_manifest(package)
+    parts = settings.resolve().parts
+    if settings.name != f"settings_{info['version']}.json":
+        raise _settings_refused(settings, f"its name is not settings_{info['version']}.json, after the version of {package.name}")
+    if len(parts) < 5 or parts[-5].lower() != "exchange" or parts[-4].lower() != "tenant" or not ALIAS.fullmatch(parts[-3]) \
+            or parts[-2].lower() != info["uniqueName"].lower():
+        raise _settings_refused(settings, f"it does not lie in exchange/tenant/<target>/{info['uniqueName']}/")
+    if settings.resolve().parent != package.resolve().parent:
+        raise _settings_refused(settings, f"it does not lie beside {package.name}")
+    if not settings.is_file():
+        raise _settings_refused(settings, "it does not exist")
+    if not settings_sha or solution.sha256(settings).lower() != str(settings_sha).lower():
+        raise _settings_refused(settings, "its SHA-256 is not the one noted when it was written; it changed since")
+    try:
+        data = json.loads(settings.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as ex:
+        raise _settings_refused(settings, f"it is not valid JSON ({ex})") from ex
+    if not isinstance(data, dict):
+        raise _settings_refused(settings, "it is not a JSON object")
+    unknown = sorted(set(data) - set(SETTINGS_SECTIONS))
+    if unknown:
+        raise _settings_refused(settings, "it has sections other than EnvironmentVariables and ConnectionReferences: " + ", ".join(unknown))
+    with zipfile.ZipFile(package) as z:
+        names = z.namelist()
+        custom = next((z.read(n).decode("utf-8-sig", "replace") for n in names if n.lower() == "customizations.xml"), "")
+    have = {"EnvironmentVariables": {n.split("/")[1] for n in names if n.startswith("environmentvariabledefinitions/") and n.count("/") >= 2},
+            "ConnectionReferences": set(re.findall(r'connectionreferencelogicalname="([^"]+)"', custom))}
+    for section, fields in SETTINGS_SECTIONS.items():
+        entries = data.get(section, [])
+        if not isinstance(entries, list):
+            raise _settings_refused(settings, f"{section} is not a list")
+        seen = set()
+        for entry in entries:
+            if not isinstance(entry, dict) or set(entry) != set(fields) or not all(isinstance(entry[f], str) for f in fields):
+                raise _settings_refused(settings, f"an entry of {section} is not an object with the texts " + ", ".join(fields) + " only")
+            name = entry[fields[0]]
+            if name not in have[section]:
+                raise _settings_refused(settings, f"{section} names {name}, which {package.name} does not have")
+            if name in seen:
+                raise _settings_refused(settings, f"{section} names {name} twice")
+            seen.add(name)
+            if section == "ConnectionReferences" and not entry["ConnectionId"].strip():
+                raise _settings_refused(settings, f"the ConnectionId of {name} is empty")
+            if section == "ConnectionReferences" and not (entry["ConnectorId"].startswith(CONNECTOR_ID)
+                                                          and len(entry["ConnectorId"]) > len(CONNECTOR_ID)):
+                raise _settings_refused(settings, f"the ConnectorId of {name} does not begin with {CONNECTOR_ID}")
+
+
+def start_import(url: str, package: Path, wait: float, settings: Path | None = None, settings_sha: str | None = None) -> dict:
     """Hand a package to the server and wait at most `wait` seconds. pac is only the trigger: once it has named the
     asynchronous operation the server holds the import and goes on without pac (pac test round 1, V3), so pac is ended
     after the wait and the state is read from the server (VERBUNDEN VB-10). Returns state: done (pac saw the end),
     running (handed over, pac ended), failed (pac reports an error; kind and message), skipped (pac did not hand the
-    package over, the version online is not lower; message)."""
-    command = _command(url, ["solution", "import", "--path", str(package), *IMPORT_SWITCHES])
+    package over, the version online is not lower; message). settings: a settings file for a move (ERWEITERUNGEN C.2),
+    checked by check_settings against settings_sha before pac starts; the one way to --settings-file."""
+    arguments, checked = ["solution", "import", "--path", str(package)], None
+    if settings is not None:
+        check_settings(Path(package), Path(settings), settings_sha)
+        arguments += [SETTINGS_FILE, str(settings)]
+        checked = (str(settings), str(settings_sha))
+    command = _command(url, [*arguments, *IMPORT_SWITCHES], settings=checked)
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
     parts: list[bytes] = []
     reader = threading.Thread(target=lambda: parts.extend(iter(proc.stdout.readline, b"")), daemon=True)

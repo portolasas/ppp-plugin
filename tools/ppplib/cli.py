@@ -291,7 +291,8 @@ def cmd_walk(a) -> int:
     for level, message in rep.lines:
         if level == "WARN":
             print(f"[WARN]  {message}")
-    profile = Path(a.profile) if a.profile else walk.profile_dir(Path.home(), loaded)
+    from . import agent
+    profile = Path(a.profile) if a.profile else walk.profile_dir(agent.PPP_HOME, loaded)
     # response bodies may hold personal data, so they stay outside git whatever the walk's "out" says
     work = root / "exchange" / "walks" / walk.name_of(path)
     diagnosis = work / "diagnosis.json" if a.diagnose else ""
@@ -519,27 +520,83 @@ def _yes(value: str | None) -> bool | None:
     return None if value is None else value == "yes"
 
 
+def _project_alias(root: Path) -> str:
+    """The alias of the project's environment for a message, also offline."""
+    return load_config(root).get("environment") or "the project's environment"
+
+
 def cmd_connect(a) -> int:
-    from . import connected
-    print("\n".join(connected.connect(find_root(a.project), a.name or None, a.role, _yes(a.in_use), _yes(a.confirm_import), a.off)))
+    from . import connected, move, publisher, tenant
+    root = find_root(a.project)
+    if a.target:    # a move target: only environments/<target>.json is written (ERWEITERUNGEN C.1)
+        if a.role != "test":
+            raise ToolError("ppp connect --target needs --role test: a move goes to the user test only.")
+        if not a.name:
+            raise ToolError("ppp connect --target needs the display name of the move target: ppp connect \"<Name>\" --role test --target.")
+        if a.off or a.confirm_import is not None:
+            raise ToolError("ppp connect --target writes only environments/<target>.json: not together with --off or --confirm-import, "
+                            "which belong to project.json.")
+        print("\n".join(move.connect_target(root, a.name, _yes(a.in_use))))
+        return 0
+    lines = connected.connect(root, a.name or None, a.role, _yes(a.in_use), _yes(a.confirm_import), a.off)
+    if not a.off:   # the publisher of the settings in the environment just connected (ERWEITERUNGEN A.1)
+        lines += publisher.connect_lines(root, tenant.environment(root))
+    print("\n".join(lines))
     return 0
 
 
 def cmd_export(a) -> int:
-    from . import connected
-    return connected.export(find_root(a.project), _take_export, a.solution, a.compare, a.no_commit, a.force, a.wait)
+    from . import connected, move
+    root = find_root(a.project)
+    if a.environment:   # from a move target only a comparison (ERWEITERUNGEN C.1)
+        if not a.compare:
+            raise ToolError(f"the project's base comes from {_project_alias(root)}; ppp export --compare --environment {a.environment} "
+                            "shows the difference.")
+        if a.no_commit or a.force:
+            raise ToolError("ppp export --compare --environment changes nothing: not together with --no-commit or --force.")
+        return move.compare(root, a.environment, a.solution, a.wait)
+    return connected.export(root, _take_export, a.solution, a.compare, a.no_commit, a.force, a.wait)
 
 
 def cmd_import(a) -> int:
-    from . import connected
+    from . import connected, move, publisher
+    root = find_root(a.project)
+    if a.create:        # an empty first solution with the publisher of the settings (ERWEITERUNGEN A.1)
+        given = [flag for flag, on in (("a package", a.package), ("--restore", a.restore), ("--environment", a.environment),
+                                       ("--accept-drift", a.accept_drift), ("--with-apps", a.with_apps)) if on]
+        if given:
+            raise ToolError("ppp import --create builds and imports an empty solution: not together with " + ", ".join(given) + ".")
+        if a.transfer and not a.solution:
+            raise ToolError("--transfer needs --solution <UniqueName>: ppp import --create --solution <UniqueName> --transfer.")
+        return publisher.create(root, a.solution, a.confirmed, a.wait, transfer=a.transfer)
+    if a.transfer:
+        raise ToolError("--transfer goes with --create --solution <UniqueName>.")
+    if a.solution:
+        raise ToolError("--solution goes with --create; ppp import imports the package solution of project.json.")
+    if a.environment:   # the move into a target of role test (ERWEITERUNGEN C.1)
+        if a.package:
+            raise ToolError(f"a move takes the export of {_project_alias(root)}, no package.")
+        if a.restore:
+            raise ToolError("a restore in a move target goes on a card.")
+        return move.move(root, a.environment, a.confirmed, a.accept_drift, a.with_apps, a.wait)
     if a.restore:
-        return connected.restore(find_root(a.project), a.package or None, a.confirmed, a.with_apps, a.wait)
-    return connected.import_package(find_root(a.project), a.package or None, a.confirmed, a.accept_drift, a.with_apps, a.wait)
+        return connected.restore(root, a.package or None, a.confirmed, a.with_apps, a.wait)
+    return connected.import_package(root, a.package or None, a.confirmed, a.accept_drift, a.with_apps, a.wait)
 
 
 def cmd_tenant(a) -> int:
-    from . import connected
-    return connected.status(find_root(a.project), a.log, a.values, a.write)
+    from . import connected, move
+    root = find_root(a.project)
+    if a.connections and (a.log or a.values or a.write):
+        raise ToolError("ppp tenant --connections only lists the connections: not together with --log, --values or --write.")
+    if a.environment or a.connections:  # a move target, or the connections to bind (ERWEITERUNGEN C.1)
+        return move.status(root, a.environment or None, a.connections, a.log, a.values, a.write)
+    return connected.status(root, a.log, a.values, a.write)
+
+
+def cmd_members(a) -> int:
+    from . import members
+    return members.run(find_root(a.project), a.names)
 
 
 def cmd_storage(a) -> int:
@@ -751,6 +808,9 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--confirm-import", choices=("yes", "no"), default=None,
                    help="card before every import (yes, default), or only on a deviation in the tenant and on a first import (no)")
     c.add_argument("--off", action="store_true", help="make the project offline again; the environment file stays")
+    c.add_argument("--target", action="store_true",
+                   help="with a name and --role test: connect a move target, an environment for the user test; writes only "
+                        "environments/<target>.json, project.json keeps its environment. Then ppp import --environment <target>")
 
     c = command("export", cmd_export, "Connected projects: fetch the solution (default: the transfer solution, else the main "
                                       "solution) from the tenant, unpack it to solution/<UniqueName>/ and commit it as "
@@ -760,6 +820,9 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--no-commit", action="store_true", help="unpack only")
     c.add_argument("--force", action="store_true", help="replace the folder even with work that is not imported")
     c.add_argument("--wait", type=float, default=540, help="seconds to wait for the export (default 540)")
+    c.add_argument("--environment", default="", metavar="TARGET",
+                   help="with --compare only: compare a move target (the alias of environments/<target>.json) with the project; "
+                        "the project's base comes from its own environment")
 
     c = command("import", cmd_import, "Connected projects: import a package built by ppp pack. Checks first: it is the "
                                       "project's package solution, unmanaged, the file its report names, its version above the "
@@ -778,6 +841,20 @@ def build_parser() -> argparse.ArgumentParser:
                         "online; what an import added since stays. Always after a card")
     c.add_argument("--wait", type=float, default=100, help="seconds until the command returns with RUNNING (default 100; the "
                                                            "same command again waits further, it starts no second import)")
+    c.add_argument("--create", action="store_true",
+                   help="instead of a package create an empty solution with the Publisher of ~/.ppp/settings.json (the main "
+                        "solution, or the one of --solution) in the project's environment; the import creates the Publisher "
+                        "where it is missing, except in the default environment. Always after a card")
+    c.add_argument("--solution", default=None,
+                   help="with --create: unique name of a solution of role main or transfer in project.json (default: the main "
+                        "solution)")
+    c.add_argument("--transfer", action="store_true",
+                   help="with --create --solution: the solution is the transfer solution; in mode large without one, "
+                        "project.json gets it with the role transfer when the import starts (with --confirmed)")
+    c.add_argument("--environment", default="", metavar="TARGET",
+                   help="move instead: the fresh export of the main solution from the project's environment, same version, into "
+                        "the move target of environments/<target>.json (role test), with its bindings and values; no package "
+                        "argument, no --restore. Always after a card")
 
     c = command("tenant", cmd_tenant, "Connected projects: what the tenant holds of this project, without the account: versions "
                                       "against the project, flows that are off, connection references without a connection or "
@@ -785,6 +862,19 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--log", action="store_true", help="also the record of the last import: results and the texts of errors and warnings")
     c.add_argument("--values", action="store_true", help="also the current values of the environment variables (on the user's request only)")
     c.add_argument("--write", action="store_true", help="write the bindings and the flow switches as read into environments/<alias>.json")
+    c.add_argument("--environment", default="", metavar="TARGET",
+                   help="the environment of environments/<target>.json instead, a move target (the project's alias: the same as "
+                        "without)")
+    c.add_argument("--connections", action="store_true",
+                   help="only list the connections there per connector of the main solution, with ID and status (no account); "
+                        "reads only, not with --log, --values or --write")
+
+    c = command("members", cmd_members, "Connected projects in mode large: list the members of the transfer solution, or add "
+                                        "flows, environment variables and connection references of the main solution to it, "
+                                        "each at its ID, a flow with its references and variables. Removing goes on a card.", False)
+    c.add_argument("names", nargs="*", default=[], metavar="NAME",
+                   help="components of solution/<main>/ to add: a flow by its name, a variable by its schema name, a reference "
+                        "by its logical name, regardless of case (default: list the members)")
 
     c = command("canvas", cmd_canvas, "Check screen YAML before pasting: formulas, en-US, control versions, containers, delegation.", False)
     c.add_argument("path", nargs="?", default="", help="folder or .pa.yaml (default: components/power-apps/screens)")
@@ -876,7 +966,10 @@ def build_parser() -> argparse.ArgumentParser:
     c = sub.add_parser("settings", help="Show or save the personal settings (~/.ppp/settings.json).",
                        description="Show or save the personal settings in ~/.ppp/settings.json: language of chat and cards, "
                                    "guidance level, folder of the sessions repository, backup folder, and the Publisher of the "
-                                   "developer (one for all his projects, once per computer).", epilog=EPILOG)
+                                   "developer (one for all his projects, once per computer). For trials and tests the "
+                                   "environment variable PPP_HOME names another folder instead of ~/.ppp; the ordinary "
+                                   "user does not set it. Without options the path of the file that applies is shown.",
+                       epilog=EPILOG)
     c.add_argument("--language", default="", help="language of chat and cards, e.g. de or en")
     c.add_argument("--guidance", default="", help="beginner, standard or experienced")
     c.add_argument("--sessions", default="", help="folder of the clone of the private sessions repository (ppp sessions)")

@@ -13,6 +13,9 @@ Done when every scenario has a result and every deviation has a decision.
 ## 2. Move to test or production
 Environments: citizen development, an own test environment, production through the governance process of the company.
 1. **IDs per environment** in `environments/<environment>.json`: site URLs, list IDs, connection references, values of environment variables. Nothing environment-specific stays fixed in a flow; a fixed site URL becomes an environment variable in a package first.
+
+**Connected project, target of role `test`:** the move is `ppp connect "<name>" --role test --target`, the bindings and values written into `environments/<environment>.json` after a card (a variable whose value must differ there gets it from the card; otherwise the value of the project's environment travels with the export), and `ppp import --environment <environment>` after a card: it moves the fresh export of the main solution with its version, in place of points 2 and 3. An app comes along only if it is in the main solution (the card of point 2 up to `ppp export`) and `--with-apps` is given; sharing and publishing it, and the setup flow of point 3, stay by hand on a card. Steps, answers and refusals: [../ppp-package/references/connected-move.md](../ppp-package/references/connected-move.md). Points 4 and 5 stay. Offline, or for any other target, points 2 and 3:
+
 2. **Package with apps**: for the move the app comes into the solution (card: Solutions › main solution › Add existing › App), fresh export, `ppp unpack`, then `ppp pack --solution <main solution> --version <next> --with-apps --label <environment>`.
 3. **Import card** for the target environment: connections, values of the environment variables from `environments/<environment>.json`, then the setup flow with phase Schema (and Daten, if start values are needed).
 4. For production follow the governance process; ppp prepares the documents it asks for, the user submits them.

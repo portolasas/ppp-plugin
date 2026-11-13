@@ -1,0 +1,39 @@
+# Connected project: move to test
+
+The ordinary cycle: [connected.md](connected.md). Refusals, drift, a failed import, a restore: [connected-trouble.md](connected-trouble.md). A missing publisher: "Create a solution" in [connected-create.md](connected-create.md). Status per statement: **[B]** observed in the tenant, **[O]** open, as in [solutions.md](solutions.md). Every "Next:" line a command prints is the next step; it is not repeated here.
+
+## Move to test
+A move takes the fresh export of the main solution from the project's environment, with the same version, into a second environment of role `test`, the target. It is always on a card, never from the target back, and carries no package: `ppp pack --with-apps` is not needed. The user test happens in the target; production stays the governance way (ppp-golive).
+
+1. The project's export is committed and its version is online in the project's environment: `ppp export --solution <Main>` if not.
+2. `ppp connect "<Name>" --role test --target [--in-use yes|no]` writes only `environments/<target>.json`; `project.json` keeps its environment. It prints the solutions there, the publisher line and per connector `Connections there for <connector>: <n> connected` or `none: the user creates one first`.
+3. `ppp tenant --environment <target> --connections` lists per connector `<ConnectionId> <status>`; it reads only. A card asks the user which connection each reference gets and which value each variable gets. Then write with the file tool into `environments/<target>.json`: `connectionReferences` `{<logicalName>: <ConnectionId>}` and `environmentVariables` `{<schemaName>: "<value>" | null}`. `null` or no entry: no value of the file. The export then carries the current value the variable has in the project's environment (if it has one), and that value arrives in the target, on an update over an earlier target value; without one in the export the default applies, or the value the target has already. So the card asks, per variable whose value must differ in the target (site addresses, list IDs, mailboxes), for that value, and you enter it. Addresses, IDs and values stay in `environments/`, out of chat.
+4. `ppp import --environment <target> [--with-apps] [--accept-drift]` answers `CONFIRM FIRST (a move into <target>, always on a card)`.
+5. Card with "Move" and "Not now": source and version, the target and what is online there, the number of flows, apps, per reference its connection, the variables with `value from environments/<target>.json` (the value itself only on request); per variable without a value `… the value of <alias> travels with the export` or `… the default applies, or the value <target> has already`, and the card names each variable whose value travels by name; the publisher of the export (with a half-sentence when it differs from the settings), "without publishing; sharing and publishing the app stay by hand", the drift it overwrites. After "Move": the same command with `--confirmed`.
+6. After `IMPORTED:` read the lines `Values:`, `Bindings:`, per variable without a value what applies in the target, and the flows; report each `WARNING`. `WARNING <schema>: the value of <alias> came with the export; …` names a value that travelled (the line says whether the target now has a current value; the value itself only via `ppp tenant --environment <target> --values`): show it to the user. If it is wrong in the target, write the right value into `environments/<target>.json`, make a new version in the project's environment and move again; or the user sets it in the target by hand. No `ppp export` from the target: the base stays the project's environment. `ppp tenant --environment <target>` shows the state, `ppp export --compare --environment <target>` the difference (it changes nothing).
+
+| Answer | You |
+|---|---|
+| `CONFIRM FIRST` | Step 5 |
+| `DRIFT:` | The target differs from the version it got. Card: overwrite (`--accept-drift`, then `CONFIRM FIRST` again) or stop and build the change in the project's environment; nothing is taken over into the project |
+| `RUNNING:` | The same command follows the move |
+| `FAILED:` | The ZIP and the version are used up for this target; the project's environment is untouched. The next move needs a new version there, as under `Version … is not higher` below. Cause: skill ppp-diagnose |
+| `IMPORTED:` | Step 6; one card for what stays by hand: share and publish the app, the user test |
+
+Refusals that need you:
+- `The publisher … in <target> differs from the one of the export` or `The prefix … belongs to the publisher …`: ppp never changes a publisher; card, and the user decides (settings of the project or publisher in the target), then the move again.
+- `an import into <alias> is still running` (the project's environment): wait for it, `ppp export`, then the move. `an import of <Name> is running in <target>`: wait; `ppp tenant --environment <target>` shows where it stands.
+- `environments/<x>.json has the role production`, `… names the address of … with the role production`, `<target> has the role …`: never; production stays the way of ppp-golive.
+- `environments/<x>.json names another address than … has now`: check the file or remove it, then `ppp connect "<Name>" --role test --target` again; its bindings and values belong to the old environment.
+- `<reference> … has no binding`, `The connection of <reference> … is missing | <status> | of the connector …`: step 3; a connection not `Connected` is the user's to repair in the target.
+- `environmentVariables names <schema>, which … does not have`: remove it from the file. A value must be a text or `null`.
+- `Version … is not higher than in <target>`, `… is used up for <target>`, `pac skipped`: a new version in the project's environment first. In mode large only the transfer solution is packed, so the main solution's version never rises by itself: card for the user to raise it in the portal (the solution's settings) to the version the line names, then `ppp export --solution <Main>` (no `--force`), then the move again. Otherwise a package with a new version, imported there.
+- `differs from the project` or `has <Main> <v>, the project <w>`: `ppp export --solution <Main>`; a move carries only a committed state.
+- `The export contains apps`: `--with-apps` after the user agreed to carry them.
+- `The publisher … is missing in …, the default environment`: card for the portal, as in "Create a solution" ([connected-create.md](connected-create.md)).
+- `needs settings ppp does not fill`, `in a form ppp does not know`: the move goes the offline way of ppp-golive, by hand.
+- `ppp export --environment` without `--compare`, `--restore` or a package with `--environment`: use what the message names; a restore in the target is a card.
+
+Done when `IMPORTED:` shows `Values:` and `Bindings:`, and each `WARNING` (a travelled value too) is shown to the user and settled.
+
+Status: a move of a solution without an app, with bindings and values from the file, is observed [B]. A move with an app is [O]; the app is shared and published by hand either way. That a value carried by the export arrives in the target, and on an update replaces an earlier one, is platform knowledge, not yet observed in the tenant [O]; the line after `IMPORTED:` shows what the target holds. Binding a reference to another connection on an update is [O]. A missing publisher in a target outside the default environment is created by the import [O for a move]. What an export of the target holds differently from the source's (apart from the value files) is [O]: any such difference shows as drift.

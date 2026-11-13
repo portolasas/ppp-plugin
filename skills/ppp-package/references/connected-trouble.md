@@ -27,6 +27,8 @@ Done when the next import answers `IMPORTED:`.
 | `TIMEOUT` | No answer in time | Once more; then a card, as offline |
 | `BUSY` | Another import of this solution runs | Wait; `ppp tenant` shows the state |
 
+Whatever fails before pac has started (an import, a restore, a creation or a move; a refused settings file too) leaves nothing started and nothing used up: the same command later runs through every check anew.
+
 `AUTH`, `SYNTAX` and `BUSY` at the start of an import leave the ZIP unused: the same command can run again. So does `ERROR:` without a kind when pac skips the import because the version online is not lower: pack the version it names (after a restore, `ppp import --restore` again). "As offline" means the card of SKILL.md step 2 or 6; the user's export goes in with `ppp unpack`.
 
 ## Restore

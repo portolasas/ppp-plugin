@@ -45,10 +45,11 @@ def role_name(walk: dict) -> str:
     return str((walk.get("role") or {}).get("name", ""))
 
 
-def profile_dir(home: Path, walk: dict) -> Path:
-    """Each role keeps its own sign-in in its own browser profile."""
+def profile_dir(folder: Path, walk: dict) -> Path:
+    """Each role keeps its own sign-in in its own browser profile, in ppp's personal folder (agent.PPP_HOME: ~/.ppp or
+    the folder the environment variable PPP_HOME names)."""
     slug = re.sub(r"[^a-z0-9]+", "-", role_name(walk).lower()).strip("-")
-    return home / ".ppp" / (f"edge-profile-{slug}" if slug else "edge-profile")
+    return folder / (f"edge-profile-{slug}" if slug else "edge-profile")
 
 
 def viewports(walk: dict) -> list[list[int]]:

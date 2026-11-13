@@ -124,7 +124,7 @@ def session_start(data: dict, root: Path, tool: str) -> dict:
             head.append("- Publisher: not set. Before a solution is created, ask for it on one card (ppp-intake) and save it "
                         "with ppp settings.")
     else:
-        head.append("- ~/.ppp/settings.json is missing: before anything else ask language, guidance and publisher on one card "
+        head.append(f"- {agent.SETTINGS} is missing: before anything else ask language, guidance and publisher on one card "
                     "(the publisher may be skipped if the user has none yet).")
     text = "\n".join(head) + "\n"
     state = root / "STATE.md"

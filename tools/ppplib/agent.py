@@ -3,7 +3,8 @@
 VS Code loads it as the plugin agent ppp (PLUGIN PL-4, PL-17); Claude Code gets the same text from the SessionStart
 hook (PL-5). The tool call comes from the hook and is kept in ~/.ppp/tool-call.txt for sessions without hooks (PL-16).
 Before 0.2.0 `ppp setup` copied the agent to ~/.copilot/agents/; such a copy would hide the plugin agent.
-Personal settings: ~/.ppp/settings.json (ARBEITSWEISE A-14).
+Personal settings: ~/.ppp/settings.json (ARBEITSWEISE A-14). The environment variable PPP_HOME, when set and not empty,
+names another folder for ~/.ppp (for trials and tests; the ordinary user does not set it).
 """
 from __future__ import annotations
 
@@ -24,7 +25,17 @@ SOURCE = PLUGIN / "com.github.copilot" / "agents" / "ppp.agent.md"
 TOOL = PLUGIN / "tools" / "ppp.py"
 REPO = PLUGIN.parent
 AGENT_COPY = Path.home() / ".copilot" / "agents" / "ppp.agent.md"
-PPP_HOME = Path.home() / ".ppp"
+
+
+def home_folder() -> Path:
+    """The personal folder of ppp: the environment variable PPP_HOME when it is set and not empty (made absolute, ~
+    resolved), else ~/.ppp. Settings, tool call, usage and card guard notes and the sessions mark are derived from
+    PPP_HOME below."""
+    given = os.environ.get("PPP_HOME", "").strip()
+    return Path(os.path.abspath(os.path.expanduser(given))) if given else Path.home() / ".ppp"
+
+
+PPP_HOME = home_folder()
 SETTINGS = PPP_HOME / "settings.json"
 TOOL_CALL = PPP_HOME / "tool-call.txt"
 MARKETPLACE = "portolasas/ppp-plugin"

@@ -212,7 +212,9 @@ def _validate_config(config: dict, rep: Report) -> None:
 def _environments(root: Path, config: dict, rep: Report) -> None:
     """environments/<alias>.json holds the IDs of an environment as the project needs them. Three keys have a fixed
     meaning: environmentUrl, role and inUse. The file of the environment a connected project names must have inUse;
-    its role and its address may still be missing (ppp connect sets both; pac does not name the role)."""
+    its role and its address may still be missing (ppp connect sets both; pac does not name the role). Three more hold
+    the bindings, values and switches: connectionReferences, environmentVariables and flowSwitches. The file of a move
+    target (ppp connect --target) lies beside that of the project's environment and is checked the same way."""
     alias = config.get("environment") if isinstance(config.get("environment"), str) else None
     folder = root / "environments"
     files = {p.stem: p for p in sorted(folder.glob("*.json"))} if folder.is_dir() else {}
@@ -240,6 +242,21 @@ def _environments(root: Path, config: dict, rep: Report) -> None:
             rep.error(f"{where}: environmentUrl must be the address of the environment, https://<name>.crm<n>.dynamics.com")
         elif url is None and own:
             rep.warn(f"{where}: environmentUrl missing; nothing reaches the tenant until the address of the environment is known")
+        # what a move into the environment needs (ERWEITERUNGEN C.4), and what ppp tenant --write keeps; each where it occurs
+        texts = lambda value, empty: isinstance(value, dict) and all(isinstance(k, str) and (isinstance(v, str) or (empty and v is None))
+                                                                     for k, v in value.items())
+        if "connectionReferences" in data and not texts(data["connectionReferences"], False):
+            rep.error(f"{where}: connectionReferences must be an object of logical names, each with the ID of its connection "
+                      "(a text)")
+        if "environmentVariables" in data and not texts(data["environmentVariables"], True):
+            rep.error(f"{where}: environmentVariables must be an object of schema names, each with its value (a text) or null "
+                      "(the default applies)")
+        switches = data.get("flowSwitches")
+        if "flowSwitches" in data and not (isinstance(switches, dict)
+                                           and all(isinstance(switches.get(k, []), list) and all(isinstance(n, str) for n in switches.get(k, []))
+                                                   for k in ("on", "off"))
+                                           and isinstance(switches.get("readOn", ""), str)):
+            rep.error(f"{where}: flowSwitches must be an object with the lists on and off (names of flows) and readOn (a date)")
         if own and rep.errors == before:
             confirm = config.get("confirmImport", True) or data["inUse"]
             rep.info(f"S connected project: environment {alias}, role {data.get('role') or 'not set yet'}"

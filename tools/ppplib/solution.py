@@ -12,6 +12,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree
+from xml.sax.saxutils import escape
 
 from .gitutil import read_blobs, rel, tracked_files
 from .project import ToolError
@@ -60,7 +61,36 @@ def remove_tree(path: Path) -> None:
         shutil.rmtree(path, onerror=writable)
 
 
+# The commands of pac that ppp runs locally, without an environment, each with the options it may carry, in lower case.
+# A call against the tenant goes only through tenant.run, which names the environment itself; here --environment is
+# refused, as every command and option not in this list.
+LOCAL = {("solution", "pack"): {"--zipfile", "--folder", "--packagetype"},
+         ("solution", "unpack"): {"--zipfile", "--folder", "--packagetype"},
+         ("solution", "create-settings"): {"--solution-zip", "--settings-file"}}
+
+
+def check_local(args: tuple[str, ...] | list[str]) -> None:
+    """Refuse a local call of pac that is not on LOCAL, before pac starts: an unknown command or option, an option twice,
+    an option without a value or with a value that begins with --, and every --environment."""
+    verb = tuple(args[:2])
+    if verb not in LOCAL:
+        raise ToolError(f"pac {' '.join(args[:2])} is not a command ppp runs locally.")
+    seen, i = set(), 2
+    while i < len(args):
+        option = str(args[i]).lower()
+        if option.startswith("--env") or option in ("-env", "-e"):
+            raise ToolError(f"pac {' '.join(verb)} runs locally: {args[i]} goes only through tenant.run, which names the environment.")
+        if not option.startswith("--") or option not in LOCAL[verb] or option in seen:
+            raise ToolError(f"pac {' '.join(verb)}: {args[i]} is not an option ppp uses locally, or it stands twice.")
+        if i + 1 >= len(args) or str(args[i + 1]).startswith("--"):
+            raise ToolError(f"pac {' '.join(verb)}: {args[i]} needs a value.")
+        seen.add(option)
+        i += 2
+
+
 def run_pac(*args: str) -> str:
+    """A local call of pac (pack, unpack, create-settings), after check_local."""
+    check_local(args)
     proc = subprocess.run([pac(), *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
     out = (proc.stdout + proc.stderr).strip()
     if proc.returncode != 0 or re.search(r"^Error:", out, re.M):
@@ -213,6 +243,34 @@ def keep_volatile(root: Path, folder: Path) -> list[str]:
             meta.write_bytes(old)
             kept.append(name)
     return kept
+
+
+EMPTY_TEMPLATE = Path(__file__).resolve().parent.parent.parent / "templates" / "solution"
+EMPTY_VERSION = "1.0.0.1"
+EMPTY_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def empty_solution(folder: Path, name: str, publisher: dict) -> Path:
+    """An unpacked solution without components (ERWEITERUNGEN A.4): the template plugin/templates/solution/ with the
+    unique name, version EMPTY_VERSION and the four values of the publisher (uniqueName, displayName, prefix,
+    optionValuePrefix, as agent.publisher_of gives them) in Other/Solution.xml, XML-escaped; Other/Customizations.xml
+    byte for byte the template's. The template has the form of a pac unpack (BOM, CRLF), which pac packs as it is."""
+    if not (isinstance(name, str) and EMPTY_NAME.fullmatch(name)):
+        raise ToolError(f"{name!r} is not the unique name of a solution: letters, digits and underscores, no digit first.")
+    values = {"solution": name, "version": EMPTY_VERSION, "publisher": publisher["uniqueName"],
+              "publisherDisplay": publisher["displayName"], "prefix": publisher["prefix"],
+              "optionValuePrefix": str(publisher["optionValuePrefix"])}
+    text = (EMPTY_TEMPLATE / "Other" / "Solution.xml").read_bytes().decode("utf-8")
+    for key, value in values.items():
+        text = text.replace("{{" + key + "}}", escape(str(value), {'"': "&quot;"}))
+    if "{{" in text:
+        raise ToolError(f"The template {EMPTY_TEMPLATE / 'Other' / 'Solution.xml'} has a placeholder ppp does not fill.")
+    if folder.exists() and any(folder.iterdir()):
+        raise ToolError(f"Target exists, not overwritten: {folder}")
+    (folder / "Other").mkdir(parents=True, exist_ok=True)
+    (folder / SOLUTION_XML).write_bytes(text.encode("utf-8"))
+    (folder / "Other" / "Customizations.xml").write_bytes((EMPTY_TEMPLATE / "Other" / "Customizations.xml").read_bytes())
+    return folder
 
 
 def pack(folder: Path, out: Path) -> None:

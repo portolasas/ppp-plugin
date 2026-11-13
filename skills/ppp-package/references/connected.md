@@ -1,6 +1,6 @@
 # Connected project: ppp exports and imports
 
-A project is **connected** when `project.json` names an `environment`: `ppp` then exports, imports and reads the result via pac. Status per statement: [solutions.md](solutions.md). Drift, a failed import, pac failing, a restore: [connected-trouble.md](connected-trouble.md).
+A project is **connected** when `project.json` names an `environment`: `ppp` then exports, imports and reads the result via pac. Status per statement: [solutions.md](solutions.md). Drift, a failed import, pac failing, a restore: [connected-trouble.md](connected-trouble.md). Creating a solution and the members of the transfer solution: [connected-create.md](connected-create.md). The move into a test environment: [connected-move.md](connected-move.md).
 
 ## What changes in the package cycle
 `ppp export` replaces the user's export at the start of every package, after the scaffold of step 2 and after step 6 (the tenant's state becomes the next base). `ppp import` replaces the import of step 6; a card if it asks.
@@ -37,14 +37,15 @@ Before each import the tenant's state is saved as `exchange/tenant/<Name>/before
 `ppp tenant`, `ppp connect` show "Usual here: export about …, import about … (a whole ppp import up to IMPORTED, checks and backup included)"; `ppp tenant` also shows versions against the project, flows that are off, connection references without or with a broken connection. `--log` adds the last import's record, `--values` variable values (on request), `--write` saves bindings and switches in `environments/<alias>.json`. Run history stays a card: ppp does not read flow runs.
 
 ## Setting the connection
-- `ppp connect "<environment name>" --role <development|test|production> --in-use <yes|no> --confirm-import <yes|no>` finds the environment by its exact display name (similar names are suggested), writes its address into `environments/<alias>.json`; without a name it refreshes. `--off`: offline.
+- `ppp connect "<environment name>" --role <development|test|production> --in-use <yes|no> --confirm-import <yes|no>` finds the environment by its exact display name (similar names are suggested), writes its address into `environments/<alias>.json`; without a name it refreshes. `--off`: offline. It also prints a line on the publisher of the settings (as in the settings, missing, differing): [connected-create.md](connected-create.md), "Create a solution".
+- An environment of role `test` is the target of a move: `ppp connect "<name>" --role test --target` connects a second one and leaves `project.json` as it is: [connected-move.md](connected-move.md).
 - pac does not name an environment's role: the first `ppp connect` needs `--role`, then the role in `environments/<alias>.json` counts. Without a role `ppp connect` and `ppp import` refuse and explain the roles.
 - The default environment is the standard; working in an own development environment is the user's free choice.
 - `--confirm-import yes` asks for a card before every import, `no` only on drift and on the first import of ppp from this project into the environment (also if the solution is there already); `--in-use yes` and role `test` keep it before every import.
 - Address and IDs of an environment stay in `environments/`, out of lessons, skills, chat.
 
 ## What stays with the user
-- Scaffolds, transfer solution members, the cards after an import, switching flows, connections, "paste code", publishing an app, deleting.
+- Scaffolds (an empty first solution excepted: `ppp import --create` builds it after a card), removing members of the transfer solution (ppp adds them: `ppp members`), the cards after an import, switching flows, connections, "paste code", publishing an app, deleting.
 - Production: `ppp import` refuses it; governance way (ppp-golive).
 
-The tenant is reached through `ppp connect`, `export`, `import` and `tenant` only. Where hooks run, a direct call of `pac` is refused, also a command line that only quotes it (a commit message) where `pac` stands in the quoted text after `;`, `|`, `&`, `(` or at the start of a line: write the text with the file tool or rephrase it. What these do not offer goes to the user on a card.
+The tenant is reached through `ppp connect`, `export`, `import`, `tenant` and `members` only. Where hooks run, a direct call of `pac` is refused, also a command line that only quotes it (a commit message) where `pac` stands in the quoted text after `;`, `|`, `&`, `(` or at the start of a line: write the text with the file tool or rephrase it. What these do not offer goes to the user on a card.

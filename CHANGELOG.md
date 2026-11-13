@@ -2,6 +2,13 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.23.0 (2026-11-13)
+- ppp import --create [--solution <Name> [--transfer]] legt eine leere Solution samt Publisher der Einstellungen an (Vorlage im Plugin), immer nach Karte; in Citizen Developments nur mit vorhandenem Publisher. ppp connect gleicht den Publisher mit den Einstellungen ab
+- ppp members listet die Transferlösung und nimmt Flows, Umgebungsvariablen und Verbindungsreferenzen der Hauptlösung auf; ein Flow bringt seine Referenzen und Variablen mit
+- Umzug nach Test: ppp connect --role test --target, ppp import --environment <ziel> mit Bindungen und Werten aus environments/<ziel>.json, immer nach Karte; ppp tenant --environment (--connections, --values), ppp export --compare --environment. Im Modus large nennen die Meldungen die Karte Version heben
+- Hinweis nach RUNNING nennt den Befehl, der weiter wartet (Anlage, Rückspielen, Umzug); Umgebungsvariable PPP_HOME für einen eigenen persönlichen Ordner statt ~/.ppp (Erprobungen und Tests), auch für das Edge-Profil von ppp walk
+- ppp-package: references/connected-create.md und connected-move.md
+
 ## 0.22.2 (2026-11-13)
 - ppp verify (C9) meldet eine Funktion, die die Ausdruckssprache nicht kennt, als Fehler: Der Server nimmt einen solchen Flow an und schaltet ihn ein, erst der Lauf scheitert (Erprobung 13.11.)
 - DRIFT und ppp export --compare zeigen je abweichender Datei die abweichenden Zeilen; nach einem gelungenen Import weisen ppp pack und ppp import ab, bis ppp export lief (ein ppp unpack derselben Version zählt)
