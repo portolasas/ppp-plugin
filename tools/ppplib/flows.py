@@ -176,6 +176,51 @@ def syntax_problem(e: str) -> str | None:
     return None
 
 
+def function_names(e: str) -> list[str]:
+    """Names of the functions one expression calls, in order; text in '…' literals and property access
+    (?['x'], .name) are no calls."""
+    masked, quoted, i, n = [], False, 0, len(e)
+    while i < n:
+        ch = e[i]
+        if quoted:
+            if ch == "'":
+                if i + 1 < n and e[i + 1] == "'":
+                    masked.append("  ")
+                    i += 2
+                    continue
+                quoted = False
+                masked.append("'")
+            else:
+                masked.append(" ")
+        else:
+            if ch == "'":
+                quoted = True
+            masked.append(ch)
+        i += 1
+    return re.findall(r"(?<![\w.?\]])([A-Za-z_]\w*)\s*\(", "".join(masked))
+
+
+def located_strings(d: dict):
+    """(place, string) for every string of a definition: 'trigger <name>', the action name, or the top key."""
+    for key, value in d.items():
+        if key == "triggers" and isinstance(value, dict):
+            for name, trig in value.items():
+                for s in strings(trig):
+                    yield f"trigger {name}", s
+        elif key == "actions" and isinstance(value, dict):
+            for name, a, *_ in walk(value):
+                for s in strings(own_part(a)):
+                    yield name, s
+                parts = [a.get("else"), a.get("default"), *(a.get("cases") or {}).values()]
+                for part in parts:
+                    if isinstance(part, dict):
+                        for s in strings({k: v for k, v in part.items() if k != "actions"}):
+                            yield name, s
+        else:
+            for s in strings(value):
+                yield key, s
+
+
 def line_numbers(text: str) -> dict[str, int]:
     """First line of each '"name": {' in the file, for reading only the needed range."""
     found = {}

@@ -17,7 +17,7 @@
 - Real parsing with `Parse JSON` and a strict schema. [B]
 - A property name that starts with `@` is read as an expression, in schemas and bodies too: `@odata.nextLink` as a Parse JSON schema key failed the import with `TemplateValidationError` ("Unable to parse template language expression 'odata.nextLink'"). Write `@@odata.nextLink`; reading a response stays `?['@odata.nextLink']` [B] (PA-20261024-WIN-01). `ppp verify` C9 checks property names too.
 - `setProperty` rejects property names containing `.`, `[` or `]`, at run time only: a key built as `concat(<list>,'.',<field>)` imported and failed the run ("The provided property name … has these invalid characters '.'"). Nest the objects: `setProperty(<o>,<list>,setProperty(<inner>,<field>,<value>))` [B] (PA-20261026-WIN-01). `wdl_sim` applies the rule to `setProperty` and `addProperty`, `ppp verify` C9 to literal names.
-- Build expressions in files or generators, never through shell or Python string literals: quotes get lost (`replace(x,,'')` once broke a whole package). [B] `ppp verify` C9 checks the syntax.
+- Build expressions in files or generators, never through shell or Python string literals: quotes get lost (`replace(x,,'')` once broke a whole package). [B] `ppp verify` C9 checks the syntax and every function name against the Microsoft reference list, because the tenant imports and switches on a flow with an unknown function and the run fails (pac test 12.11.).
 
 ## Variables
 - `Set variable` must not read its own variable in the value (`WorkflowRunActionInputsInvalidProperty` on import). Compute in a `Compose`, then set. [B]

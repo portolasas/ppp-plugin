@@ -2,6 +2,14 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.22.2 (2026-11-13)
+- ppp verify (C9) meldet eine Funktion, die die Ausdruckssprache nicht kennt, als Fehler: Der Server nimmt einen solchen Flow an und schaltet ihn ein, erst der Lauf scheitert (Erprobung 13.11.)
+- DRIFT und ppp export --compare zeigen je abweichender Datei die abweichenden Zeilen; nach einem gelungenen Import weisen ppp pack und ppp import ab, bis ppp export lief (ein ppp unpack derselben Version zählt)
+- Karte beim ersten Import von ppp aus einem Projekt in eine Umgebung, auch wenn die Solution dort schon existiert; in eine Umgebung der Rolle test importiert ppp nur nach Karte
+- ppp connect empfiehlt keine Entwicklungsumgebung mehr (Messungen der Runde 2 belegen keinen Zeitvorteil); Citizen Developments bleibt die Vorgabe, die Wahl liegt beim Nutzer. Usual here nennt für den Import die Dauer eines ganzen Aufrufs bis IMPORTED
+- imports.jsonl trennt die Warnungen von ppp (ppp_warnings) vom Protokoll des Servers (record); Apps erscheinen je App statt je Datei; SessionStart erneuert den Werkzeugaufruf auch außerhalb eines ppp-Projekts
+- ppp-package: references/connected.md geteilt, Drift, Fehler, Sperren und Rückspielen stehen in references/connected-trouble.md; ppp-intake und ppp-power-automate errors.md angeglichen
+
 ## 0.22.1 (2026-11-13)
 - ppp import meldet IMPORTED erst, wenn die Version online und der Job dieses Imports beendet ist; bis dahin RUNNING mit Fortschritt (Nachtest V3: die Version stand online, während der Job noch lief)
 - ppp connect verlangt die Rolle beim ersten Verbinden ausdrücklich (--role development|test|production, auch bei ppp init --environment); pac nennt sie nicht, die Regel über den Umgebungstyp entfällt; ohne Rolle importiert ppp import nicht

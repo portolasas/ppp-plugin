@@ -16,6 +16,42 @@ from .gitutil import read_blobs, rel, tracked_files, version_of
 from .report import Report
 
 FORBIDDEN = ("createObject", "padLeft")
+# Every function of the workflow definition language, by the groups of "Reference guide to functions in expressions for
+# workflows in Azure Logic Apps and Power Automate" (learn.microsoft.com/azure/logic-apps/expression-functions-reference,
+# ms.date 2026-07-21, retrieved 2026-11-13); a name in two groups stands in the first. The server imports a flow that
+# calls any other name and switches it on; the run fails (pac test 12.11.). Names are case-insensitive.
+FUNCTIONS = (
+    # String
+    "chunk", "concat", "endsWith", "formatNumber", "guid", "indexOf", "isFloat", "isInt", "lastIndexOf", "length",
+    "nthIndexOf", "replace", "slice", "split", "startsWith", "substring", "toLower", "toUpper", "trim", "trimByteOrderMark",
+    # Collection
+    "contains", "empty", "first", "intersection", "item", "join", "last", "reverse", "skip", "sort", "take", "union",
+    # Logical comparison
+    "and", "equals", "greater", "greaterOrEquals", "if", "less", "lessOrEquals", "not", "or", "strongEquals",
+    # Conversion (decodeBase64 and parse deprecated, still listed)
+    "array", "base64", "base64ToBinary", "base64ToJson", "base64ToString", "binary", "bool", "createArray", "dataUri",
+    "dataUriToBinary", "dataUriToString", "decimal", "decodeBase64", "decodeDataUri", "decodeUriComponent", "encodeBase64",
+    "encodeUriComponent", "float", "int", "json", "parse", "string", "uriComponent", "uriComponentToBinary",
+    "uriComponentToString", "xml",
+    # Math
+    "add", "div", "max", "min", "mod", "mul", "rand", "range", "sub", "pow",
+    # Date and time
+    "addDays", "addHours", "addMinutes", "addSeconds", "addToTime", "convertFromUtc", "convertTimeZone", "convertToUtc",
+    "dateDifference", "dayOfMonth", "dayOfWeek", "dayOfYear", "formatDateTime", "formatTimeSpan", "getFutureTime",
+    "getPastTime", "parseDateTime", "startOfDay", "startOfHour", "startOfMonth", "subtractFromTime", "ticks", "utcNow",
+    # Workflow
+    "action", "actions", "body", "formDataMultiValues", "formDataValue", "items", "iterationIndexes", "listCallbackUrl",
+    "multipartBody", "outputs", "parameters", "result", "trigger", "triggerBody", "triggerFormDataMultiValues",
+    "triggerFormDataValue", "triggerMultipartBody", "triggerOutputs", "variables", "workflow",
+    # URI parsing
+    "uriHost", "uriPath", "uriPathAndQuery", "uriPort", "uriQuery", "uriScheme",
+    # Manipulation: JSON and XML
+    "addProperty", "coalesce", "decodeXmlName", "decodeXmlValue", "encodeXmlName", "encodeXmlValue", "mergeObjects",
+    "removeProperty", "setProperty", "xpath",
+    # Named by earlier versions of the reference, no longer listed; kept so that an older flow is not refused
+    "actionBody", "actionOutputs",
+)
+KNOWN = {f.lower() for f in FUNCTIONS}
 MAX_DEPTH = 8  # Power Automate rejects actions nested deeper than level 8, top level = 0 (PA-20261008-MAC-01)
 BOOL_RX = re.compile(r"string\(\s*(or|and|not|equals|greater|greaterOrEquals|less|lessOrEquals|empty|contains|startsWith|endsWith|bool)\(")
 REF_RX = re.compile(r"\b(outputs|body|actions|result|items|variables)\(\s*'([^']+)'\s*\)")
@@ -187,9 +223,9 @@ def check_flow(rep: Report, short: str, text: str, base_text: str | None, retry_
         rep.warn(f"C8 {short} :: {len(legacy)} existing conditions as expression strings (do not edit in the designer): "
                  + ", ".join(sorted(legacy)))
 
-    # C9 expression syntax
-    n_expr, bad9 = 0, 0
-    for s in flows.strings(flows.definition(flow)):
+    # C9 expression syntax and function names
+    n_expr, bad9, unknown = 0, 0, set()
+    for where, s in flows.located_strings(flows.definition(flow)):
         found, unclosed = flows.expressions(s)
         for u in unclosed:
             bad9 += 1
@@ -201,6 +237,15 @@ def check_flow(rep: Report, short: str, text: str, base_text: str | None, retry_
                 bad9 += 1
                 if bad9 <= 10:
                     rep.error(f"C9 {short} :: expression: {problem} :: {_short(e)}")
+            for fn in flows.function_names(e):
+                # the server imports an unknown function and switches the flow on; the run fails (pac test 12.11.)
+                if fn.lower() in KNOWN or fn in FORBIDDEN or (where, fn.lower()) in unknown:  # FORBIDDEN: C7
+                    continue
+                unknown.add((where, fn.lower()))
+                bad9 += 1
+                if bad9 <= 10:
+                    rep.error(f"C9 {short} :: {where} calls unknown function {fn}(); the import passes, the run fails "
+                              f":: {_short(e)}")
             for fn, key in flows.literal_property_names(e):
                 # '.', '[' and ']' fail at run time only (PA-20261026-WIN-01)
                 if any(c in key for c in "[]."):
@@ -216,7 +261,7 @@ def check_flow(rep: Report, short: str, text: str, base_text: str | None, retry_
                 rep.error(f"C9 {short} :: property name {key} is read as an expression; write @{key} for a literal @")
     if bad9 > 10:
         rep.error(f"C9 {short} :: {bad9 - 10} more faulty expressions")
-    rep.info(f"C9 {short} :: {n_expr} expressions checked for syntax")
+    rep.info(f"C9 {short} :: {n_expr} expressions checked for syntax and function names")
 
     # C11 references to actions, variables and loops
     bad11 = 0

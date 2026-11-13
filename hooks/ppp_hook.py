@@ -1,4 +1,6 @@
-"""Hooks of ppp (PLUGIN PL-12): SessionStart, Stop, PreCompact, PreToolUse. Only in ppp projects (project.json).
+"""Hooks of ppp (PLUGIN PL-12): SessionStart, Stop, PreCompact, PreToolUse. Only in ppp projects (project.json); outside
+them SessionStart only keeps ~/.ppp/tool-call.txt up to date, without output, so a session that starts elsewhere after
+an update does not call the old copy of the plugin.
 Each tool has its own hook file that names it (PL-5, PL-18): hooks/hooks.json passes `claude` for Claude Code,
 com.github.copilot/hooks/hooks.json passes `copilot` for VS Code, which runs them in the Agents view (agent host);
 in the session target Local the policy ChatHooks switches them off (PL-16).
@@ -211,6 +213,12 @@ def main() -> int:
         data = json.loads(raw) if raw.strip() else {}
         root = project_root(data.get("cwd") or "")
         if root is None:
+            if event == "SessionStart":     # outside a project only this: the tool call of this copy after an update
+                try:
+                    from ppplib import agent
+                    agent.write_tool_call()
+                except Exception:  # noqa: BLE001 – outside a project nothing is said, not even an error
+                    pass
             return 0
         handler = {"SessionStart": session_start, "Stop": stop, "PreCompact": pre_compact, "PreToolUse": pre_tool_use}.get(event)
         out = handler(data, root, tool) if handler else None

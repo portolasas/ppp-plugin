@@ -3,11 +3,13 @@ project.json names an environment. Then ppp fetches the export and imports the p
 its checks, and reads the result from the server instead of asking the user for it.
 
 exchange/tenant/ (not in git, left alone by ppp tidy) holds what no commit can rebuild: per solution the backup
-before_<version>.zip taken before an import, imports.jsonl with every import and how it ended, and times.jsonl with
-the duration of every export that came to an end (an import's duration stands in imports.jsonl).
+before_<version>.zip taken before an import, imports.jsonl with every import and how it ended (and, after an import,
+the mark of the ppp export that took the tenant's state over), and times.jsonl with the duration of every export that
+came to an end (an import's duration stands in imports.jsonl).
 """
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import statistics
@@ -24,26 +26,17 @@ from .verify import SOLUTION_XML, files_of, stable
 
 DEFAULT_ENVIRONMENT = "Citizen Developments"  # the plugin knows its name only; the address comes from the tenant (VB-2)
 BY_HAND = "Still by hand: open each changed flow in the designer and save it; then the critical scenarios."
+FIRST_IMPORT = "first import by ppp from this project into this environment"
 
 # What an environment is for. pac does not say it: EnvironmentIdentifier.Type is the same number for every environment
 # (pac test, re-run of round 1, 2026-11-13, J), so the role is given once on the first ppp connect.
 ROLES_EXPLAINED = ("development (the work is built and imported here), test (a package moves here for the user test; "
                    "ppp imports after a card) or production (ppp only reads; an import goes the governance way)")
 
-# Durations to compare with, in seconds, as rounded orders of magnitude; the project's own measurements of an
-# environment go before them. Round 2 of the pac test updates them.
-# A development environment of its own: pac test, re-run of round 1, 2026-11-13 (ERGEBNIS_PAC_r1-test_2026-11-13_122443.md):
-# exports of the sandbox solution 16 to 37 s (median 21 s; the first export of the run took 186 s after an update of
-# pac), imports without --publish-changes 26 to 58 s (median 32 s).
-DEVELOPMENT_EXPORT_SECONDS = 20
-DEVELOPMENT_IMPORT_SECONDS = 30
-# The default environment: pac test 2026-11-12 (ERGEBNIS_PAC_ASUM_2026-11-12.md) and round 1, 2026-11-13
-# (ERGEBNIS_PAC_r1-cd_2026-11-13_013415.md, ERGEBNIS_PAC_r1-cd_2026-11-13_122527.md): exports 16 to 39 s (median 36 s).
-DEFAULT_EXPORT_SECONDS = 35
-# An import into the default environment without --publish-changes is not measured yet (the 815 and 831 s of
-# 2026-11-12 were mostly publishing, V4 of the re-run); U in round 2 measures it.
-DEFAULT_IMPORT_SECONDS = None
 USUAL_OF = 5    # the median of the last five measurements of a kind counts
+# What a deviation shows beside the names: the lines of the first text files, each cut to about one terminal line
+SHOWN_FILES, SHOWN_LINES, SHOWN_WIDTH = 5, 6, 160
+BINARY = re.compile(r"\.(msapp|png|jpe?g|gif|bmp|ico|webp|tiff?|zip|dll|wasm)$", re.I)
 
 
 def _write(path: Path, data: dict) -> None:
@@ -66,7 +59,9 @@ def _project_version(folder: Path) -> str | None:
 
 
 def _card(env: dict) -> str:
-    return "always" if env["confirmImport"] or env["inUse"] else "only on a deviation in the tenant and on a first import"
+    if env.get("role") == "test":       # the role promises it (ROLES_EXPLAINED), whatever confirmImport says
+        return "always (role test)"
+    return "always" if env["confirmImport"] or env["inUse"] else f"only on a deviation in the tenant and on the {FIRST_IMPORT}"
 
 
 # ------------------------------------------------------------------ record of imports
@@ -89,6 +84,51 @@ def _imported(root: Path, name: str, version: str | None, alias: str) -> bool:
                and str(e.get("solution", "")).lower() == name.lower() for e in _imports(root))
 
 
+def _of(entry: dict, name: str, alias: str) -> bool:
+    return entry.get("environment") == alias and str(entry.get("solution", "")).lower() == name.lower()
+
+
+def _never_imported(root: Path, name: str, alias: str) -> bool:
+    """No import of ppp from this project into the environment came to an end yet (a restore counts as one)."""
+    return not any(e.get("status") == "done" and _of(e, name, alias) for e in _imports(root))
+
+
+def export_due(root: Path, name: str) -> dict | None:
+    """The last import (a restore too) into the project's environment when no ppp export of the solution came after it:
+    until then the project's state is the package, not the tenant's, and the drift check of the next import would
+    compare with the wrong base. None offline and without such an import. The mark of the export stands in
+    imports.jsonl (status exported), beside the import it follows: one file to read, and written also when the export
+    brings the same content and so no commit."""
+    alias = load_config(root).get("environment")
+    if not alias:
+        return None
+    due = None
+    for entry in _imports(root):
+        if _of(entry, name, alias) and entry.get("status") == "done":
+            due = entry
+        elif _of(entry, name, alias) and entry.get("status") == "exported":
+            due = None
+    return due
+
+
+def need_export(root: Path, name: str, command: str) -> None:
+    due = export_due(root, name)
+    if due:
+        raise ToolError(f"{due['environment']} imported {name} {due['version']} at {str(due.get('time', '?'))[:16].replace('T', ' ')}; "
+                        f"run ppp export first: it makes the tenant's state the base of the next package. Then {command} again.")
+
+
+def mark_exported(root: Path, name: str, version: str, by: str, only_version: bool = False) -> bool:
+    """After an export was taken into the project: the mark that ends export_due. only_version (ppp unpack of an export
+    fetched by hand): only when the export has the version of that import."""
+    due = export_due(root, name)
+    if not due or (only_version and due.get("version") != version):
+        return False
+    _record(root, {"solution": due["solution"], "version": version, "environment": due["environment"], "status": "exported",
+                   "by": by})
+    return True
+
+
 # ------------------------------------------------------------------ durations
 def _times(root: Path) -> list[dict]:
     path = root / "exchange" / "tenant" / "times.jsonl"
@@ -106,11 +146,14 @@ def _export(root: Path, env: dict, arguments: list[str], wait: float) -> None:
                             "time": datetime.now().isoformat(timespec="seconds")}) + "\n")
 
 
-def usual(root: Path, alias: str) -> dict[str, float | None]:
+def usual(root: Path, alias: str, whole: bool = True) -> dict[str, float | None]:
     """The usual duration of an export and of an import in the environment, from the project's own measurements: the
-    median of the last USUAL_OF that came to an end; None without one."""
+    median of the last USUAL_OF that came to an end; None without one. An import is the whole call of ppp import up to
+    IMPORTED, the checks and the backup included (seconds_call); an entry from before ppp measured it gives the time
+    from the start of the import (seconds). whole=False: always the latter, how long an import runs once started."""
+    done = [e for e in _imports(root) if e.get("status") == "done" and e.get("environment") == alias]
     measured = {"export": [e.get("seconds") for e in _times(root) if e.get("kind") == "export" and e.get("environment") == alias],
-                "import": [e.get("seconds") for e in _imports(root) if e.get("status") == "done" and e.get("environment") == alias]}
+                "import": [e.get("seconds_call", e.get("seconds")) if whole else e.get("seconds") for e in done]}
     found = {}
     for kind, values in measured.items():
         values = [v for v in values if isinstance(v, (int, float)) and not isinstance(v, bool)]
@@ -127,18 +170,8 @@ def about(seconds: float | None) -> str:
 
 def usual_line(root: Path, alias: str) -> str:
     found = usual(root, alias)
-    return f"Usual here: export {about(found['export'])}, import {about(found['import'])}."
-
-
-def recommended_line(root: Path, alias: str) -> str:
-    """For the default environment: an own development environment is faster; working in the default one stays a full way."""
-    found = usual(root, alias)
-    export = found["export"] if found["export"] is not None else DEFAULT_EXPORT_SECONDS
-    imported = found["import"] if found["import"] is not None else DEFAULT_IMPORT_SECONDS
-    return (f"RECOMMENDED: if you have access to a development environment of your own, work there (ppp connect \"<its name>\" "
-            f"--role development): export and import run faster there (a development environment: export "
-            f"{about(DEVELOPMENT_EXPORT_SECONDS)}, import {about(DEVELOPMENT_IMPORT_SECONDS)}; {DEFAULT_ENVIRONMENT}: export "
-            f"{about(export)}, import {about(imported)}). Working in {DEFAULT_ENVIRONMENT} works the same way.")
+    return (f"Usual here: export {about(found['export'])}, import {about(found['import'])}"
+            + (" (a whole ppp import up to IMPORTED, checks and backup included)." if found["import"] is not None else "."))
 
 
 def _need_role(env: dict) -> None:
@@ -153,8 +186,8 @@ def connect(root: Path, name: str | None = None, role: str | None = None, in_use
     """Connect the project to an environment by its display name, or refresh the connection it has: find the
     environment in the tenant, write its address, role and use into environments/<alias>.json and the alias into
     project.json, and say which solutions of the project are online (VERBUNDEN VB-2, VB-3, VB-11). The role comes from
-    --role or from the file; without either nothing is written. Names the usual durations there and, for the default
-    environment, the recommendation of a development environment of one's own."""
+    --role or from the file; without either nothing is written. Names the usual durations there. The default
+    environment is the default; working in a development environment of one's own is the user's free choice."""
     path = root / "project.json"
     config = json.loads(path.read_text(encoding="utf-8-sig"))
     alias = config.get("environment")
@@ -192,12 +225,10 @@ def connect(root: Path, name: str | None = None, role: str | None = None, in_use
     new.setdefault("environment", alias)
     new.setdefault("confirmImport", confirm)
     _write(path, new)
-    env = {"confirmImport": confirm, "inUse": data["inUse"]}
+    env = {"confirmImport": confirm, "inUse": data["inUse"], "role": role}
     lines = [f"Connected to {found['name']}: environments/{alias}.json with its address, role {role}, "
              + ("in productive use" if data["inUse"] else "not in productive use") + f"; card before each import: {_card(env)}.",
              usual_line(root, alias)]
-    if found["name"].strip().lower() == DEFAULT_ENVIRONMENT.lower():
-        lines.append(recommended_line(root, alias))
     online = tenant.solutions(found["url"])
     for s in config.get("solutions") or []:
         there = online.get(str(s.get("uniqueName", "")).lower())
@@ -259,7 +290,12 @@ def export(root: Path, take, name: str | None = None, compare: bool = False, no_
     arguments[5] = str(target)
     _export(root, env, arguments, wait)
     print(f"Exported {online['name']} {online['version']} from {env['alias']} to exchange/{target.name}")
-    return take(root, target, force=force, no_commit=no_commit)
+    code = take(root, target, force=force, no_commit=no_commit)
+    # the mark ends the wait of ppp pack after an import, also when nothing was committed for the same content;
+    # with --no-commit the tenant's state is not committed yet: ppp export again does it
+    if code == 0 and not no_commit:
+        mark_exported(root, online["name"], online["version"], "export")
+    return code
 
 
 def _unpacked(package: Path, name: str) -> dict[str, bytes]:
@@ -276,6 +312,57 @@ def _difference(theirs: dict[str, bytes], ours: dict[str, bytes]) -> list[str]:
             + sorted(f + " (not in the tenant)" for f in ours.keys() - theirs.keys()))
 
 
+def _text_lines(name: str, data: bytes) -> list[str] | None:
+    """The lines of a file as they count (verify.stable), or None for a binary file."""
+    if BINARY.search(name) or b"\0" in data:
+        return None
+    try:
+        return stable(name, data).decode("utf-8-sig").splitlines()
+    except UnicodeDecodeError:
+        return None
+
+
+def _cut(line: str, other: str | None) -> str:
+    """A line cut to about SHOWN_WIDTH characters; a long line from shortly before where it parts from its counterpart,
+    so a change in a long line of JSON or XML stays in view."""
+    if len(line) <= SHOWN_WIDTH:
+        return line
+    start = 0
+    if other is not None:
+        same = next((i for i, (a, b) in enumerate(zip(line, other)) if a != b), min(len(line), len(other)))
+        start = max(same - 40, 0)
+    part = line[start:start + SHOWN_WIDTH]
+    return ("…" if start else "") + part + ("…" if start + SHOWN_WIDTH < len(line) else "")
+
+
+def _details(theirs: dict[str, bytes], ours: dict[str, bytes], different: list[str], label: str = "project") -> list[str]:
+    """What differs in the first SHOWN_FILES files that both sides have: up to SHOWN_LINES lines as a short diff,
+    - the project (`label` names which state of it), + the tenant, with the number of differing lines and a note when
+    only their order differs; a binary file by its name only."""
+    both = [f for f in different if f in theirs and f in ours]
+    lines = []
+    for name in both[:SHOWN_FILES]:
+        mine, tenants = _text_lines(name, ours[name]), _text_lines(name, theirs[name])
+        if mine is None or tenants is None:
+            lines.append(f"  {name}: binary, no lines shown")
+            continue
+        shown = []
+        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, mine, tenants, autojunk=False).get_opcodes():
+            if tag == "equal":
+                continue
+            old, new = mine[i1:i2], tenants[j1:j2]
+            shown += [("-", line, new[k] if k < len(new) else None) for k, line in enumerate(old)]
+            shown += [("+", line, old[k] if k < len(old) else None) for k, line in enumerate(new)]
+        order = sorted(mine) == sorted(tenants)
+        lines.append(f"  {name}: {len(shown)} lines differ (- {label}, + tenant)" + ("; only the order of lines differs" if order else ""))
+        lines += [f"    {sign} {_cut(line, other)}" for sign, line, other in shown[:SHOWN_LINES]]
+        if len(shown) > SHOWN_LINES:
+            lines.append(f"    … {len(shown) - SHOWN_LINES} more lines")
+    if len(both) > SHOWN_FILES:
+        lines.append(f"  … {len(both) - SHOWN_FILES} more files, without their lines")
+    return lines
+
+
 def _compare(root: Path, env: dict, online: dict, folder: Path, arguments: list[str], wait: float) -> int:
     with tempfile.TemporaryDirectory(prefix="ppp-compare-") as tmp:
         arguments[5] = str(Path(tmp) / "tenant.zip")
@@ -285,6 +372,8 @@ def _compare(root: Path, env: dict, online: dict, folder: Path, arguments: list[
     different = _difference(theirs, ours)
     print(f"Tenant {env['alias']}: {online['name']} {online['version']}; project: {_project_version(folder) or 'not exported yet'}")
     print(f"Different ({len(different)}): " + (", ".join(different[:40]) or "-") + (f" … {len(different) - 40} more" if len(different) > 40 else ""))
+    for line in _details(theirs, ours, different):
+        print(line)
     print("Nothing was changed in the project.")
     return 0
 
@@ -304,27 +393,41 @@ def _newest_package(root: Path, name: str) -> Path:
     return max(found)[1]
 
 
+APP_FILE = re.compile(r"_(?:DocumentUri\.msapp|BackgroundImageUri|AdditionalUris\d*.*)$")   # files of an app beside its .meta.xml
+
+
+def _apps(names: list[str]) -> list[str]:
+    """The apps under CanvasApps/, one name each: as verify.canvas_apps, the stem of its <app>.meta.xml; a file of no
+    such app by its name without the part that names the kind of file."""
+    files = {n.split("/")[1] for n in names if n.startswith("CanvasApps/") and n.split("/")[1]}
+    stems = {f[:-len(".meta.xml")] for f in files if f.endswith(".meta.xml")}
+    rest = {APP_FILE.sub("", f) for f in files if not f.endswith(".meta.xml") and not any(f.startswith(s + "_") for s in stems)}
+    return sorted(stems | rest)
+
+
 def _parts(package: Path) -> dict:
-    """What a package holds: flows by ID with their names, connection references, apps."""
+    """What a package holds: flows by ID with their names, connection references, apps (one name per app)."""
     with zipfile.ZipFile(package) as z:
         names = z.namelist()
         custom = next((z.read(n).decode("utf-8-sig", "replace") for n in names if n.lower() == "customizations.xml"), "")
     flows = {m.group(2).lower(): m.group(1) for n in names
              for m in [re.fullmatch(r"Workflows/(.+)-(" + tenant.GUID.pattern + r")\.json", n)] if m}
     return {"flows": flows, "refs": sorted(set(re.findall(r'connectionreferencelogicalname="([^"]+)"', custom))),
-            "apps": sorted({n.split("/")[1] for n in names if n.startswith("CanvasApps/") and "/" in n})}
+            "apps": _apps(names)}
 
 
-def _drift(root: Path, folder: Path, backup: Path, online_version: str) -> list[str]:
+def _drift(root: Path, folder: Path, backup: Path, online_version: str) -> tuple[list[str], list[str]]:
     """What the tenant has that the project did not build on: the export just taken against the commit that holds the
-    tenant's state of the version online (VERBUNDEN VB-8)."""
+    tenant's state of the version online (VERBUNDEN VB-8). The names, and the lines that differ (_details)."""
     try:
         base = gitutil.tenant_commit(root, folder, online_version)
     except ToolError:
-        return [f"the tenant has version {online_version}, which this project never saw"]
+        return [f"the tenant has version {online_version}, which this project never saw"], []
     prefix = gitutil.rel(root, folder) + "/"
     blobs = gitutil.read_blobs(root, base, [prefix + f for f in gitutil.tracked_files(root, base, folder)])
-    return _difference(_unpacked(backup, folder.name), {k[len(prefix):]: v for k, v in blobs.items()})
+    theirs, ours = _unpacked(backup, folder.name), {k[len(prefix):]: v for k, v in blobs.items()}
+    different = _difference(theirs, ours)
+    return different, _details(theirs, ours, different, "project's base")
 
 
 def _older_than_export(root: Path, folder: Path, report: str) -> str | None:
@@ -370,6 +473,7 @@ def import_package(root: Path, package: str | None = None, confirmed: bool = Fal
     """Import a package built by ppp pack into the project's environment, after the checks of VERBUNDEN VB-6. Returns
     within about `wait` seconds: a long import goes on at the server, and the same command again waits further and
     never starts a second import (VB-10)."""
+    called = datetime.now().isoformat(timespec="seconds")      # the whole call counts, checks and backup included
     env = tenant.environment(root)
     _need_role(env)
     if env["role"] == "production":
@@ -406,6 +510,8 @@ def import_package(root: Path, package: str | None = None, confirmed: bool = Fal
     if spent:     # a repacked package with the version of a failed one (VB-14)
         raise ToolError(f"Version {info['version']} of {name} failed on import into {env['alias']} ({spent['zip']}) and is used up, "
                         f"also for a package packed again: ppp pack --version {_next(info['version'])}.")
+    # a package packed before the export after the last import was built on the package, not on the tenant's state
+    need_export(root, name, "ppp pack and ppp import")
     folder = root / "solution" / info["uniqueName"]
     if gitutil.is_repo(root):
         where = gitutil.rel(root, folder)
@@ -428,22 +534,27 @@ def import_package(root: Path, package: str | None = None, confirmed: bool = Fal
     if running:
         raise TenantError("BUSY", f"an import of {name} is running in {env['alias']} (progress {running[0]} %). Wait for it; "
                                   "ppp tenant shows where it stands.")
-    drift = []
+    drift, details = [], []
     if online:      # the backup before the import is the export of the drift check (VB-12)
         backup = root / "exchange" / "tenant" / online["name"] / f"before_{info['version']}.zip"
         backup.parent.mkdir(parents=True, exist_ok=True)
         _export(root, env, ["solution", "export", "--name", online["name"], "--path", str(backup), "--overwrite", "--async"], 540)
-        drift = _drift(root, root / "solution" / online["name"], backup, online["version"])
+        drift, details = _drift(root, root / "solution" / online["name"], backup, online["version"])
     if drift and not accept_drift:
         print(f"DRIFT: the tenant differs from the state this package was built on ({len(drift)}): " + ", ".join(drift[:30])
               + (f" … {len(drift) - 30} more" if len(drift) > 30 else ""))
+        for line in details:
+            print(line)
         print("Nothing was imported. The import would overwrite these changes. Show them (ppp export --compare) and ask on a "
               "card: commit the work first, then ppp export --force, then rebuild the work on the tenant's state (it stays in git), "
               "then pack again; or import anyway (--accept-drift). ppp export never replaces uncommitted work.")
         return 1
+    first = _never_imported(root, name, env["alias"])
     reasons = [text for needed, text in ((env["confirmImport"], "this project asks before each import"),
                                          (env["inUse"], "the solution is in productive use there"),
-                                         (not online, "first import into this environment"),
+                                         (env["role"] == "test", "the environment has the role test"),
+                                         (first, FIRST_IMPORT),
+                                         (not online and not first, "the solution is not in this environment"),
                                          (bool(drift), "the tenant differs and the import overwrites it")) if needed]
     if reasons and not confirmed:
         print(f"CONFIRM FIRST ({'; '.join(reasons)}): show a tenant-step card with the package {path.name} ({name} {info['version']}, "
@@ -454,7 +565,8 @@ def import_package(root: Path, package: str | None = None, confirmed: bool = Fal
               "the same command with --confirmed.")
         return 1
     entry = _record(root, {"solution": name, "version": info["version"], "zip": path.name, "sha": digest,
-                           "environment": env["alias"], "status": "started", "online_before": online["version"] if online else None,
+                           "environment": env["alias"], "status": "started", "called": called,
+                           "online_before": online["version"] if online else None,
                            "flows_before": tenant.flows(env["url"], list(parts["flows"])) if online else {},
                            "jobs_before": tenant.import_jobs(env["url"], name)})
     result = tenant.start_import(env["url"], path, wait)
@@ -493,12 +605,12 @@ def _follow(root: Path, env: dict, entry: dict, parts: dict, wait: float, resume
                                + ("" if isinstance(entry.get("jobs_before"), list) else
                                   " (an entry from before ppp held the jobs at the start: ppp tenant --log shows the newest job)"))
         if time.monotonic() - began >= wait:
-            usual_import = usual(root, env["alias"])["import"]
+            usual_import = usual(root, env["alias"], whole=False)["import"]    # how long to wait from the start named here
             print(f"RUNNING: the import of {entry['zip']} into {env['alias']} is not finished"
                   + (f" (progress {running[0]} %" + (f"; {version} is online already, the job has not ended" if online else "")
                      + ")" if running else " (the server does not show it yet)")
                   + f", started {entry['time'][11:16]}."
-                  + (f" Usual here: import {about(usual_import)}." if usual_import is not None else ""))
+                  + (f" Usual here: {about(usual_import)} from the start of an import to IMPORTED." if usual_import is not None else ""))
             print("Run ppp import again to wait further; it starts no second import.")
             return 0
         time.sleep(10)
@@ -509,8 +621,9 @@ def _done(root: Path, env: dict, entry: dict, parts: dict, log: dict | None = No
     import's job when _follow has read it already."""
     name, seconds = entry["solution"], round(_age(entry))
     print(f"IMPORTED: {entry['zip']} is in {env['alias']}, {name} {entry['version']} is online (about {seconds} s).")
-    warnings = 0
+    warnings = 0       # ppp's own WARNING lines below; the server's warnings stand in the record
     log = log or _own_log(env, entry)      # only the job of this import, never the numbers of an earlier one
+    record = {k: log[k] for k in ("success", "warning", "failure")} if log else None
     if log:
         print(f"Import record: {log['success']} success, {log['warning']} warnings, {log['failure']} failures"
               + ("".join(f"\n  {t}" for t in log["texts"][:5]) if log["texts"] else ""))
@@ -531,7 +644,10 @@ def _done(root: Path, env: dict, entry: dict, parts: dict, log: dict | None = No
     if unbound:
         warnings += 1
         print("WARNING connection references without a connection: " + ", ".join(unbound))
-    _record(root, {**entry, "status": "done", "seconds": seconds, "warnings": warnings})
+    timing = {"seconds": seconds}
+    if entry.get("called"):     # the whole call up to here, from the first ppp import of it (an entry from before: none)
+        timing["seconds_call"] = round((datetime.now() - datetime.fromisoformat(entry["called"])).total_seconds())
+    _record(root, {**entry, "status": "done", **timing, "ppp_warnings": warnings, "record": record})
     folder = root / "exchange" / "tenant" / name
     for old in sorted(folder.glob("before_*.zip")) if folder.is_dir() else []:     # the backup of this import stays until the next one
         if old.name != f"before_{entry['version']}.zip":
@@ -585,6 +701,7 @@ def restore(root: Path, backup: str | None = None, confirmed: bool = False, with
     """Bring the tenant back to a backup taken before an import: the backup packed again with a version above the one
     online and imported like a package. It brings back the content of what the backup holds and removes nothing an
     import added since (pac test round 1, block R; VERBUNDEN VB-12). Always after a card."""
+    called = datetime.now().isoformat(timespec="seconds")
     env = tenant.environment(root)
     _need_role(env)
     if env["role"] == "production":
@@ -639,7 +756,7 @@ def restore(root: Path, backup: str | None = None, confirmed: bool = False, with
     _export(root, env, ["solution", "export", "--name", online["name"], "--path", str(folder / f"before_{version}.zip"),
                         "--overwrite", "--async"], 540)
     entry = _record(root, {"solution": name, "version": version, "zip": built.name, "sha": solution.sha256(built),
-                           "environment": env["alias"], "status": "started", "restore": path.name,
+                           "environment": env["alias"], "status": "started", "restore": path.name, "called": called,
                            "online_before": online["version"], "flows_before": tenant.flows(env["url"], list(parts["flows"])),
                            "jobs_before": tenant.import_jobs(env["url"], name)})
     result = tenant.start_import(env["url"], built, wait)

@@ -26,7 +26,12 @@ def cmd_unpack(a) -> int:
     zip_path = Path(a.zip).resolve()
     if not zip_path.is_file():
         raise ToolError(f"ZIP not found: {zip_path}")
-    return _take_export(root, zip_path, force=a.force, no_commit=a.no_commit, message=a.message)
+    code = _take_export(root, zip_path, force=a.force, no_commit=a.no_commit, message=a.message)
+    if code == 0 and not a.no_commit:
+        from . import connected     # a connected project where pac does not work here: the export fetched by hand counts
+        info = solution.zip_manifest(zip_path)
+        connected.mark_exported(root, info["uniqueName"], info["version"], "unpack", only_version=True)
+    return code
 
 
 def _take_export(root: Path, zip_path: Path, *, force: bool = False, no_commit: bool = False, message: str = "") -> int:
@@ -126,6 +131,8 @@ def cmd_verify(a) -> int:
 def cmd_pack(a) -> int:
     root = find_root(a.project)
     folder = solution_dir(root, a.solution)
+    from . import connected     # after an import the tenant's state is the base of the next package (VERBUNDEN VB-8)
+    connected.need_export(root, folder.name, "ppp pack")
     base = _base(root, folder, a.base)
     solution.pac()  # before the version changes
     old = solution.set_version(folder, a.version)

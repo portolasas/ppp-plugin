@@ -40,7 +40,7 @@
 | C6 | no BOM in workflow JSON; BOM state and line endings unchanged | error / warning |
 | C7 | unique action names, runAfter on siblings, SetVariable/Append with value and without self reference, `json(` and `string(<bool>)` in bodies, missing functions, `createArray()`, retry policies | error / warning |
 | C8 | conditions structured | error (new) / warning (existing) |
-| C9 | expression syntax: empty arguments, brackets, strings, unclosed `@{`; property names with a leading `@` | error |
+| C9 | expression syntax: empty arguments, brackets, strings, unclosed `@{`; property names with a leading `@`; a function the language does not know (`calls unknown function <name>()`): the server imports it and switches the flow on, only the run fails. A real, new function missing from the list in `verify.py`: lesson proposal, no workaround | error |
 | C10 | Terminate in loops; URI, filter and order-by fields made of one expression | error / warning |
 | C11 | references to unknown actions or variables, `items()` outside its loop, reads from a foreign loop | error / warning |
 | C12 | nesting depth at most 8 | error |
