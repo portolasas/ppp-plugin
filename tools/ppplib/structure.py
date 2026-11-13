@@ -25,6 +25,7 @@ ROLES = ("main", "transfer", "read-only")
 # A connected project (VERBUNDEN VB-1, VB-2, VB-11): project.json names its environment by an alias, and
 # environments/<alias>.json says where it is, what it is for and whether the solution is in productive use there
 ENVIRONMENT_ROLES = ("development", "test", "production")
+NO_ROLE = "No role for the environment yet: pac does not name it, and ppp import waits for it."
 ALIAS = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 ENVIRONMENT_URL = re.compile(r"https://[A-Za-z0-9.-]+/?")
 CORE_FILES =("README.md", "AGENTS.md", "CLAUDE.md", "STATE.md", "ROADMAP.md", "project.json")
@@ -65,13 +66,18 @@ def slug(title: str) -> str:
 # ------------------------------------------------------------------ init
 def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, language: str,
          solution: str | None, kind: str = "github", environment: str | None = None, confirm_import: bool = True,
-         publisher: str | None = None) -> list[str]:
+         publisher: str | None = None, role: str | None = None) -> list[str]:
     """Create the missing core of a project with its storage (ABLAGE AB-1); existing files stay untouched. With the
     display name of an environment the project is connected to it (VERBUNDEN VB-1 to VB-3); without one it is offline.
+    The role of the environment is written only when it is given: pac does not name it, and none is assumed.
     With the unique name of the Publisher project.json names it (the four values are in ~/.ppp/settings.json).
     Returns the lines to print."""
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", prefix):
         raise ToolError(f"Prefix must be letters and digits, starting with a letter: {prefix}")
+    if role is not None and role not in ENVIRONMENT_ROLES:
+        raise ToolError(f"role must be one of {', '.join(ENVIRONMENT_ROLES)}")
+    if role and not environment:
+        raise ToolError("--role needs --environment <name>: an offline project has no environment.")
     if publisher:
         check_publisher_name(publisher)
     unknown = [m for m in modules if m not in MODULES]
@@ -106,7 +112,7 @@ def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, lang
 
     write("project.json", json.dumps(config, indent=2, ensure_ascii=False) + "\n")
     if alias:  # the environment the work starts in; its address comes from the tenant, the plugin holds none
-        write(f"environments/{alias}.json", json.dumps({"name": environment, "role": "development", "inUse": False},
+        write(f"environments/{alias}.json", json.dumps({"name": environment, **({"role": role} if role else {}), "inUse": False},
                                                        indent=2, ensure_ascii=False) + "\n")
     for tpl in sorted((TEMPLATES / "project").iterdir()):
         target = {"gitignore": ".gitignore", "gitattributes": ".gitattributes"}.get(tpl.name, tpl.name)
@@ -131,9 +137,12 @@ def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, lang
                    "ppp backup" + ("." if storage.backup_folder(config) else
                                    "; no backup folder yet: ask for one on a card, ppp settings --backup <folder>."))
     if alias:
-        out.append(f"Connected to the environment {environment}: environments/{alias}.json with role development, not in use; "
+        out.append(f"Connected to the environment {environment}: environments/{alias}.json "
+                   + (f"with role {role}" if role else "without a role yet") + ", not in use; "
                    "its address (environmentUrl) is still missing. Card before each import: "
                    + ("always." if confirm_import else "only on a deviation in the tenant."))
+        if not role:
+            out.append(f"{NO_ROLE} ppp connect \"{environment}\" --role development|test|production sets it.")
     return out
 
 
@@ -202,8 +211,8 @@ def _validate_config(config: dict, rep: Report) -> None:
 
 def _environments(root: Path, config: dict, rep: Report) -> None:
     """environments/<alias>.json holds the IDs of an environment as the project needs them. Three keys have a fixed
-    meaning: environmentUrl, role and inUse. The file of the environment a connected project names must have role
-    and inUse; its address may still be missing."""
+    meaning: environmentUrl, role and inUse. The file of the environment a connected project names must have inUse;
+    its role and its address may still be missing (ppp connect sets both; pac does not name the role)."""
     alias = config.get("environment") if isinstance(config.get("environment"), str) else None
     folder = root / "environments"
     files = {p.stem: p for p in sorted(folder.glob("*.json"))} if folder.is_dir() else {}
@@ -220,8 +229,10 @@ def _environments(root: Path, config: dict, rep: Report) -> None:
             rep.error(f"{where} must be a JSON object")
             continue
         own, before = name == alias, rep.errors
-        if ("role" in data or own) and data.get("role") not in ENVIRONMENT_ROLES:
+        if "role" in data and data.get("role") not in ENVIRONMENT_ROLES:
             rep.error(f"{where}: role must be one of {', '.join(ENVIRONMENT_ROLES)}")
+        elif "role" not in data and own:
+            rep.warn(f"{where}: {NO_ROLE} ppp connect --role development|test|production sets it.")
         if ("inUse" in data or own) and not isinstance(data.get("inUse"), bool):
             rep.error(f"{where}: inUse must be true or false (true: the solution is in productive use there)")
         url = data.get("environmentUrl")
@@ -231,7 +242,8 @@ def _environments(root: Path, config: dict, rep: Report) -> None:
             rep.warn(f"{where}: environmentUrl missing; nothing reaches the tenant until the address of the environment is known")
         if own and rep.errors == before:
             confirm = config.get("confirmImport", True) or data["inUse"]
-            rep.info(f"S connected project: environment {alias}, role {data['role']}" + (", in productive use" if data["inUse"] else "")
+            rep.info(f"S connected project: environment {alias}, role {data.get('role') or 'not set yet'}"
+                     + (", in productive use" if data["inUse"] else "")
                      + f"; card before each import: {'always' if confirm else 'only on a deviation in the tenant'}. Never call pac "
                        "against the tenant yourself: only ppp connect, export, import and tenant reach it.")
 

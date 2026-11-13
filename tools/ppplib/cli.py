@@ -446,8 +446,10 @@ def cmd_init(a) -> int:
     publisher, source = a.publisher.strip(), "--publisher"
     if not publisher:  # the developer's publisher from the settings of this computer, if there is one
         publisher, source = (agent.publisher_of(agent.read_settings()) or {}).get("uniqueName", ""), str(agent.SETTINGS)
+    if a.role and not connected:
+        raise ToolError("--role needs --environment <name>: an offline project has no environment.")
     lines = structure.init(root, a.name, a.prefix, modules, a.mode, a.language, a.solution or None, a.storage,
-                           a.environment.strip() if connected else None, a.confirm_import != "no", publisher or None)
+                           a.environment.strip() if connected else None, a.confirm_import != "no", publisher or None, a.role)
     print("\n".join(lines))
     if publisher:
         print(f"Publisher {publisher} in project.json (from {source}).")
@@ -734,7 +736,9 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("name", nargs="?", default="", help="display name of the environment (default: the connected one, else "
                                                        "'Citizen Developments')")
     c.add_argument("--role", choices=structure.ENVIRONMENT_ROLES, default=None,
-                   help="what the environment is for (default: as before, else development); ppp import refuses production")
+                   help="what the environment is for: development (built and imported here), test (the user test; imports "
+                        "after a card) or production (read only). pac does not name it, so the first connect needs it; "
+                        "afterwards the role in environments/<alias>.json counts")
     c.add_argument("--in-use", choices=("yes", "no"), default=None,
                    help="yes: the solution is in productive use there, so a card comes before every import")
     c.add_argument("--confirm-import", choices=("yes", "no"), default=None,
@@ -818,8 +822,11 @@ def build_parser() -> argparse.ArgumentParser:
                         "backed up with ppp backup); bitbucket is prepared and starts as local (ABLAGE AB-6)")
     c.add_argument("--environment", default="offline",
                    help="display name of the environment the work starts in, e.g. 'Citizen Developments': connects the "
-                        "project to it (environment in project.json, environments/<alias>.json with role development); "
+                        "project to it (environment in project.json, environments/<alias>.json, with the role of --role); "
                         "offline (default): the user exports and imports by hand")
+    c.add_argument("--role", choices=structure.ENVIRONMENT_ROLES, default=None,
+                   help="with --environment: what the environment is for (development, test, production); pac does not "
+                        "name it. Without it the file has no role yet and ppp connect --role sets it")
     c.add_argument("--confirm-import", choices=("yes", "no"), default=None,
                    help="with --environment: a card before every import (yes, default), or only on a deviation in the "
                         "tenant and on the first import into an environment (no)")

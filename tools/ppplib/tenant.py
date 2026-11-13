@@ -91,9 +91,13 @@ def decode(raw: bytes) -> str:
 
 
 def problem(code: int | None, out: str) -> tuple[str, str] | None:
-    """(kind, message) when the call failed, from what pac says itself; the message without the account line."""
+    """(kind, message) when the call failed, from what pac says itself; the message without the account line. When the
+    server rejected an asynchronous operation, pac names its reason in a line of its own before the error line, which
+    then only says "The async operation completed with a statuscode of Failed." (pac test 2026-11-12, S7): that reason is
+    the message."""
     lines = [line.strip() for line in out.splitlines() if line.strip() and not line.startswith("Connected ")]
     error = next((line for line in lines if line.startswith("Error:")), "")
+    reason = next((m.group(1).strip() for m in map(re.compile(r"the reason given was:\s*(.*)", re.I).match, lines) if m), "")
     if code == 0 and not error:
         return None
     text = "\n".join(lines).lower()
@@ -107,7 +111,7 @@ def problem(code: int | None, out: str) -> tuple[str, str] | None:
         kind = "BUSY"
     else:
         kind = "FAILED"
-    return kind, (error or (lines[-1] if lines else f"pac ended with exit code {code}"))[:400]
+    return kind, (reason or error or (lines[-1] if lines else f"pac ended with exit code {code}"))[:400]
 
 
 def _command(url: str | None, args: list[str]) -> list[str]:
@@ -278,18 +282,24 @@ def connection_references(url: str, names: list[str]) -> dict[str, dict]:
 
 
 def variables(url: str, names: list[str]) -> dict[str, dict]:
-    """Per schema name: whether the variable exists and its current value (None: none set, the default applies)."""
+    """Per schema name: whether the variable exists and its current value (None: none set, the default applies).
+    pac appends the key of the row to the asked columns; only that key is taken out of the value, read in the first
+    query, where it is the one ID of the row. A value that is an ID itself (of a list, say) stays. Where pac puts the
+    column of the linked value, before or after the key, is not shown by the pac test (X9 read the names only): the key
+    is taken out wherever it stands, also when it touches the value without a blank."""
     if not names:
         return {}
-    present = {row.split()[0].lower() for row in fetch(url, query("environmentvariabledefinition", ["schemaname"],
-                                                                 among("schemaname", names)))}
+    keys = {}
+    for row in fetch(url, query("environmentvariabledefinition", ["schemaname"], among("schemaname", names))):
+        keys[row.split()[0].lower()] = GUID.findall(row)[-1]
     link = ('<link-entity name="environmentvariablevalue" from="environmentvariabledefinitionid" '
             'to="environmentvariabledefinitionid" link-type="inner" alias="v"><attribute name="value"/></link-entity>')
     values = {}
     for row in fetch(url, query("environmentvariabledefinition", ["schemaname"], among("schemaname", names), more=link)):
-        words = row.split()
-        values[words[0].lower()] = " ".join(w for w in words[1:] if not GUID.fullmatch(w))
-    return {n: {"exists": n.lower() in present, "value": values.get(n.lower())} for n in names}
+        name, _, rest = row.strip().partition(" ")
+        if name.lower() in keys:
+            values[name.lower()] = " ".join(re.sub(re.escape(keys[name.lower()]), " ", rest, count=1, flags=re.I).split())
+    return {n: {"exists": n.lower() in keys, "value": values.get(n.lower())} for n in names}
 
 
 def running_imports(url: str, name: str, hours: int = 12) -> list[str]:
@@ -329,7 +339,8 @@ def start_import(url: str, package: Path, wait: float) -> dict:
     """Hand a package to the server and wait at most `wait` seconds. pac is only the trigger: once it has named the
     asynchronous operation the server holds the import and goes on without pac (pac test round 1, V3), so pac is ended
     after the wait and the state is read from the server (VERBUNDEN VB-10). Returns state: done (pac saw the end),
-    running (handed over, pac ended), failed (pac reports an error; kind and message)."""
+    running (handed over, pac ended), failed (pac reports an error; kind and message), skipped (pac did not hand the
+    package over, the version online is not lower; message)."""
     command = _command(url, ["solution", "import", "--path", str(package), *IMPORT_SWITCHES])
     proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
     parts: list[bytes] = []
@@ -348,7 +359,13 @@ def start_import(url: str, package: Path, wait: float) -> dict:
             raise TenantError("TIMEOUT", f"pac did not hand the package to the server within {int(wait + 300)} seconds.")
         time.sleep(0.5)
     reader.join(timeout=10)
-    failed = problem(proc.returncode, decode(b"".join(parts)))
+    out = decode(b"".join(parts))
+    failed = problem(proc.returncode, out)
     if failed:
         return {"state": "failed", "kind": failed[0], "message": failed[1], "seconds": round(time.monotonic() - began)}
+    # --skip-lower-version: with a version online that is not lower pac hands nothing over and ends with exit code 0
+    # (pac test 2026-11-12, S6)
+    skipped = next((line.strip() for line in out.splitlines() if "skipping import" in line.lower()), None)
+    if skipped:
+        return {"state": "skipped", "message": skipped[:400], "seconds": round(time.monotonic() - began)}
     return {"state": "done", "seconds": round(time.monotonic() - began)}

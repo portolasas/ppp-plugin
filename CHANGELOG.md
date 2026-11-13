@@ -2,6 +2,13 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.22.1 (2026-11-13)
+- ppp import meldet IMPORTED erst, wenn die Version online und der Job dieses Imports beendet ist; bis dahin RUNNING mit Fortschritt (Nachtest V3: die Version stand online, während der Job noch lief)
+- ppp connect verlangt die Rolle beim ersten Verbinden ausdrücklich (--role development|test|production, auch bei ppp init --environment); pac nennt sie nicht, die Regel über den Umgebungstyp entfällt; ohne Rolle importiert ppp import nicht
+- ppp misst die Dauer seiner Exporte und Importe je Umgebung und zeigt sie in ppp connect, ppp tenant und bei RUNNING (Usual here: …); ppp connect empfiehlt bei Citizen Developments eine eigene Entwicklungsumgebung mit ungefähren Vergleichswerten aus den Versuchen
+- Fehlermeldung eines gescheiterten Imports nennt den Grund von pac (The reason given was: …); ein von pac übersprungener Import (Version online nicht niedriger) verbraucht die ZIP nicht; ppp tenant --values behält Werte, die selbst eine Kennung sind; ppp check wartet auf den ersten pac-Aufruf 120 Sekunden
+- ppp-package references/connected.md und ppp-intake an Rolle, Empfehlung, Zeitangaben und die Antworten des Imports angeglichen
+
 ## 0.22.0 (2026-11-13)
 - Verbundener Modus (entwurf/VERBUNDEN.md): Ein Projekt mit environment in project.json exportiert und importiert selbst über pac; offline bleibt der Standard. ppp connect findet die Umgebung am Namen und schreibt Adresse, Rolle und Nutzung nach environments/<alias>.json; ppp init --environment und --confirm-import
 - ppp export holt die Paket-Solution, entpackt und committet sie; --compare zeigt nur die Unterschiede; weist uncommittete Änderungen im Solution-Ordner immer ab, committete Arbeit, die der Tenant nicht hat, nur mit --force
