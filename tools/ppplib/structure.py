@@ -11,7 +11,7 @@ import stat
 from datetime import date
 from pathlib import Path
 
-from . import gitutil, solution, storage
+from . import catalog, gitutil, solution, storage
 from . import walk as walkfile
 from .project import ToolError, check_publisher_name
 from .report import Report
@@ -38,7 +38,7 @@ STATE_SECTIONS = ("Mode", "Active package", "Next step", "Open questions and ass
 # in VS Code, the sections that matter first (ppp_hook). Above this a warning (review 07.11.: projects with 9 and 22 KB).
 STATE_BUDGET = 6_000
 MODULE_PARTS = {
-    "power-automate": {"README.md", "templates", "generator"},
+    "power-automate": {"README.md", "templates", "generator", "connectors"},
     "power-apps": {"README.md", "screens", "theme", "assets", "generator"},
     "sharepoint": {"README.md", "schema.json", "generator"},
 }
@@ -66,12 +66,12 @@ def slug(title: str) -> str:
 # ------------------------------------------------------------------ init
 def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, language: str,
          solution: str | None, kind: str = "github", environment: str | None = None, confirm_import: bool = True,
-         publisher: str | None = None, role: str | None = None) -> list[str]:
+         publisher: str | None = None, role: str | None = None, exchange: str = "local") -> list[str]:
     """Create the missing core of a project with its storage (ABLAGE AB-1); existing files stay untouched. With the
     display name of an environment the project is connected to it (VERBUNDEN VB-1 to VB-3); without one it is offline.
     The role of the environment is written only when it is given: pac does not name it, and none is assumed.
     With the unique name of the Publisher project.json names it (the four values are in ~/.ppp/settings.json).
-    Returns the lines to print."""
+    With exchange git the folder exchange/ travels through git (PROJEKTSTRUKTUR S-3). Returns the lines to print."""
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", prefix):
         raise ToolError(f"Prefix must be letters and digits, starting with a letter: {prefix}")
     if role is not None and role not in ENVIRONMENT_ROLES:
@@ -89,13 +89,15 @@ def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, lang
         raise ToolError(storage.BITBUCKET_LATER)
     if kind not in storage.STORAGES:
         raise ToolError("Storage must be github or local")
+    if exchange not in storage.EXCHANGES:
+        raise ToolError(f"exchange must be one of {', '.join(storage.EXCHANGES)}")
     root.mkdir(parents=True, exist_ok=True)
     if (root / "project.json").exists():
         raise ToolError(f"{root / 'project.json'} exists already; this is a ppp project. Use ppp check.")
     alias = slug(environment) if environment else None
     config = {"structureVersion": STRUCTURE_VERSION, "name": name, "prefix": prefix,
               **({"publisher": publisher} if publisher else {}), "mode": mode, "storage": kind,
-              **({"environment": alias, "confirmImport": confirm_import} if alias else {}), "modules": modules,
+              **({"exchange": "git"} if exchange == "git" else {}), **({"environment": alias, "confirmImport": confirm_import} if alias else {}), "modules": modules,
               "solutions": [{"uniqueName": solution, "role": "main"}] if solution else [], "handbookLanguage": language}
     module_lines = "\n".join(f"  - {m}: [components/{m}/README.md](components/{m}/README.md)" for m in modules) or "  - none yet"
     values = {"name": name, "mode": mode, "module_lines": module_lines}
@@ -123,6 +125,8 @@ def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, lang
     for m in modules:
         write(f"components/{m}/README.md", (TEMPLATES / "components" / m / "README.md").read_text(encoding="utf-8"))
     (root / "exchange").mkdir(exist_ok=True)
+    if exchange == "git":
+        storage.write_ignore(root, "git")
     out = [f"Created ({len(created)}): " + ", ".join(created)]
     if kept:
         out.append(f"Kept as they are ({len(kept)}): " + ", ".join(kept))
@@ -184,6 +188,9 @@ def _validate_config(config: dict, rep: Report) -> None:
     if config.get("structureVersion", 0) >= 2 or "storage" in config:
         if need("storage", str) and config["storage"] not in storage.STORAGES:
             rep.error(f"S project.json: storage {config['storage']!r} is not one of {', '.join(storage.STORAGES)}")
+    # optional, without a new structure version: exchange/ in git, so that ZIPs reach another computer (S-3)
+    if "exchange" in config and config["exchange"] not in storage.EXCHANGES:
+        rep.error(f"S project.json: exchange {config['exchange']!r} is not one of {', '.join(storage.EXCHANGES)}")
     if "trainingFormat" in config and config["trainingFormat"] not in TRAINING_FORMATS:
         rep.error(f"S project.json: trainingFormat {config['trainingFormat']!r} is not one of {', '.join(TRAINING_FORMATS)}")
     # optional, without a new structure version (like trainingFormat): a project without environment is offline
@@ -203,8 +210,14 @@ def _validate_config(config: dict, rep: Report) -> None:
             rep.error("S project.json: confirmImport must be true or false")
         elif "environment" not in config:
             rep.error("S project.json: confirmImport needs environment; a project without environment is offline")
-    extra = set(config) - {"structureVersion", "name", "prefix", "mode", "storage", "modules", "solutions",
-                           "handbookLanguage", "trainingFormat", "environment", "confirmImport", "publisher"}
+    # optional, without a new structure version (HOME HO-5, HO-10): what proved itself, and the ID in the team folder
+    for problem in catalog.problems(config):
+        rep.error("S project.json: " + problem)
+    if "teamId" in config and not (isinstance(config["teamId"], str) and re.fullmatch(r"[0-9a-f]{8}", config["teamId"])):
+        rep.error(f"S project.json: teamId {config['teamId']!r} is not the ID ppp team share wrote (8 hex digits)")
+    extra = set(config) - {"structureVersion", "name", "prefix", "mode", "storage", "exchange", "modules", "solutions",
+                           "handbookLanguage", "trainingFormat", "environment", "confirmImport", "publisher",
+                           "proven", "teamId"}
     if extra:
         rep.error("S project.json: unknown fields " + ", ".join(sorted(extra)))
 
@@ -378,9 +391,10 @@ def check(root: Path, *notes: str | None, settings_publisher: str | None = None)
     for d in CORE_DIRS:
         if not (root / d).is_dir():
             rep.error(f"S core folder missing: {d}/")
-    if not (root / "exchange").exists():  # not in git, so a fresh clone lacks it
+    in_git = storage.exchange_of(config) == "git"
+    if not (root / "exchange").exists():  # not in git or empty there, so a fresh clone lacks it
         (root / "exchange").mkdir()
-        rep.info("S exchange/ was missing and is created (not in git)")
+        rep.info("S exchange/ was missing and is created" + ("" if in_git else " (not in git)"))
     repo = gitutil.is_repo(root)
     copies = gitutil.conflict_copies(root) if repo else []
     for copy, original, missing in copies:
@@ -429,6 +443,13 @@ def check(root: Path, *notes: str | None, settings_publisher: str | None = None)
                     if m == "power-automate" and p.is_file() and p.suffix == ".md":
                         continue  # <flow>.md
                     rep.error(f"S components/{m}/{p.name}: not part of the module structure")
+                # a custom connector is a component of its own that other projects reuse: one folder each with its
+                # definition, script, test bodies and README (GEN-20261110-MAC-02)
+                loose = [p.name for p in sorted((folder / "connectors").iterdir())
+                         if p.is_file() and not p.name.startswith(".")] if (folder / "connectors").is_dir() else []
+                if loose:
+                    rep.error(f"S components/{m}/connectors/{loose[0]}: a custom connector has its own folder, "
+                              f"components/{m}/connectors/<name>/")
 
     # changes/, decisions/, specs/
     changes = root / "changes"
@@ -509,12 +530,18 @@ def check(root: Path, *notes: str | None, settings_publisher: str | None = None)
         attrs = (root / ".gitattributes").read_text(encoding="utf-8") if (root / ".gitattributes").is_file() else ""
         if not re.search(r"^\*\s+-text\s*$", attrs, re.M):
             rep.error("S .gitattributes needs '* -text' (exported files must stay byte-identical)")
-        if not gitutil.git(root, "check-ignore", "exchange/x.zip", check=False).strip():
-            rep.error("S exchange/ must be in .gitignore")
+        ignored = gitutil.git(root, "check-ignore", "exchange/x.zip", check=False).strip()
+        if in_git and ignored:
+            rep.error("S project.json: exchange git, but .gitignore ignores exchange/; ppp storage --exchange git sets "
+                      "its lines")
+        elif not in_git and not ignored:
+            rep.error("S exchange/ must be in .gitignore; when its ZIPs must reach another computer: "
+                      "ppp storage --exchange git")
         tracked = gitutil.git(root, "ls-files", "-z").decode("utf-8").split("\0")
-        zips = [t for t in tracked if t.lower().endswith(".zip")]
+        zips = [t for t in tracked if t.lower().endswith(".zip") and not (in_git and t.startswith("exchange/"))]
         if zips:
-            rep.error(f"S ZIPs in git ({len(zips)}), e.g. {zips[0]}; ZIPs belong in exchange/")
+            rep.error(f"S ZIPs in git ({len(zips)}), e.g. {zips[0]}; ZIPs belong in exchange/"
+                      + ("" if in_git else ", which travels through git only with ppp storage --exchange git"))
         data = [t for t in tracked if t.endswith((".pbi/cache.abf", ".pbi/localSettings.json"))]
         if data:
             rep.error(f"S Power BI data files in git ({len(data)}), e.g. {data[0]}; remove them with git rm --cached")
@@ -527,6 +554,8 @@ def check(root: Path, *notes: str | None, settings_publisher: str | None = None)
             storage.check(root, config, rep)
     else:
         rep.error("S not a git repository (P7)")
+    if config:
+        catalog.check(root, config, rep)
 
     for note in notes:
         if note:
@@ -620,9 +649,12 @@ def new(root: Path, kind: str, title: str, machine: str = "MAC") -> Path:
         changes = root / "changes"
         names = [p.name for p in changes.iterdir()] + [p.name for p in (changes / "archive").iterdir()]
         roadmap = root / "ROADMAP.md"
-        if roadmap.is_file():  # numbers planned in the roadmap are taken too (GEN-20261102-WIN-01)
-            names += [f"{n}-" for n in re.findall(r"^\|\s*(\d{3})\s*\|", roadmap.read_text(encoding="utf-8"), re.M)]
-        number = _next_number(names)
+        rows = re.findall(r"^\|\s*(\d{3})\s*\|([^|\n]*)\|", roadmap.read_text(encoding="utf-8"), re.M) if roadmap.is_file() else []
+        # a row that plans this very package keeps its number: the same name and no folder yet (GEN-20261110-MAC-01)
+        started = {n[:3] for n in names if re.match(r"^\d{3}-", n)}
+        planned = [n for n, cell in rows if n not in started and slug(re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", cell)) == slug(title)]
+        # every other number planned in the roadmap is taken (GEN-20261102-WIN-01)
+        number = planned[0] if planned else _next_number(names + [f"{n}-" for n, _ in rows])
         folder = changes / f"{number}-{slug(title)}"
         folder.mkdir(parents=True)
         for f in ("proposal.md", "tasks.md"):
@@ -728,4 +760,5 @@ def archive(root: Path, ref: str) -> list[str]:
     if deltas:
         out.append("Spec changes to merge into specs/ (if not done yet): " + ", ".join(d.name for d in deltas))
     out.append("Set the package to done in ROADMAP.md.")
+    out.append("What the user calls proven on a card: ppp catalog --add <path under components/> --note \"<one sentence>\".")
     return out

@@ -104,13 +104,14 @@ def append(path: Path, record: dict) -> None:
 
 
 def session_start(data: dict, root: Path, tool: str) -> dict:
-    from ppplib import agent
+    from ppplib import agent, registry
     agent.write_tool_call()
     settings = agent.read_settings()
     try:
         config = json.loads((root / "project.json").read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         config = {}
+    registry.note(root, config)  # the register of this computer (HOME HO-3); never raises
     head = [] if tool == "copilot" else [agent.body()]
     head += ["## This session",
              f"- Project: {config.get('name', root.name)} in {root}"
@@ -146,7 +147,7 @@ def stop(data: dict, root: Path, tool: str) -> dict | None:
     seen = usage.read_text(encoding="utf-8", errors="replace") if usage.is_file() else ""
     if session and f'"{session}"' not in seen:
         append(usage, {"time": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tool": tool,
-                       "project": root.name, "session": session, "log": transcript})
+                       "project": root.name, "root": str(root), "session": session, "log": transcript})
     text = data.get("last_assistant_message")
     asked = False
     if transcript and Path(transcript).is_file():

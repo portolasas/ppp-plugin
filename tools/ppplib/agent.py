@@ -185,7 +185,8 @@ def merge_publisher(current: object, given: dict) -> dict:
 
 
 def write_settings(language: str | None, guidance: str | None, sessions: str | None = None,
-                   backup: str | None = None, publisher: dict | None = None) -> dict:
+                   backup: str | None = None, publisher: dict | None = None, team: str | None = None,
+                   person: str | None = None) -> dict:
     current = read_settings() or {}
     if language:
         current["language"] = language
@@ -205,6 +206,14 @@ def write_settings(language: str | None, guidance: str | None, sessions: str | N
         current["backupFolder"] = str(folder)  # local projects, ABLAGE AB-5
     if publisher:  # uniqueName, displayName, prefix, optionValuePrefix; None for a value not given
         current["publisher"] = merge_publisher(current, publisher)
+    if team or person:  # the team folder and the name of this person in it (HOME HO-8); one needs the other
+        from . import team as teamfolder
+        if person:
+            current["person"] = teamfolder.check_person(person)
+        if team:
+            if not current.get("person"):
+                raise ToolError("--team needs --person <name>: your name in the team folder.")
+            current["teamHome"] = str(teamfolder.prepare(team))
     missing = [k for k in ("language", "guidance") if k not in current]
     if missing:
         raise ToolError("missing: " + ", ".join(f"--{k}" for k in missing))

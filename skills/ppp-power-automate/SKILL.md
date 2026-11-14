@@ -24,4 +24,5 @@ Knowledge with a status per statement: **[B]** observed in the tenant, **[D]** M
 | Triggers: Power Apps V2, environment variables, SharePoint and file triggers, Teams | [references/triggers.md](references/triggers.md) |
 | SharePoint connector and REST from flows, files | [references/sharepoint-connector.md](references/sharepoint-connector.md) |
 | Teams, Outlook, Graph | [references/teams-outlook.md](references/teams-outlook.md) |
+| Custom connector: planning one (DLP group), creating it, where its files live | [references/custom-connectors.md](references/custom-connectors.md) |
 | Error message → cause → fix, and the checks of `ppp verify` | [references/errors.md](references/errors.md) |

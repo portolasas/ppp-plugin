@@ -24,5 +24,7 @@ Environments: citizen development, an own test environment, production through t
 ## 3. Go-live and hypercare
 Handbook and training ready (ppp-docs). During hypercare the user reports errors; diagnose with exports (ppp-diagnose). Small fixes the user makes by hand are noted in `STATE.md` and rebuilt in the next package; everything else is a package.
 
+After hypercare ask on one decision card which building blocks proved themselves (a flow pattern, a screen, a part of the schema). For each one the user names: `ppp catalog --add <path under components/> --note "<one sentence: what it does, why it proved itself>"`, then commit. The next project finds them with `ppp catalog`.
+
 ## 4. Maintenance
 Maintenance runs through the same package cycle. Before the first package after a longer break: a fresh export and `ppp unpack` (connected: `ppp export`), so that manual changes in the tenant show up in the diff.

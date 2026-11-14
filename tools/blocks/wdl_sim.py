@@ -11,8 +11,16 @@ Strict on purpose: function arguments are evaluated completely as in Logic Apps 
 `x['a']` on null and property access on text are errors; a reference to an action that has not run yet is an error
 (the designer would reject it, PA-20261012-MAC-01).
 Limits: parallel branches run one after the other; Scope/If/Foreach are Failed as soon as a direct child failed (Logic
-Apps evaluates more finely; a flow must not rely on either variant). Not simulated: other connectors (Get items, Create
-item, AI Builder …), Switch, child flows, formatDateTime. `Site` replicates list and field administration for setup flows.
+Apps evaluates more finely; a flow must not rely on either variant). Not simulated: Switch, child flows, and every
+connector a test does not give a replica (Get items, Create item, AI Builder …). `Site` replicates list and field
+administration for setup flows.
+The built-in HTTP action calls `Lauf.http`, a function (methode, uri, kopf, body) -> (code, body) the test sets; other
+connectors answer through `Lauf.connectoren[(api, operationId)]`, a function (parameter) -> (code, body). Outlook
+"Send an email (V2)" is there already and collects its parameters in `Lauf.mails`.
+Assumed from the documentation, not confirmed in a tenant (PA-20261110-MAC-01): `Until` goes on after a failed
+iteration, and its last iteration decides its status; custom date formats of yyyy MM dd HH mm ss with literal
+characters; `sort()` in ordinal order; `convertToUtc` refuses a time with Z. Time zones come from the table ZEITZONEN,
+so that the block needs no tzdata package (Python under Windows has none).
 
 The API (names, messages) stays German so that project generators and tests switch over by changing paths only (Ü-8).
 """
@@ -150,6 +158,110 @@ def ticks(s):
     basis = datetime(1, 1, 1, tzinfo=timezone.utc)
     delta = dt - basis
     return (delta.days * 86400 + delta.seconds) * 10_000_000 + frac
+
+
+# Windows time zone name -> (hours from UTC, daylight saving by the EU rule); add a zone when a flow needs it
+ZEITZONEN = {"UTC": (0, False), "GMT Standard Time": (0, True), "W. Europe Standard Time": (1, True),
+             "Central Europe Standard Time": (1, True), "Central European Standard Time": (1, True),
+             "Romance Standard Time": (1, True)}
+FORMAT_TEILE = (("yyyy", "%Y"), ("MM", "%m"), ("dd", "%d"), ("HH", "%H"), ("mm", "%M"), ("ss", "%S"))
+EINHEITEN = {"Second": "seconds", "Minute": "minutes", "Hour": "hours", "Day": "days", "Week": "weeks"}
+
+
+def _moment(ts):
+    dt, frac = zeit(ts)
+    return dt + timedelta(microseconds=frac // 10)
+
+
+def _mit_z(ts):
+    """A time without zone counts as UTC, as SharePoint stores it."""
+    return ts if re.search(r"(Z|[+-]\d\d:\d\d)$", ts) else ts + "Z"
+
+
+def _versatz(dt, tz):
+    """Offset of a Windows time zone from UTC at the UTC moment dt."""
+    if tz not in ZEITZONEN:
+        raise AssertionError(f"Zeitzone {tz!r} nicht nachgebildet (ZEITZONEN ergänzen)")
+    stunden, sommer = ZEITZONEN[tz]
+
+    def wechsel(monat):  # last Sunday of March and of October, 01:00 UTC
+        tag = datetime(dt.year, monat, 31, 1, tzinfo=timezone.utc)
+        return tag - timedelta(days=(tag.weekday() + 1) % 7)
+
+    if sommer and wechsel(3) <= dt < wechsel(10):
+        stunden += 1
+    return timedelta(hours=stunden)
+
+
+def _format(dt, fmt, z):
+    """A moment as .NET writes it: 'o' (the default) or a custom format of yyyy MM dd HH mm ss and literal characters."""
+    if fmt in (None, "", "o", "O"):
+        return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond:06d}0" + ("Z" if z else "")
+    out, i = "", 0
+    while i < len(fmt):
+        for teil, py in FORMAT_TEILE:
+            if fmt.startswith(teil, i):
+                out += dt.strftime(py)
+                i += len(teil)
+                break
+        else:
+            if len(fmt) == 1 or fmt[i] not in "T:-. Z/0123456789":
+                raise AssertionError(f"Datumsformat {fmt!r} nicht nachgebildet")
+            out += fmt[i]
+            i += 1
+    return out
+
+
+def _convert_from_utc(kx, ts, tz, fmt=None):
+    dt = _moment(ts)
+    return _format((dt + _versatz(dt, tz)).replace(tzinfo=None), fmt, False)
+
+
+def _convert_to_utc(kx, ts, tz, fmt=None):
+    if isinstance(ts, str) and ts.endswith("Z"):
+        raise WdlFehler(f"convertToUtc erwartet Ortszeit ohne Z: {ts}")
+    lokal = _moment(ts)
+    _versatz(lokal, tz)
+    stunden, sommer = ZEITZONEN[tz]
+    for h in ((stunden + 1, stunden) if sommer else (stunden,)):
+        if _versatz(lokal - timedelta(hours=h), tz) == timedelta(hours=h):
+            return _format(lokal - timedelta(hours=h), fmt, True)
+    return _format(lokal - timedelta(hours=stunden), fmt, True)  # an hour the clocks skip
+
+
+def _add_to_time(kx, ts, n, einheit, fmt=None):
+    dt, n = _moment(ts), num(n, "addToTime")
+    if einheit in EINHEITEN:
+        dt += timedelta(**{EINHEITEN[einheit]: n})
+    elif einheit in ("Month", "Year"):
+        monat = dt.month - 1 + int(n) * (1 if einheit == "Month" else 12)
+        jahr, monat = dt.year + monat // 12, monat % 12 + 1
+        schalt = jahr % 4 == 0 and (jahr % 100 != 0 or jahr % 400 == 0)
+        laenge = [31, 29 if schalt else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][monat - 1]
+        dt = dt.replace(year=jahr, month=monat, day=min(dt.day, laenge))
+    else:
+        raise WdlFehler(f"addToTime: Einheit {einheit!r} unbekannt")
+    return _format(dt, fmt, ts.endswith("Z"))
+
+
+def _add_zeit(name, einheit):
+    def f(kx, ts, n, fmt=None):
+        return _format(_moment(ts) + timedelta(**{einheit: num(n, name)}), fmt, True)
+
+    return f
+
+
+def _is_float(kx, s, locale=None):
+    return isinstance(s, str) and re.fullmatch(r"\s*[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?\s*", s) is not None
+
+
+def _sort(kx, arr, key=None):
+    if not isinstance(arr, list):
+        raise WdlFehler("sort() erwartet Array")
+    try:
+        return sorted(arr, key=(lambda x: x[key]) if key is not None else None)
+    except (TypeError, KeyError) as ex:
+        raise WdlFehler(f"sort(): {ex}")
 
 
 def to_str(v):
@@ -526,6 +638,16 @@ FUNKTIONEN = {
     "mul": lambda kx, a, b: num(a, "mul") * num(b, "mul"),
     "div": lambda kx, a, b: num(a, "div") / num(b, "div") if isinstance(a, float) or isinstance(b, float) else int(num(a, "div") / num(b, "div")),
     "addMinutes": lambda kx, ts, n: _iso(zeit(ts)[0] + timedelta(minutes=num(n, "addMinutes"))),
+    "addSeconds": _add_zeit("addSeconds", "seconds"),
+    "addHours": _add_zeit("addHours", "hours"),
+    "addDays": _add_zeit("addDays", "days"),
+    "addToTime": _add_to_time,
+    "convertFromUtc": _convert_from_utc,
+    "convertToUtc": _convert_to_utc,
+    "formatDateTime": lambda kx, ts, fmt=None, locale=None: _format(_moment(ts), fmt, ts.endswith("Z")),
+    "dayOfWeek": lambda kx, ts: (_moment(ts).weekday() + 1) % 7,
+    "isFloat": _is_float,
+    "sort": _sort,
     "workflow": lambda kx: {"run": {"name": kx.sim.lauf}},
     "trigger": lambda kx: {"startTime": JETZT, "outputs": kx.sim.trigger_outputs},
     "triggerBody": lambda kx: kx.sim.trigger_outputs["body"],
@@ -637,6 +759,7 @@ class SharePoint:
         self.vor_merge = None  # hook for conflict tests: fn(liste, id)
         self.stoerung = None  # hook for error paths: fn(methode, uri) -> (code, body) | None
         self.jetzt = JETZT
+        self.papierkorb = []  # (list, Id) of every item sent to the recycle bin
 
     def neu(self, liste, felder):
         i = self.naechste[liste]
@@ -686,12 +809,15 @@ class SharePoint:
 
     def _filter(self, row, ausdruck):
         for teil in re.split(r"\s+and\s+", ausdruck.strip()):
-            m = re.fullmatch(r"(\w+)\s+(eq|ne|le|lt|ge|gt)\s+('(?:[^']|'')*'|-?\d+(?:\.\d+)?)", teil.strip())
+            m = re.fullmatch(r"(\w+)\s+(eq|ne|le|lt|ge|gt)\s+(datetime'[^']+'|'(?:[^']|'')*'|-?\d+(?:\.\d+)?)", teil.strip())
             if not m:
                 raise AssertionError(f"Filter nicht nachgebildet: {teil}")
             f, op, w = m.groups()
-            w = w[1:-1].replace("''", "'") if w.startswith("'") else float(w)
             v = row["Id"] if f == "ID" else row.get(f)
+            if w.startswith("datetime'"):  # compared as moments; an empty date matches ne only
+                w, v = ticks(_mit_z(w[9:-1])), ticks(_mit_z(v)) if isinstance(v, str) else None
+            else:
+                w = w[1:-1].replace("''", "'") if w.startswith("'") else float(w)
             if isinstance(v, bool):
                 v = 1.0 if v else 0.0
             if isinstance(w, float) and v is not None and not isinstance(v, str):
@@ -705,12 +831,49 @@ class SharePoint:
                 return False
         return True
 
+    def _rang(self, liste, feld, row):
+        """Sort key of $orderby: empty values first, dates as moments."""
+        v = row["Id"] if feld in ("ID", "Id") else row.get(feld)
+        if v is None:
+            return 0, 0
+        datum = feld in ("Created", "Modified") or (self.schema[liste]["felder"].get(feld) or {}).get("typ") == "DateTime"
+        return 1, ticks(_mit_z(v)) if datum and isinstance(v, str) else v
+
+    def _liste(self, methode, uri, kopf):
+        """Requests on the list or one item beyond reading and writing fields; None when the URI is none of them."""
+        m = re.fullmatch(r"_api/web/lists/getbytitle\('([^']+)'\)(\?\$select=ListItemEntityTypeFullName|/items\((\d+)\)/recycle\(\))", uri)
+        if not m:
+            return None
+        liste, teil, iid = m.groups()
+        if liste not in self.listen:
+            return 404, {"error": "Liste fehlt"}
+        accept = str({k.lower(): v for k, v in (kopf or {}).items()}.get("accept", "")).replace(" ", "").lower()
+        if "odata=verbose" not in accept and "odata=nometadata" not in accept:
+            return 400, {"error": f"Accept {accept!r} nicht nachgebildet (odata=verbose oder odata=nometadata)"}
+        verbose = "odata=verbose" in accept
+        if iid is None:
+            if methode != "GET":
+                return 400, {"error": "Methode"}
+            typ = {"ListItemEntityTypeFullName": self.schema[liste]["typ"]}
+            return 200, {"d": typ} if verbose else typ
+        if methode != "POST":
+            return 400, {"error": "Methode"}
+        if int(iid) not in self.listen[liste]:
+            return 404, {"error": "Element fehlt"}
+        del self.listen[liste][int(iid)]
+        self.papierkorb.append((liste, int(iid)))
+        guid = "0f8fad5b-d9cb-469f-a165-70867728950e"
+        return 200, {"d": {"Recycle": guid}} if verbose else {"value": guid}
+
     def anfrage(self, methode, uri, kopf, body):
         self.protokoll.append((methode, uri))
         if self.stoerung:
             s = self.stoerung(methode, uri)
             if s:
                 return s
+        antwort = self._liste(methode, uri, kopf)
+        if antwort:
+            return antwort
         m = re.fullmatch(r"_api/web/lists/getbytitle\('([^']+)'\)/items(?:\((\d+)\))?(?:\?(.*))?", uri)
         if not m:
             return 400, {"error": f"URI nicht nachgebildet: {uri}"}
@@ -736,6 +899,8 @@ class SharePoint:
                 o = self._aus(liste, daten[int(iid)], select, verbose)
                 return 200, {"d": o} if verbose else o
             rows = [r for r in daten.values() if "$filter" not in q or self._filter(r, q["$filter"])]
+            for teil in reversed([t.split() for t in q.get("$orderby", "").split(",") if t.strip()]):
+                rows.sort(key=lambda r: self._rang(liste, teil[0], r), reverse=teil[1:] == ["desc"])
             werte_ = [self._aus(liste, r, select, verbose) for r in rows][: int(q.get("$top", 100))]
             return 200, {"d": {"results": werte_}} if verbose else {"value": werte_}
         if methode != "POST":
@@ -896,6 +1061,10 @@ class Lauf:
         self.parameter = {}  # parameters('<display name> (<schema name>)') -> value, set in the test
         self.scopes = {}
         self.iter_stack = []  # per loop level: dict name -> (status, outputs)
+        self.http = None  # the service behind the built-in HTTP action: fn(methode, uri, kopf, body) -> (code, body)
+        self.mails = []  # parameters of each "Send an email (V2)"
+        # replicas of other connectors: (api, operationId) -> fn(parameter) -> (code, body); a test adds its own
+        self.connectoren = {("shared_office365", "SendEmailV2"): lambda p: (self.mails.append(p), (200, {}))[1]}
 
     # Ausgaben
     def _eintrag(self, name):
@@ -912,7 +1081,7 @@ class Lauf:
         typ, out = e
         if typ in ("Query", "Select", "ParseJson"):
             return out if art == "body" else {"body": out}
-        if typ == "OpenApiConnection":
+        if typ in ("OpenApiConnection", "Http"):
             return out["body"] if art == "body" else out
         return out
 
@@ -1029,15 +1198,41 @@ class Lauf:
                 st = "Succeeded"
             elif typ == "OpenApiConnection":
                 host = a["inputs"].get("host") or {}
-                api = str(host.get("apiId", "")).split("/")[-1]
-                if (api, host.get("operationId")) != ("shared_sharepointonline", "HttpRequest"):
-                    raise AssertionError(f"{n}: Connector {api}/{host.get('operationId')} nicht nachgebildet")
-                p = werte(a["inputs"]["parameters"], kx)
-                code, body = self.sp.anfrage(p["parameters/method"], p["parameters/uri"], p.get("parameters/headers") or {}, p.get("parameters/body"))
+                ziel = (str(host.get("apiId", "")).split("/")[-1], host.get("operationId"))
+                if ziel != ("shared_sharepointonline", "HttpRequest") and ziel not in self.connectoren:
+                    raise AssertionError(f"{n}: Connector {ziel[0]}/{ziel[1]} nicht nachgebildet (Lauf.connectoren)")
+                p = werte(a["inputs"].get("parameters") or {}, kx)
+                if ziel in self.connectoren:
+                    code, body = self.connectoren[ziel](p)
+                else:
+                    code, body = self.sp.anfrage(p["parameters/method"], p["parameters/uri"], p.get("parameters/headers") or {}, p.get("parameters/body"))
                 st = "Succeeded" if 200 <= code < 300 else "Failed"
                 if st == "Failed":
                     self.fehler[n] = (code, body)
                 self._set(n, typ, {"statusCode": code, "body": body, "headers": {}}, st)
+            elif typ == "Http":
+                if self.http is None:
+                    raise AssertionError(f"{n}: Http ohne Dienst (Lauf.http = fn(methode, uri, kopf, body) -> (code, body))")
+                p = werte(a["inputs"], kx)
+                code, body = self.http(p["method"], p["uri"], p.get("headers") or {}, p.get("body"))
+                st = "Succeeded" if 200 <= code < 300 else "Failed"
+                if st == "Failed":
+                    self.fehler[n] = (code, body)
+                self._set(n, typ, {"statusCode": code, "body": body, "headers": {}}, st)
+            elif typ == "Until":
+                res = {}
+                for _ in range(int((a.get("limit") or {}).get("count", 60))):
+                    self.iter_stack.append({})
+                    try:
+                        res = self.ebene(a["actions"], kx)
+                        fertig = bedingung(a["expression"], kx)
+                    finally:
+                        self.iter_stack.pop()
+                    if not isinstance(fertig, bool):
+                        raise WdlFehler(f"{n}: Bedingung liefert kein Boolean")
+                    if fertig:
+                        break
+                st = "Failed" if "Failed" in res.values() else "Succeeded"
             elif typ == "If":
                 if bedingung(a["expression"], kx):
                     zweig, anderer = a.get("actions") or {}, (a.get("else") or {}).get("actions") or {}

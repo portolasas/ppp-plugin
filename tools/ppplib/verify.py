@@ -140,10 +140,36 @@ def _conditions(actions: dict) -> dict[str, str]:
     return found
 
 
+SCHEMA_MAPS = ("properties", "patternProperties", "definitions", "$defs", "dependencies")  # name -> schema
+SCHEMA_DATA = ("enum", "const", "default", "examples")  # values, no schemas
+
+
+def schema_patterns(schema, found: set | None = None) -> set:
+    """The keywords pattern and patternProperties in a JSON schema; a property with such a name is none."""
+    found = set() if found is None else found
+    if isinstance(schema, list):
+        for sub in schema:
+            schema_patterns(sub, found)
+    elif isinstance(schema, dict):
+        for key, value in schema.items():
+            if key in ("pattern", "patternProperties"):
+                found.add(key)
+            if key in SCHEMA_MAPS:
+                for sub in (value.values() if isinstance(value, dict) else []):
+                    schema_patterns(sub, found)
+            elif key not in SCHEMA_DATA:
+                schema_patterns(value, found)
+    return found
+
+
 def check_flow(rep: Report, short: str, text: str, base_text: str | None, retry_none: list[str], retry_seen: set) -> None:
     flow = json.loads(text)
     actions = flows.definition(flow).get("actions") or {}
     every = list(flows.walk(actions))
+    # a connector as trigger or action: the import then refuses some schema keywords in Parse JSON (PA-20261111-WIN-01)
+    connector = any(str(a.get("type")).startswith("OpenApiConnection") for a in
+                    [a for _, a, *_ in every] + list((flows.definition(flow).get("triggers") or {}).values())
+                    if isinstance(a, dict))
 
     # C7 runAfter only on siblings, unique names
     def siblings(acts: dict, path: str):
@@ -200,6 +226,12 @@ def check_flow(rep: Report, short: str, text: str, base_text: str | None, retry_
                 body = inputs["body"]
             elif "parameters/body" in (inputs.get("parameters") or {}):
                 body = inputs["parameters"]["parameters/body"]
+        if t == "ParseJson" and connector and isinstance(inputs, dict):
+            keywords = sorted(schema_patterns(inputs.get("schema")))
+            if keywords:
+                rep.error(f"C7 {short} :: {name} (Parse JSON) schema uses {' and '.join(keywords)}; the import of a flow with a "
+                          "connector trigger or action fails on it (ActionSchemaNotSupported). Check the form of a text "
+                          "with a condition after the parsing.")
         if body is not None and t != "ParseJson":
             text_body = body if isinstance(body, str) else json.dumps(body)
             if "json(" in text_body:

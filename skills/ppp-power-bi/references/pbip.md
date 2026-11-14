@@ -30,6 +30,10 @@ components/power-bi/
 4. If the model folder holds `unappliedChanges.json`, the user applies the pending query changes in Desktop first; otherwise Desktop discards the external expression changes. [D]
 5. Desktop reports **blocking errors** (schema, missing required property; it names the file) and fixes **non-blocking** ones itself (e.g. `activePageName`). The user reports both; the agent fixes the file. [D]
 
+## Row errors after a refresh
+- Each click on **View errors** adds a query `'Fehler in <table>'` in a query group `'Abfragefehler: <time>'` (German Desktop; English `'Errors in …'`, `'Query Errors - …'` [O]), and the next save writes both into `expressions.tmdl` and `model.tmdl`: three clicks, three copies. Read them to find the table, then remove the expressions, their `queryGroup` declarations and their names in `PBI_QueryOrder` in the same edit as the fix [B] (PBI-20261110-MAC-01). `ppp pbi check` M5 warns.
+- The errors often come from arithmetic on an empty value in a step after the last `Table.RemoveRowsWithErrors`: `Date.AddDays([Datum], 3 - Date.DayOfWeek([Datum], Day.Monday))` raises one for every row without a date. Guard the step with `if [Column] = null then null else …` [B] (PBI-20261110-MAC-01).
+
 ## TMDL (model)
 - Indent with tabs, one tab per level; properties one level below their object, a multi-line expression two levels below. [D]
 - Names with spaces or special characters (`. = : '`) in single quotes, a quote doubled: `measure 'Total Amount' = SUM(Sales[Amount])`. [D]

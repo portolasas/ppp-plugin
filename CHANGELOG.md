@@ -2,6 +2,16 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.25.0 (2026-11-14)
+- Ebene über den Projekten (entwurf/HOME.md): ppp projects führt das Register der Projekte dieses Rechners, ppp catalog den Katalog bewährter Bausteine (proven in project.json), ppp settings --team --person, ppp team share und ppp projects --team den Team-Ordner; ppp-clarify fragt den Katalog ab
+- ppp new package nimmt die Nummer der geplanten ROADMAP-Zeile mit dem Namen des Pakets, sonst die nächste freie (GEN-20261110-MAC-01)
+- exchange in project.json (git, local): ppp storage --exchange git und ppp init --exchange git führen exchange/ und exchange/archive/ in Git, damit ZIPs den Rechner mit dem Tenant erreichen; ppp check nimmt ZIPs dann unter exchange/ an (PROJEKTSTRUKTUR S-3 geändert)
+- components/power-automate/connectors/<name>/ für die Dateien eines Custom Connectors; ppp-power-automate: references/custom-connectors.md mit DLP-Gruppe und Code-Kapazität (GEN-20261110-MAC-02, PA-20261110-MAC-02)
+- ppp verify C7 meldet pattern und patternProperties im Schema von Parse JSON in einem Flow mit Connector: der Import scheitert daran mit ActionSchemaNotSupported (PA-20261111-WIN-01)
+- ppp pbi check M5 warnt vor Fehlerabfragen, die Fehler anzeigen in Desktop ins PBIP speichert; pbip.md nennt Ursache und Schutz (PBI-20261110-MAC-01)
+- wdl_sim: Until, HTTP-Aktion über Lauf.http, weitere Connectoren über Lauf.connectoren, Mails in Lauf.mails, convertFromUtc, convertToUtc, formatDateTime, addToTime, addHours, addDays, dayOfWeek, isFloat, sort; SharePoint-REST mit $orderby, datetime im $filter, recycle() und ListItemEntityTypeFullName (PA-20261110-MAC-01)
+- ppp-sessions: die Protokolle gehen immer ganz hoch; ppp-intake und ppp-clarify führen inputs/README.md als Übersicht mit Stand new und evaluated; ppp-package: ein Export vom anderen Rechner kommt mit git pull
+
 ## 0.24.0 (2026-11-14)
 - Karte mit Code: jede Zeile CONFIRM FIRST endet mit --confirmed <code>; ppp import geht nur mit dem Code des jetzigen Stands weiter, sonst CHANGED und die neue Karte (Import, Rückspielen, Anlage, Umzug, Version heben)
 - Im Modus large hebt ppp import --environment <ziel> --raise-version die Version der Hauptlösung nach einer Karte (pac solution online-version, Runde 3 O1), mit Eintrag in imports.jsonl

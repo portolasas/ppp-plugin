@@ -11,7 +11,7 @@ In VS Code work with the agent "ppp" (agent picker); it carries the rules of ppp
 - `decisions/`: one file per decision, `NNN-name.md`
 - `components/`: what ppp builds and maintains, one folder per active module with an inventory README
 - `solution/`: tenant state, unpacked from the last export with `ppp unpack` (connected project: fetched with `ppp export`)
-- `exchange/`: ZIPs from and to the tenant, not in git; `exchange/archive/` keeps the imported package of each finished package, `exchange/tenant/` the backup before an import and the record of imports (connected project)
+- `exchange/`: ZIPs from and to the tenant, in git only with `exchange` git in `project.json`; `exchange/archive/` keeps the imported package of each finished package, `exchange/tenant/` the backup before an import and the record of imports (connected project)
 - only when present: `inputs/` source material unchanged · `environments/` IDs per environment · `tests/` local tests · `prototype/` click mock-up · `lessons/` lesson proposals · `docs/` handbook, training, six-sigma, project material · `legacy/` old files of an adopted project, unchanged; read there only when a question about the history cannot be answered from `specs/`, `decisions/` and `components/`
 
 ## Project rules

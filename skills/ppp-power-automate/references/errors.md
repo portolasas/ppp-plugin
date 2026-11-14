@@ -9,6 +9,7 @@
 | Save: `InvalidTemplate` on a reference | referenced action is no runAfter predecessor in the scope path | reorder or reference through an enclosing scope (C13) |
 | Save or import: "nested at level 9 which exceeds the maximum nesting limit of 8" | nesting too deep | flatten (C12, [structure.md](structure.md)) |
 | Save: `InvalidWorkflowRunAction` | `Terminate` inside a loop | collect errors, terminate after the loop (C10) |
+| Import: `ActionSchemaNotSupported` (`InvalidOpenApiFlow`) | Parse JSON schema with `pattern` or `patternProperties` in a flow with a connector | a condition after the parsing (C7, [expressions.md](expressions.md)) |
 | Import fails, the JSON looks fine | UTF-8 BOM in a workflow JSON | save without BOM (C6) |
 | Import rejects an SharePoint HTTP URI | the whole `parameters/uri` is one expression | fixed text first, `@{…}` for dynamic parts (C10) |
 | Designer: "'Value' is required" | `SetVariable.value = ""` | sentinel literal |
@@ -38,7 +39,7 @@
 | C4 | changed files; with `--allowed` only released ones | info / error |
 | C5 | version raised | error |
 | C6 | no BOM in workflow JSON; BOM state and line endings unchanged | error / warning |
-| C7 | unique action names, runAfter on siblings, SetVariable/Append with value and without self reference, `json(` and `string(<bool>)` in bodies, missing functions, `createArray()`, retry policies | error / warning |
+| C7 | unique action names, runAfter on siblings, SetVariable/Append with value and without self reference, `json(` and `string(<bool>)` in bodies, missing functions, `createArray()`, `pattern` in a Parse JSON schema of a connector flow, retry policies | error / warning |
 | C8 | conditions structured | error (new) / warning (existing) |
 | C9 | expression syntax: empty arguments, brackets, strings, unclosed `@{`; property names with a leading `@`; a function the language does not know (`calls unknown function <name>()`): the server imports it and switches the flow on, only the run fails. A real, new function missing from the list in `verify.py`: lesson proposal, no workaround | error |
 | C10 | Terminate in loops; URI, filter and order-by fields made of one expression | error / warning |

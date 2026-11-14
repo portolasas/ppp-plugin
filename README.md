@@ -74,7 +74,7 @@ specs/, decisions/    confirmed requirements and decisions
 changes/NNN-name/     one folder per package (proposal, tasks); finished ones in changes/archive/
 solution/<Name>/      working copy of the solution (pac unpack format)
 components/<module>/  inventory, screens, list schema, flow documents, generators
-exchange/             exports in, packages out (not in git)
+exchange/             exports in, packages out (in git only with exchange git in project.json)
 inputs/, docs/, ...   material as handed over; handbook and training; created when needed
 ```
 

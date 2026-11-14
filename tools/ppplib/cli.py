@@ -468,10 +468,13 @@ def cmd_init(a) -> int:
     if a.role and not connected:
         raise ToolError("--role needs --environment <name>: an offline project has no environment.")
     lines = structure.init(root, a.name, a.prefix, modules, a.mode, a.language, a.solution or None, a.storage,
-                           a.environment.strip() if connected else None, a.confirm_import != "no", publisher or None, a.role)
+                           a.environment.strip() if connected else None, a.confirm_import != "no", publisher or None, a.role,
+                           a.exchange)
     print("\n".join(lines))
     if publisher:
         print(f"Publisher {publisher} in project.json (from {source}).")
+    from . import registry
+    registry.note(root)
     rep = structure.check(root)
     print(rep.text())
     return 1 if rep.errors else 0
@@ -500,7 +503,7 @@ def cmd_settings(a) -> int:
             raise ToolError(f"The Publisher {found['uniqueName']} in {a.publisher_from} has no CustomizationOptionValuePrefix "
                             "that is a number.")
         given = {**found, "displayName": found["displayName"] or found["uniqueName"]}
-    if not a.language and not a.guidance and not a.sessions and not a.backup and not given:
+    if not a.language and not a.guidance and not a.sessions and not a.backup and not given and not a.team and not a.person:
         current = agent.read_settings()
         print(f"{agent.SETTINGS}: {current}" if current else f"{agent.SETTINGS} is missing. "
               "Set it with --language <code> --guidance beginner|standard|experienced.")
@@ -511,17 +514,21 @@ def cmd_settings(a) -> int:
                   "--publisher-prefix <prefix> --publisher-option-prefix <10000-99999> [--publisher-display <text>], or take it "
                   "from an unpacked solution with --publisher-from <folder or Other/Solution.xml>.")
         return 0
-    print(f"Saved {agent.SETTINGS}: {agent.write_settings(a.language, a.guidance, a.sessions, a.backup, given or None)}")
+    print(f"Saved {agent.SETTINGS}: "
+          f"{agent.write_settings(a.language, a.guidance, a.sessions, a.backup, given or None, a.team, a.person)}")
     return 0
 
 
 def cmd_check(a) -> int:
-    from . import agent, connected
+    from . import agent, connected, registry, team
     root = find_root(a.project)
+    registry.note(root)  # the register of this computer (HOME HO-3)
     update = agent.update_clone()
     rep = structure.check(root, update, agent.agent_note(),
                           settings_publisher=(agent.publisher_of(agent.read_settings()) or {}).get("uniqueName"))
     for level, message in connected.check_lines(root):  # a connected project: does the tenant still have what the project has?
+        rep.add(level, message)
+    for level, message in team.check_lines(root):  # a shared project: who else works on it, who holds it (HOME HO-13)
         rep.add(level, message)
     print(rep.text())
     return 1 if rep.errors else 0
@@ -618,14 +625,57 @@ def cmd_members(a) -> int:
 
 
 def cmd_storage(a) -> int:
-    print("\n".join(storage.switch(find_root(a.project), a.kind, a.remote or None)))
+    root = find_root(a.project)
+    lines = storage.switch(root, a.kind, a.remote or None) if a.kind or not a.exchange else []
+    if a.exchange:
+        lines += storage.set_exchange(root, a.exchange)
+    print("\n".join(lines))
     return 0
 
 
 def cmd_backup(a) -> int:
+    from . import team
     root = find_root(a.project)
     print("\n".join(storage.listing(root) if a.list else storage.backup(root)))
+    if not a.list:
+        team.write_status(root, load_config(root))  # a shared project: the commit this person now has
     return 0
+
+
+def cmd_projects(a) -> int:
+    from . import registry, team
+    if sum(map(bool, (a.team, a.scan, a.forget))) > 1:
+        raise ToolError("ppp projects takes one of --team, --scan and --forget.")
+    if a.team:
+        lines = team.table()
+    elif a.forget:
+        lines = registry.forget(a.forget)
+    else:
+        lines = (registry.scan(Path(a.home).expanduser() if a.home else Path.home()) if a.scan else []) + registry.table(a.live)
+    print("\n".join(lines))
+    return 0
+
+
+def cmd_catalog(a) -> int:
+    from . import catalog
+    root = _project_or_none(a.project)
+    if a.add:
+        if root is None:
+            raise ToolError("ppp catalog --add runs in a project.")
+        if not a.note:
+            raise ToolError("--add needs --note \"<one sentence>\": what the building block does and why it proved itself.")
+        lines = catalog.add(root, a.add, a.note)
+    elif a.show:
+        lines = catalog.show(root, a.show)
+    else:
+        lines = catalog.listing(root, a.module, a.word)
+    print("\n".join(lines))
+    return 0
+
+
+def cmd_team(a) -> int:
+    from . import team
+    return team.share(find_root(a.project), a.confirmed)
 
 
 def cmd_restore(a) -> int:
@@ -940,6 +990,9 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--storage", required=True, choices=storage.STORAGES,
                    help="where the project lives: github (git with a remote, pushed) or local (git without a remote, "
                         "backed up with ppp backup); bitbucket is prepared and starts as local (ABLAGE AB-6)")
+    c.add_argument("--exchange", choices=storage.EXCHANGES, default="local",
+                   help="git: exchange/ travels through git, for a project built on one computer and imported from "
+                        "another; local (default): ZIPs stay out of git")
     c.add_argument("--environment", default="offline",
                    help="display name of the environment the work starts in, e.g. 'Citizen Developments': connects the "
                         "project to it (environment in project.json, environments/<alias>.json, with the role of --role); "
@@ -962,15 +1015,53 @@ def build_parser() -> argparse.ArgumentParser:
 
     c = command("storage", cmd_storage, "Show the storage of the project (github, bitbucket, local), or switch it: set or "
                                         "remove the remote origin and write project.json. Never pushes: the first "
-                                        "push after a switch to github or bitbucket follows a card.", False)
+                                        "push after a switch to github or bitbucket follows a card. With "
+                                        "--exchange it takes exchange/ into git or out of it.", False)
     c.add_argument("kind", nargs="?", choices=storage.STORAGES, default=None, help="new storage (default: show it)")
     c.add_argument("--remote", default="", help="address of the empty repository on GitHub or Bitbucket")
+    c.add_argument("--exchange", choices=storage.EXCHANGES, default=None,
+                   help="git: exchange/ and exchange/archive/ travel through git, for a project built on one computer "
+                        "and imported from another; local: ZIPs stay out of git (the default of a project). Writes "
+                        "project.json and .gitignore and commits nothing")
 
     c = command("backup", cmd_backup, "Back up a local project on request: the whole git history as one checked bundle "
                                       "<prefix>_<time>_<commit>.bundle in <backupFolder>/<prefix>/ (ppp settings "
                                       "--backup); only without uncommitted changes, none when nothing is new; the "
-                                      "newest 10 stay.", False)
+                                      "newest 10 stay. A project shared with the team (ppp team share) backs up into "
+                                      "the team folder instead, under the person's name.", False)
     c.add_argument("--list", action="store_true", help="list the backups with time, size and commit instead")
+
+    c = sub.add_parser("projects", help="List the ppp projects of this computer (~/.ppp/projects.json).",
+                       description="List the ppp projects this computer knows: prefix, name, storage, mode, modules, folder "
+                                   "and the day last seen. The register fills by itself when ppp check or ppp init runs in "
+                                   "a project and never leaves the computer.", epilog=EPILOG)
+    c.add_argument("--live", action="store_true", help="also read each project: active package, last commit, last backup "
+                                                       "of a local project, a missing ppp migrate")
+    c.add_argument("--scan", action="store_true", help="first add the projects the Copilot sessions of this computer worked in")
+    c.add_argument("--forget", default="", metavar="FOLDER", help="remove one entry; the folder stays untouched")
+    c.add_argument("--team", action="store_true", help="instead the shared projects of the team folder: who was last on "
+                                                       "which, who holds it, how to take it over")
+    c.add_argument("--home", default="", help="with --scan: home folder with .copilot (default: the user's)")
+    c.set_defaults(func=cmd_projects)
+
+    c = command("catalog", cmd_catalog, "List the building blocks that proved themselves in the other projects of this "
+                                        "computer and of the team folder (proven in their project.json), print one, or "
+                                        "mark one of this project as proven. Only the user calls something proven, on a card.", False)
+    c.add_argument("word", nargs="?", default="", help="search word in path, note and project name")
+    c.add_argument("--module", default="", choices=("", *structure.MODULES), help="only building blocks of this module")
+    c.add_argument("--show", type=int, default=0, metavar="NUMBER", help="print the building block with this number of the "
+                                                                         "unfiltered list: a file, or a folder with its README")
+    c.add_argument("--add", default="", metavar="PATH", help="mark a file or folder under components/ of this project as proven")
+    c.add_argument("--note", default="", help="with --add: one sentence, what it does and why it proved itself; no "
+                                              "addresses, names of people or IDs")
+
+    c = command("team", cmd_team, "Share this project with the team folder (ppp settings --team <folder> --person <name>): "
+                                  "writes teamId into project.json and creates projects/<prefix>-<teamId>/ there. A local "
+                                  "project then backs up into the team folder with ppp backup, under the person's name; a "
+                                  "project with a remote notes only who works on it and what proved itself. Always after a card.", False)
+    c.add_argument("action", choices=("share",), help="share: take part in the team folder")
+    c.add_argument("--confirmed", nargs="?", const="", default=None, metavar="CODE",
+                   help="the user confirmed the sharing on a card: the code its CONFIRM FIRST line names")
 
     c = sub.add_parser("restore", help="Restore a backup into a new folder; never overwrites.",
                        description="Clone a backup bundle, or the newest one in a folder, into a new folder, remove the "
@@ -998,6 +1089,9 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--sessions", default="", help="folder of the clone of the private sessions repository (ppp sessions)")
     c.add_argument("--backup", default="", help="backup folder for local projects, outside this computer's disk "
                                                 "(OneDrive, a network drive); one subfolder per prefix (ppp backup)")
+    c.add_argument("--team", default="", help="team folder: a synced folder the team shares, e.g. a SharePoint library; an "
+                                              "empty one gets the layout (projects/, knowledge/, material/). Needs --person")
+    c.add_argument("--person", default="", help="your name in the team folder: it names your file and your backups there")
     c.add_argument("--publisher-name", default=None, help="unique name of the Publisher: letters, digits and underscores, no digit "
                                                           "first, at most 256 characters")
     c.add_argument("--publisher-display", default=None, help="display name of the Publisher (default: the unique name)")
@@ -1013,7 +1107,8 @@ def build_parser() -> argparse.ArgumentParser:
     command("migrate", cmd_migrate, "Bring the project to the current structure version (2: storage in "
                                     "project.json, taken from the remote origin).", False)
 
-    c = command("new", cmd_new, "Create a file from a template with the next free number.", False)
+    c = command("new", cmd_new, "Create a file from a template with the next free number; a package whose name a planned row of "
+                                "ROADMAP.md carries takes the number of that row.", False)
     c.add_argument("kind", choices=("package", "design", "decision", "spec", "spec-delta", "lesson"),
                    help="package: changes/NNN-name/ with proposal.md and tasks.md · design: design.md in a package "
                         "(title = package number) · decision: decisions/NNN-name.md · spec: specs/<name>.md · "

@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import NamedTuple
@@ -36,6 +38,12 @@ BITBUCKET_LATER = ("Bitbucket is prepared, not connected yet (ABLAGE AB-6): star
                    "switches and the first push takes the whole history.")
 NO_FOLDER = ("No backup folder set. Ask the user on a card for a folder outside this computer's disk (OneDrive, a "
              "network drive) and save it with ppp settings --backup <folder>.")
+# exchange/ stays out of git (PROJEKTSTRUKTUR S-3) unless the project says "exchange": "git": then the ZIPs travel
+# between the computer that builds and the one that reaches the tenant (user, 2026-11-14; three projects had put them
+# into git by hand). Its work folders (walks, tenant) stay local either way.
+EXCHANGES = ("local", "git")
+IGNORE = {"local": ["exchange/"], "git": ["exchange/*/", "!exchange/archive/"]}
+_IGNORE_LINE = re.compile(r"^!?/?exchange(/\*{0,2})?/?(archive/?)?$")
 
 
 class Backup(NamedTuple):
@@ -47,6 +55,60 @@ class Backup(NamedTuple):
 def of(config: dict) -> str:
     """The storage of a project; one without the field (structure version 1) lies on GitHub (AB-7, AB-9)."""
     return config.get("storage") or "github"
+
+
+def exchange_of(config: dict) -> str:
+    """Whether exchange/ travels through git; without the field it does not."""
+    return "git" if config.get("exchange") == "git" else "local"
+
+
+def write_ignore(root: Path, mode: str) -> bool:
+    """Set the lines of .gitignore that decide about exchange/; True when the file changed. Other lines stay."""
+    path = root / ".gitignore"
+    text = path.read_bytes().decode("utf-8") if path.is_file() else ""
+    newline = "\r\n" if "\r\n" in text else "\n"
+    lines = text.split(newline) if text else []
+    at = next((i for i, line in enumerate(lines) if _IGNORE_LINE.match(line.strip())), None)
+    kept = [line for line in lines if not _IGNORE_LINE.match(line.strip())]
+    if at is None:  # no line yet: at the end, before the empty rest of a file that ends with a line break
+        at = len(kept) - 1 if kept and kept[-1] == "" else len(kept)
+    new = kept[:at] + IGNORE[mode] + kept[at:]
+    if new and new[-1] != "":
+        new.append("")
+    if new == lines:
+        return False
+    path.write_bytes(newline.join(new).encode("utf-8"))
+    return True
+
+
+def set_exchange(root: Path, mode: str) -> list[str]:
+    """Take exchange/ into git or out of it: project.json and .gitignore. Commits and untracks nothing."""
+    if mode not in EXCHANGES:
+        raise ToolError(f"exchange must be one of {', '.join(EXCHANGES)}")
+    config = load_config(root)
+    old = exchange_of(config)
+    if mode == "git" and config.get("exchange") != "git":  # beside storage, where the project data lives
+        config = {k: v for key, value in config.items() for k, v in
+                  ([(key, value), ("exchange", "git")] if key == "storage" else [(key, value)]) if key != "exchange"}
+        config.setdefault("exchange", "git")
+        _write_config(root, config)
+    elif mode == "local" and "exchange" in config:
+        del config["exchange"]
+        _write_config(root, config)
+    ignore = write_ignore(root, mode)
+    out = [f"exchange {old} -> {mode}" if old != mode else f"exchange {mode} (unchanged)"]
+    if mode == "git":
+        out.append("exchange/ and exchange/archive/ are in git from now on: exports, packages and their reports travel "
+                   "with git pull and push. Its other folders (walks, tenant) stay on this computer. A ZIP that lies "
+                   "elsewhere in git moves there with git mv.")
+    elif gitutil.is_repo(root):
+        tracked = [t for t in gitutil.git(root, "ls-files", "-z", "exchange").decode("utf-8").split("\0") if t]
+        if tracked:
+            out.append(f"{len(tracked)} files of exchange/ are still in git: take them out with "
+                       "git rm -r --cached exchange (they stay on this computer).")
+    if old != mode or ignore:
+        out.append("Commit project.json and .gitignore.")
+    return out
 
 
 def remote_url(root: Path) -> str | None:
@@ -85,7 +147,12 @@ def sync_service(root: Path) -> str | None:
 
 
 def backup_folder(config: dict) -> Path | None:
-    from . import agent
+    """<backupFolder>/<prefix>; for a local project shared with the team the folder of this person in the team folder
+    (HOME HO-11), so the retention below never touches a colleague's backups."""
+    from . import agent, team
+    shared = team.backup_folder(config)
+    if shared is not None:
+        return shared
     base = (agent.read_settings() or {}).get("backupFolder")
     if not base:
         return None
@@ -167,13 +234,18 @@ def backup(root: Path, keep: int = KEEP) -> list[str]:
     target = folder / f"{prefix}_{datetime.now().strftime(STAMP)}_{head[:12]}.bundle"
     partial = target.with_name(target.name + ".partial")
     partial.unlink(missing_ok=True)
-    try:
-        gitutil.git(root, "bundle", "create", "-q", str(partial), "--all")
-        gitutil.git(root, "bundle", "verify", "-q", str(partial))
+    work = Path(tempfile.mkdtemp(prefix="ppp-backup-"))  # built and checked outside the backup folder, which is often
+    try:                                                  # synced: the sync never sees a bundle git is still writing
+        built = work / target.name
+        gitutil.git(root, "bundle", "create", "-q", str(built), "--all")
+        gitutil.git(root, "bundle", "verify", "-q", str(built))
+        shutil.copyfile(built, partial)
         os.replace(partial, target)
     except (ToolError, OSError):
         partial.unlink(missing_ok=True)
         raise
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
     removed = []
     for old in backups(folder, prefix)[keep:]:
         old.path.unlink()
@@ -208,6 +280,10 @@ def restore(source: Path, target: Path) -> list[str]:
     source = source.expanduser().resolve()
     if source.is_dir():
         found = backups(source, None)
+        if not found and (source / "catalog.json").is_file():
+            # a project folder of the team folder: one folder of backups per person, the newest of all (HOME HO-13)
+            found = sorted((b for sub in source.iterdir() if sub.is_dir() for b in backups(sub, None)),
+                           key=lambda b: (b.time, b.path.stat().st_mtime_ns), reverse=True)
         if not found:
             raise ToolError(f"No backup <prefix>_<time>_<commit>.bundle in {source}; give the project's folder "
                             "inside the backup folder or one .bundle file.")
@@ -227,7 +303,8 @@ def restore(source: Path, target: Path) -> list[str]:
     gitutil.git(target, "remote", "remove", "origin")  # it points to the bundle file
     (target / "exchange").mkdir(exist_ok=True)
     kind = of(load_config(target))
-    out = [f"Restored {bundle.name} to {target}: {_commits(_out(target, 'rev-list', '--count', 'HEAD'))}, "
+    out = [f"Restored {bundle.name}" + (f" of {bundle.parent.name}" if bundle.parent != source and source.is_dir() else "")
+           + f" to {target}: {_commits(_out(target, 'rev-list', '--count', 'HEAD'))}, "
            f"HEAD {gitutil.describe(target, 'HEAD')}. exchange/ is empty: it was never in git."]
     if kind != "local":
         out.append(f"storage {kind}: set the remote again with ppp storage {kind} --remote <url>, or ppp storage local.")
@@ -308,7 +385,8 @@ def switch(root: Path, kind: str | None, remote: str | None) -> list[str]:
     if kind is None:
         rep = Report("")
         check(root, config, rep)
-        return [f"storage {config.get('storage')}, remote origin {url or 'none'}"] + [m for _, m in rep.lines]
+        return [f"storage {config.get('storage')}, remote origin {url or 'none'}, exchange {exchange_of(config)}"] \
+            + [m for _, m in rep.lines]
     if kind not in STORAGES:
         raise ToolError(f"storage must be one of {', '.join(STORAGES)}")
     out = []

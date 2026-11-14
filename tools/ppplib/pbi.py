@@ -32,6 +32,9 @@ DEPTH = {"table": 0, "relationship": 0, "expression": 0, "role": 0, "perspective
 NAMED = {"table", "column", "measure", "partition", "hierarchy", "level", "expression", "calculationItem", "role",
          "perspective", "function"}
 DATA_FILES = ("cache.abf", "localSettings.json")
+# "View errors" after a refresh adds a query 'Errors in <table>' in a query group of its own, and the next save
+# writes both into the model: three clicks left three copies (PBI-20261110-MAC-01). German and English Desktop.
+ERROR_GROUP = re.compile(r"^queryGroup(:?)\s+'?((?:Abfragefehler|Query Errors)\b[^']*)", re.I)
 TIME_HINT = "returns UTC-based values in the service; convert explicitly (skill ppp-power-bi, references/time.md)"
 
 
@@ -55,6 +58,7 @@ class Model:
     relationships: list = field(default_factory=list)
     expressions: list = field(default_factory=list)  # (name, sources)
     texts: list = field(default_factory=list)        # (where, text) for the time rule, without auto date tables
+    error_queries: list = field(default_factory=list)  # (where, query group) per query that "View errors" left
     findings: list = field(default_factory=list)     # (level, message)
 
 
@@ -244,6 +248,9 @@ def _tmdl(model: Model, f: Path, rel: str) -> None:
             fence = True
         if not auto:
             model.texts.append((where, raw))
+        m = ERROR_GROUP.match(text)
+        if m and m.group(1):  # the property of the query; the declaration of the group has no colon
+            model.error_queries.append((where, m.group(2).strip()))
         m = DECL.match(text)
         kw = m.group(1) if m else ""
         if m and DEPTH.get(kw) == depth and (depth == 0 or top == "table"):
@@ -633,6 +640,12 @@ def check(models: dict, reports: list, rep: Report, base: Path) -> str:
         for where, text in m.texts:
             for found in M_TIME.findall(text) + [x.strip(" (") for x in DAX_TIME.findall(text)]:
                 rep.error(f"M4 {where}: {found} {TIME_HINT}")
+        if m.error_queries:
+            where, group = m.error_queries[0]
+            count = len(m.error_queries)
+            rep.warn(f"M5 {where}: {count} error quer{'y' if count == 1 else 'ies'} saved by \"View errors\" in Desktop (query group "
+                     f"'{group}'); remove the expressions, their query groups and their names in PBI_QueryOrder "
+                     "(skill ppp-power-bi, references/pbip.md)")
     for r in reports:
         for level, msg in r.findings:
             rep.add(level, msg)
