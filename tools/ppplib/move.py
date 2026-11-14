@@ -14,7 +14,8 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from . import agent, connected, gitutil, solution, structure, tenant
+from . import agent, cards, connected, gitutil, importlog, solution, structure, tenant
+from . import compare as diffs     # move.compare is ppp export --compare --environment
 from .project import ToolError, load_config, package_solution, solution_with_role
 from .tenant import TenantError
 
@@ -112,7 +113,6 @@ def connect_target(root: Path, name: str, in_use: bool | None) -> list[str]:
     the project there, the publisher line (publisher.connect_lines), the connections per connector, Next. Refused: a file
     of this alias with the role production or with another address (its bindings and values belong to that environment),
     and any file in environments/ that names this address with the role production."""
-    from . import publisher
     own = _project_env(root)       # a move needs the project's environment: its export is what moves
     found = tenant.find_environment(name)
     alias = structure.slug(found["name"])
@@ -128,12 +128,28 @@ def connect_target(root: Path, name: str, in_use: bool | None) -> list[str]:
         raise ToolError(f"environments/{alias}.json names another address than {found['name']} has now: its bindings and values belong "
                         "to that environment and must be set anew. Check the file, or remove it, then ppp connect --target again.")
     _never_production(root, found["url"], found["name"])
-    data = {"name": found["name"], "environmentUrl": found["url"], "role": "test",
+    data = {"name": found["name"], "environmentUrl": found["url"], "role": "test", "type": found.get("type") or "",
             "inUse": bool(old.get("inUse", False)) if in_use is None else in_use,
-            **{k: v for k, v in old.items() if k not in ("name", "environmentUrl", "role", "inUse")}}
-    connected._write(file, data)
-    lines = [f"Connected as move target {found['name']}: environments/{alias}.json with its address, role test; project.json "
-             f"keeps {own['alias']}."]
+            **{k: v for k, v in old.items() if k not in ("name", "environmentUrl", "role", "type", "inUse")}}
+    before = file.read_bytes() if file.is_file() else None
+    importlog.write_json(file, data)
+    try:        # a read that fails leaves the file as it was, not half new (review 14.11.)
+        return _target_lines(root, own, found, alias)
+    except BaseException:
+        if before is None:
+            file.unlink(missing_ok=True)
+        else:
+            file.write_bytes(before)
+        raise
+
+
+def _target_lines(root: Path, own: dict, found: dict, alias: str) -> list[str]:
+    from . import publisher
+    # the type as pac env list gives it, a number: which number is production is not known yet (TEST_PAC, J1); the user
+    # sees it on the cards of the move (review 14.11.)
+    lines = [f"Connected as move target {found['name']}: environments/{alias}.json with its address, role test, type "
+             f"{found.get('type') or '?'} in pac env list (check that it is no production environment); project.json keeps "
+             f"{own['alias']}."]
     online = tenant.solutions(found["url"])
     for s in load_config(root).get("solutions") or []:
         there = online.get(str(s.get("uniqueName", "")).lower())
@@ -161,7 +177,7 @@ def _target(root: Path, alias: str) -> tuple[dict, dict]:
     own = _project_env(root)
     if env["own"] or _address(env["url"]) == _address(own["url"]):
         raise ToolError(f"{alias} is the project's environment: ppp import without --environment imports there.")
-    connected._need_role(env)
+    connected.need_role(env)
     if env["role"] != "test":
         raise ToolError(f"{alias} has the role {env['role']}: a move goes to an environment of role test only.")
     _never_production(root, env["url"], env["name"])
@@ -190,45 +206,26 @@ def _settings_skeleton(source: Path, path: Path) -> dict:
     return {section: list(data.get(section) or []) for section in SECTIONS}
 
 
-def move(root: Path, alias: str, confirmed: bool, accept_drift: bool, with_apps: bool, wait: float) -> int:
-    """ppp import --environment <target> [--with-apps] [--accept-drift] [--confirmed] [--wait <s>] (ERWEITERUNGEN C.1,
-    C.2, C.4, C.5): the move into the environment of environments/<alias>.json after the checks of C.2 in their order,
-    always after a card (CONFIRM FIRST). The backup and the settings file lie in connected._backup_folder(root, env, name),
-    the drift check is connected._drift(..., skip=...), the entry in imports.jsonl has "kind": "move" and "source".
-    A variable without a value in environments/<target>.json has no entry in the settings file. When the export carries
-    its value file (environmentvariabledefinitions/<schema>/environmentvariablevalues.json: the value the project's
-    environment has), that value travels with the package and, on an update, replaces the target's earlier one; this
-    is known from the platform, proven at the tenant only by U6 (C.6). The card and the lines after IMPORTED name it,
-    the entry holds it in values_from_source; without a value file it is in values_missing (the default applies, or
-    the value the target has already). The settings file is checked (tenant.check_settings) before anything is
-    recorded; whatever fails after the entry started and before pac took the package ends it as not_started
-    (connected._start)."""
-    called = datetime.now().isoformat(timespec="seconds")
-    env, own = _target(root, alias)                                                   # 1
-    name = _main(root)
-    folder = connected._backup_folder(root, env, name)
-    last = next((e for e in reversed(connected._imports(root)) if e.get("kind") == "move" and connected._of(e, name, env["alias"])), None)
-    if last and last["status"] == "started":     # a move under way is waited for, never started twice, no new export
-        source = folder / last["zip"]
-        parts = connected._parts(source) if source.is_file() else {"flows": {}, "refs": [], "apps": []}
-        return connected._follow(root, env, last, parts, wait, resumed=True)
+def _source(root: Path, own: dict, name: str, command: str) -> tuple[Path, str, dict]:
+    """C.2 points 2 to 4: the main solution in the project's environment as committed, nothing imported there that waits
+    for its export, no import running there. The folder, the project's version and the solution online."""
     # an import into the project's environment under way (of the main solution, or of the transfer solution, whose
     # components are the main solution's): its export comes first, then the move
     busy = f"an import into {own['alias']} is still running: ppp import waits for it, then ppp export, then the move."
     imported = {name.lower(), str(package_solution(load_config(root)) or name).lower()}
     last_of = {}
-    for e in connected._imports(root):
+    for e in importlog.entries(root):
         if e.get("environment") == own["alias"] and str(e.get("solution", "")).lower() in imported and e.get("status") != "exported":
             last_of[str(e.get("solution", "")).lower()] = e.get("status")
     if "started" in last_of.values():
         raise ToolError(busy)
-    connected.need_export(root, name, "ppp import --environment")                     # 2
+    importlog.need_export(root, name, command)                                         # 2
     work = root / "solution" / name
     if not work.is_dir():
         raise ToolError(f"solution/{name}/ does not exist: ppp export --solution {name} first; a move carries only a committed state.")
     if gitutil.git(root, "status", "--porcelain", "--", gitutil.rel(root, work)).strip():   # 3
         raise ToolError(f"Uncommitted changes in solution/{name}: commit them first; a move carries only a committed state.")
-    mine = connected._project_version(work)
+    mine = connected.project_version(work)
     online = tenant.solutions(own["url"]).get(name.lower())                            # 4
     if not online:
         raise ToolError(f"{name} is not in {own['alias']}: a move takes its export from there.")
@@ -238,18 +235,103 @@ def move(root: Path, alias: str, confirmed: bool, accept_drift: bool, with_apps:
         raise ToolError(f"{own['alias']} has {name} {online['version']}, the project {mine}: ppp export --solution {name} first.")
     if any(tenant.running_imports(own["url"], n) for n in sorted({name, package_solution(load_config(root)) or name})):
         raise ToolError(busy)
+    return work, mine, online
+
+
+def _used_up(root: Path, name: str, alias: str) -> list[str]:
+    """The versions of the main solution that failed on a move into the target: used up for it (C.4)."""
+    return [str(e["version"]) for e in importlog.entries(root) if e.get("kind") == "move" and e.get("status") == "failed"
+            and e.get("version") and importlog.of(e, name, alias)]
+
+
+def raise_version(root: Path, alias: str, confirmed: bool) -> int:
+    """ppp import --environment <target> --raise-version [--confirmed] (VERBUNDEN VB-20, mode large; user, 13.11.): in
+    mode large ppp packs only the transfer solution, so the version of the main solution never rises in the project's
+    environment by itself. When the target has that version or a higher one, or it is used up there, this raises it
+    above the highest of them with pac solution online-version, always after a card, and nothing else: the export into
+    the project (ppp export --solution <main>) and the move follow, the move on its own card. pac test round 3, O1: pac
+    solution list and the export carry the version set. Never in an environment of role production."""
+    if load_config(root).get("mode") != "large":
+        raise ToolError("--raise-version is for mode large: in the other modes ppp pack raises the version, and ppp import brings "
+                        "it into the project's environment.")
+    env, own = _target(root, alias)
+    name = _main(root)
+    if own["role"] == "production":
+        raise ToolError(f"{own['alias']} has the role production: ppp raises no version there.")
+    last = next((e for e in reversed(importlog.entries(root)) if e.get("kind") == "move" and importlog.of(e, name, env["alias"])), None)
+    if last and last["status"] == "started":
+        raise ToolError(f"A move into {env['alias']} is under way: ppp import --environment {env['alias']} waits for it first.")
+    work, mine, online = _source(root, own, name, f"ppp import --environment {env['alias']} --raise-version")
+    there = tenant.solutions(env["url"]).get(name.lower())
+    if there and there["managed"]:
+        raise ToolError(f"{name} is managed in {env['alias']}; an unmanaged package does not go on top of it, so a new version "
+                        "would not help.")
+    spent = _used_up(root, name, env["alias"])
+    blocking = [v for v in [*(([there["version"]]) if there else []), *spent] if importlog.version_key(v) >= importlog.version_key(mine)]
+    if not blocking:
+        raise ToolError(f"No new version needed: {name} {mine} is above what {env['alias']} has "
+                        f"({there['version'] if there else 'nothing yet'}) and is not used up there; ppp import --environment "
+                        f"{env['alias']} moves it.")
+    new = importlog.next_version(max([mine, *blocking], key=importlog.version_key))
+    why = (f"{env['alias']} has {there['version']}" if there and there["version"] in blocking else "")
+    used = sorted({v for v in spent if v in blocking}, key=importlog.version_key)
+    why += ("; " if why and used else "") + (f"used up for {env['alias']}: {', '.join(used)}" if used else "")
+    if not cards.confirm(
+            f"CONFIRM FIRST (a new version of {name} in {own['alias']}, always on a card): show a tenant-step card with the "
+              f"environment {own['name']} (role {own['role']}), the solution {name} {mine} -> {new} ({why}), set with pac solution "
+              f"online-version: only the version number changes, nothing is imported; then ppp export --solution {name} takes "
+              f"it into the project, and the move into {env['alias']} follows on its own card; and the answers \"Raise\" and "
+              "\"Not now\". After \"Raise\": the same command with --confirmed.", confirmed):
+        return 1
+    tenant.set_online_version(own["url"], online["name"], new)
+    after = tenant.solutions(own["url"]).get(name.lower())
+    if not after or after["version"] != new:
+        raise ToolError(f"pac solution online-version ended, but {own['alias']} shows {name} "
+                        f"{after['version'] if after else 'no longer'}: the version is not {new}. This step goes to the user on a card "
+                        f"(Solutions › {name} › settings of the solution, version {new}).")
+    # the one change of the tenant that is no import: in imports.jsonl all the same (review 14.11.), status raised
+    importlog.record(root, {"solution": name, "version": new, "environment": own["alias"], "status": "raised", "kind": "version",
+                             "from": mine, "target": env["alias"]})
+    print(f"RAISED: {name} {mine} -> {new} in {own['alias']}; nothing was imported.")
+    print(f"Next: ppp export --solution {name} (it takes {new} into the project), then ppp import --environment {env['alias']}.")
+    return 0
+
+
+def move(root: Path, alias: str, confirmed: bool, accept_drift: bool, with_apps: bool, wait: float) -> int:
+    """ppp import --environment <target> [--with-apps] [--accept-drift] [--confirmed] [--wait <s>] (ERWEITERUNGEN C.1,
+    C.2, C.4, C.5): the move into the environment of environments/<alias>.json after the checks of C.2 in their order,
+    always after a card (CONFIRM FIRST). The backup and the settings file lie in connected.backup_folder(root, env, name),
+    the drift check is diffs.drift(..., skip=...), the entry in imports.jsonl has "kind": "move" and "source".
+    A variable without a value in environments/<target>.json has no entry in the settings file. When the export carries
+    its value file (environmentvariabledefinitions/<schema>/environmentvariablevalues.json: the value the project's
+    environment has), that value travels with the package and, on an update, replaces the target's earlier one; this
+    is known from the platform, proven at the tenant only by U6 (C.6). The card and the lines after IMPORTED name it,
+    the entry holds it in values_from_source; without a value file it is in values_missing (the default applies, or
+    the value the target has already). The settings file is checked (tenant.check_settings) before anything is
+    recorded; whatever fails after the entry started and before pac took the package ends it as not_started
+    (connected.hand_over)."""
+    called = datetime.now().isoformat(timespec="seconds")
+    env, own = _target(root, alias)                                                   # 1
+    name = _main(root)
+    folder = connected.backup_folder(root, env, name)
+    last = next((e for e in reversed(importlog.entries(root)) if e.get("kind") == "move" and importlog.of(e, name, env["alias"])), None)
+    if last and last["status"] == "started":     # a move under way is waited for, never started twice, no new export
+        source = folder / last["zip"]
+        parts = connected.package_parts(source) if source.is_file() else {"flows": {}, "refs": [], "apps": []}
+        return connected.follow_import(root, env, last, parts, wait, resumed=True)
+    work, mine, online = _source(root, own, name, f"ppp import --environment {env['alias']}")       # 2 to 4
     version = mine
     source = folder / f"source_{version}.zip"                                          # 5
     folder.mkdir(parents=True, exist_ok=True)
-    connected._export(root, own, ["solution", "export", "--name", online["name"], "--path", str(source), "--overwrite", "--async"], 540)
+    importlog.timed_export(root, own, ["solution", "export", "--name", online["name"], "--path", str(source), "--overwrite", "--async"], 540)
     prefix = gitutil.rel(root, work) + "/"
     blobs = gitutil.read_blobs(root, "HEAD", [prefix + f for f in gitutil.tracked_files(root, "HEAD", work)])
-    different = connected._difference(connected._unpacked(source, name), {k[len(prefix):]: v for k, v in blobs.items()})
+    different = diffs.difference(diffs.unpacked(source, name), {k[len(prefix):]: v for k, v in blobs.items()})
     if different:
         raise ToolError(f"{own['alias']} differs from the project ({len(different)} files: " + ", ".join(different[:10])
                         + (" …" if len(different) > 10 else "") + f"): ppp export --solution {name} first; a move carries only a "
                         "committed state.")
-    info, digest, parts = solution.zip_manifest(source), solution.sha256(source), connected._parts(source)
+    info, digest, parts = solution.zip_manifest(source), solution.sha256(source), connected.package_parts(source)
     if info["uniqueName"].lower() != name.lower() or info["managed"] or info["version"] != version:
         raise ToolError(f"The export {source.name} is not the unmanaged {name} {version}: nothing was imported.")
     if parts["apps"] and not with_apps:                                                # 6
@@ -257,18 +339,19 @@ def move(root: Path, alias: str, confirmed: bool, accept_drift: bool, with_apps:
     there = tenant.solutions(env["url"]).get(name.lower())                             # 7
     if there and there["managed"]:
         raise ToolError(f"{name} is managed in {env['alias']}; an unmanaged package does not go on top of it.")
-    if there and connected._version(version) <= connected._version(there["version"]):
+    if there and importlog.version_key(version) <= importlog.version_key(there["version"]):
         raise ToolError(f"Version {version} is not higher than in {env['alias']} ({there['version']}): "
-                        + connected.new_version_step(root, name, own["alias"], version, there["version"]) + ".")
+                        + connected.new_version_step(root, name, own["alias"], version, there["version"], target=env["alias"]) + ".")
     running = tenant.running_imports(env["url"], name)
     if running:
         raise TenantError("BUSY", f"an import of {name} is running in {env['alias']} (progress {running[0]} %). Wait for it; "
                                   f"ppp tenant --environment {env['alias']} shows where it stands.")
-    spent = next((e for e in connected._imports(root) if e.get("kind") == "move" and e.get("status") == "failed"   # 8
-                  and e.get("version") == version and connected._of(e, name, env["alias"])), None)
+    spent = next((e for e in importlog.entries(root) if e.get("kind") == "move" and e.get("status") == "failed"   # 8
+                  and e.get("version") == version and importlog.of(e, name, env["alias"])), None)
     if spent:
         raise ToolError(f"Version {version} of {name} failed on a move into {env['alias']} and is used up for {env['alias']}: "
-                        + connected.new_version_step(root, name, own["alias"], version, *([there["version"]] if there else [])) + ".")
+                        + connected.new_version_step(root, name, own["alias"], version, *([there["version"]] if there else []),
+                                                     target=env["alias"]) + ".")
     settings = folder / f"settings_{version}.json"
     skeleton = _settings_skeleton(source, settings)
     bindings, values = _section(env, "connectionReferences"), _section(env, "environmentVariables")
@@ -308,8 +391,8 @@ def move(root: Path, alias: str, confirmed: bool, accept_drift: bool, with_apps:
     drift, details = [], []                                                            # 12
     if there:      # the backup before the move is the export of the drift check (VB-12), in the target's own folder
         backup = folder / f"before_{version}.zip"
-        connected._export(root, env, ["solution", "export", "--name", there["name"], "--path", str(backup), "--overwrite", "--async"], 540)
-        drift, details = connected._drift(root, work, backup, there["version"], skip=(VALUES,))
+        importlog.timed_export(root, env, ["solution", "export", "--name", there["name"], "--path", str(backup), "--overwrite", "--async"], 540)
+        drift, details = diffs.drift(root, work, backup, there["version"], skip=(VALUES,))
     if drift and not accept_drift:
         print(f"DRIFT: {env['alias']} differs from the version it got ({len(drift)}): " + ", ".join(drift[:30])
               + (f" … {len(drift) - 30} more" if len(drift) > 30 else ""))
@@ -325,31 +408,34 @@ def move(root: Path, alias: str, confirmed: bool, accept_drift: bool, with_apps:
     settings_sha = solution.sha256(settings)
     # the checks of start_import, here before anything is recorded: a refused file leaves no entry started behind
     tenant.check_settings(source, settings, settings_sha)
-    if not confirmed:
+    if confirmed is not True:
         variables = ([f"{s}: value from {_file(env)}" for s in sorted(known - set(unset))]
                      + [f"{s}: no value in {_file(env)}: the value of {own['alias']} travels with the export" if s in travels else
                         f"{s}: no value in {_file(env)}: the default applies, or the value {env['alias']} has already" for s in unset])
         # the run with --confirmed exports anew: its SHA-256 stands in the entry, the card names the content as committed
-        print(f"CONFIRM FIRST (a move into {env['alias']}, always on a card): show a tenant-step card with the source {own['alias']} "
-              f"({name} {version}, its export as committed), the target {env['name']} (role test; online there: "
+        card = (f"CONFIRM FIRST (a move into {env['alias']}, always on a card): show a tenant-step card with the source {own['alias']} "
+              f"({name} {version}, its export as committed), the target {env['name']} (role test, type "
+              f"{env['data'].get('type') or 'unknown: ppp connect --target reads it'} in pac env list; online there: "
               f"{there['version'] if there else 'nothing yet'}), {len(parts['flows'])} flows, apps: {', '.join(parts['apps']) or 'none'}, "
               f"the connection references ({'; '.join(shown_refs) or 'none'}), the environment variables "
               f"({'; '.join(variables) or 'none'}; values only on the user's request), {publisher_line}, without publishing "
               "(sharing and publishing the app stay by hand)"
               + (f", the drift it overwrites: {', '.join(drift[:30])}" if drift else "")
               + " and the answers \"Move\" and \"Not now\". After \"Move\": the same command with --confirmed.")
-        return 1
-    entry = connected._record(root, {"solution": name, "version": version, "zip": source.name, "sha": digest,
+        # bound to the settings file (bindings and values) and the lines of the drift (cards)
+        if not cards.confirm(card, confirmed, [settings_sha, *details]):
+            return 1
+    entry = importlog.record(root, {"solution": name, "version": version, "zip": source.name, "sha": digest,
                                      "environment": env["alias"], "status": "started", "kind": "move", "source": own["alias"],
                                      "settings": settings.name, "settings_sha": settings_sha, "values_missing": missing,
                                      "values_from_source": from_source,
                                      "called": called, "online_before": there["version"] if there else None,
                                      "flows_before": tenant.flows(env["url"], list(parts["flows"])) if there else {},
                                      "jobs_before": tenant.import_jobs(env["url"], name)})
-    result = connected._start(root, env, entry, source, wait, settings=settings, settings_sha=settings_sha)
+    result = connected.hand_over(root, env, entry, source, wait, settings=settings, settings_sha=settings_sha)
     if result["state"] in ("failed", "skipped"):
-        return connected._failed(root, env, entry, f"{result.get('kind', 'SKIPPED')}: {result['message']}", result=result)
-    return connected._follow(root, env, entry, parts, max(wait - result["seconds"], 0), resumed=False)
+        return connected.report_failed(root, env, entry, f"{result.get('kind', 'SKIPPED')}: {result['message']}", result=result)
+    return connected.follow_import(root, env, entry, parts, max(wait - result["seconds"], 0), resumed=False)
 
 
 def _publisher(root: Path, env: dict, own: dict, source: Path) -> str:
@@ -391,14 +477,14 @@ def _publisher(root: Path, env: dict, own: dict, source: Path) -> str:
 
 # ------------------------------------------------------------------ after IMPORTED
 def after_import(root: Path, env: dict, entry: dict, parts: dict) -> list[str]:
-    """The hook of connected._done for an entry of kind move, after the lines of the record and the flows
+    """The hook of connected.report_imported for an entry of kind move, after the lines of the record and the flows
     (ERWEITERUNGEN C.1): the switches against flowSwitches of environments/<target>.json, the line Values with a line per
     variable without a value (entry["values_missing"]: the default or the target's value applies) and a WARNING line per
     variable whose value came with the export (entry["values_from_source"]: the value of the project's environment;
     that the server takes it so is platform knowledge, proven at the tenant only by U6), the line Bindings, each
     deviation as a WARNING line. env is the
-    target (tenant.environment(root, alias)), parts the parts of the package (connected._parts). Each line that starts
-    with WARNING counts among ppp's warnings of the import; BY_HAND, the line on apps and Next print connected._done.
+    target (tenant.environment(root, alias)), parts the parts of the package (connected.package_parts). Each line that starts
+    with WARNING counts among ppp's warnings of the import; BY_HAND, the line on apps and Next print connected.report_imported.
     What is checked is the settings file that went in (entry["settings"]); without it environments/<target>.json."""
     lines = []
     switches = _section(env, "flowSwitches")
@@ -409,7 +495,7 @@ def after_import(root: Path, env: dict, entry: dict, parts: dict) -> list[str]:
                             if (s == "on" and parts["flows"][i] in meant["off"]) or (s == "off" and parts["flows"][i] in meant["on"]))
         if unexpected:
             lines.append(f"WARNING switches differ from flowSwitches in {_file(env)}: " + ", ".join(unexpected))
-    path = connected._backup_folder(root, env, entry["solution"]) / str(entry.get("settings") or "")
+    path = connected.backup_folder(root, env, entry["solution"]) / str(entry.get("settings") or "")
     try:
         data = json.loads(path.read_text(encoding="utf-8")) if entry.get("settings") and path.is_file() else None
     except ValueError:

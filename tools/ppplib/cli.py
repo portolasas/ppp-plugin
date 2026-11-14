@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import VERSION, canvas, flows, gitutil, pbi, solution, storage, structure, walk
+from . import VERSION, canvas, flows, gitutil, importlog, pbi, project, solution, storage, structure, walk
 from .project import ToolError, find_root, load_config, solution_dir
 from .report import Report
 from .verify import verify
@@ -30,7 +30,7 @@ def cmd_unpack(a) -> int:
     if code == 0 and not a.no_commit:
         from . import connected     # a connected project where pac does not work here: the export fetched by hand counts
         info = solution.zip_manifest(zip_path)
-        connected.mark_exported(root, info["uniqueName"], info["version"], "unpack", only_version=True)
+        importlog.mark_exported(root, info["uniqueName"], info["version"], "unpack", only_version=True)
     return code
 
 
@@ -101,8 +101,16 @@ def cmd_inventory(a) -> int:
         path = Path(a.path)
         files = [path] if path.is_file() else sorted((path / "Workflows" if (path / "Workflows").is_dir() else path).glob("*.json"))
     else:
-        folder = solution_dir(find_root(a.project), a.solution)
-        files = sorted((folder / "Workflows").glob("*.json"))
+        root = find_root(a.project)
+        folder = solution_dir(root, a.solution)
+        files = [f for f in sorted((folder / "Workflows").glob("*.json")) if a.filter.lower() in f.name.lower()]
+        main = project.solution_with_role(load_config(root), "main")
+        # mode large: the package solution is the transfer solution, empty at first; the flows live in the main solution
+        # (Erprobung 13.11., B2)
+        if not files and not a.solution and main and main != folder.name and (root / "solution" / main).is_dir():
+            files = sorted((root / "solution" / main / "Workflows").glob("*.json"))
+            if any(a.filter.lower() in f.name.lower() for f in files):     # said, so no one edits a flow that is not packed
+                print(f"From solution/{main}/: not in the package solution {folder.name}; ppp members <flow> adds it there.")
     files = [f for f in files if a.filter.lower() in f.name.lower()]
     if not files:
         raise ToolError("No flow matches.")
@@ -132,17 +140,20 @@ def cmd_pack(a) -> int:
     root = find_root(a.project)
     folder = solution_dir(root, a.solution)
     from . import connected     # after an import the tenant's state is the base of the next package (VERBUNDEN VB-8)
-    connected.need_export(root, folder.name, "ppp pack")
+    importlog.need_export(root, folder.name, "ppp pack")
     base = _base(root, folder, a.base)
     solution.pac()  # before the version changes
-    old = solution.set_version(folder, a.version)
-    print(f"Version {old} -> {a.version}")
-    rep = verify(root, folder, base, allowed=_split(a.allowed), retry_none=_split(a.retry_none),
-                 check_all=a.all, with_apps=a.with_apps)
     info = solution.manifest((folder / "Other" / "Solution.xml").read_bytes())
     stem = f"{info['uniqueName']}_{a.version.replace('.', '_')}" + (f"_{a.label}" if a.label else "")
     out = root / "exchange" / f"{stem}_IMPORTABLE.zip"
     report_path = root / "exchange" / f"{stem}_REPORT.md"
+    if out.exists():  # before the version changes, so a refused pack leaves the folder as it was (Erprobung 13.11.)
+        raise ToolError(f"Target exists, not overwritten: {out}. Nothing was changed; pack with another version, or with "
+                        f"--label for a second package of this version.")
+    old = solution.set_version(folder, a.version)
+    print(f"Version {old} -> {a.version}")
+    rep = verify(root, folder, base, allowed=_split(a.allowed), retry_none=_split(a.retry_none),
+                 check_all=a.all, with_apps=a.with_apps)
     # ppp import refuses a package packed before the last export: it checks this commit's history (VERBUNDEN VB-8)
     head = gitutil.git(root, "rev-parse", "--verify", "HEAD").decode().strip()
     lines = [f"Base: {gitutil.describe(root, base)}", f"Packed on: {head}", rep.text()]
@@ -563,7 +574,8 @@ def cmd_import(a) -> int:
     root = find_root(a.project)
     if a.create:        # an empty first solution with the publisher of the settings (ERWEITERUNGEN A.1)
         given = [flag for flag, on in (("a package", a.package), ("--restore", a.restore), ("--environment", a.environment),
-                                       ("--accept-drift", a.accept_drift), ("--with-apps", a.with_apps)) if on]
+                                       ("--accept-drift", a.accept_drift), ("--with-apps", a.with_apps),
+                                       ("--raise-version", a.raise_version)) if on]
         if given:
             raise ToolError("ppp import --create builds and imports an empty solution: not together with " + ", ".join(given) + ".")
         if a.transfer and not a.solution:
@@ -578,7 +590,13 @@ def cmd_import(a) -> int:
             raise ToolError(f"a move takes the export of {_project_alias(root)}, no package.")
         if a.restore:
             raise ToolError("a restore in a move target goes on a card.")
+        if a.raise_version:
+            if a.accept_drift or a.with_apps:
+                raise ToolError("--raise-version only raises the version: --accept-drift and --with-apps go with the move after it.")
+            return move.raise_version(root, a.environment, a.confirmed)
         return move.move(root, a.environment, a.confirmed, a.accept_drift, a.with_apps, a.wait)
+    if a.raise_version:
+        raise ToolError("--raise-version goes with --environment <target>: ppp import --environment <target> --raise-version.")
     if a.restore:
         return connected.restore(root, a.package or None, a.confirmed, a.with_apps, a.wait)
     return connected.import_package(root, a.package or None, a.confirmed, a.accept_drift, a.with_apps, a.wait)
@@ -830,8 +848,9 @@ def build_parser() -> argparse.ArgumentParser:
                                       "stays as backup in exchange/tenant/). Reads the result from the server: version, import "
                                       "record, flow switches, bindings. Never into an environment of role production.", False)
     c.add_argument("package", nargs="?", default="", help="the ZIP (default: the newest package of the package solution in exchange/)")
-    c.add_argument("--confirmed", action="store_true", help="the user confirmed this import on a card; without it the command "
-                                                            "says when a card is needed and what it shows")
+    c.add_argument("--confirmed", nargs="?", const="", default=None, metavar="CODE",
+                   help="the user confirmed this import on a card: the code its CONFIRM FIRST line names. Without it the command "
+                        "says when a card is needed and what it shows; a code that no longer fits the state shows the new card")
     c.add_argument("--accept-drift", action="store_true", help="import although the tenant differs from the state the package "
                                                                "was built on; overwrites those changes, after a card")
     c.add_argument("--with-apps", action="store_true", help="the package may contain apps (move to test only)")
@@ -855,6 +874,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="move instead: the fresh export of the main solution from the project's environment, same version, into "
                         "the move target of environments/<target>.json (role test), with its bindings and values; no package "
                         "argument, no --restore. Always after a card")
+    c.add_argument("--raise-version", action="store_true",
+                   help="with --environment, mode large only: instead of the move raise the version of the main solution in "
+                        "the project's environment above the one the target has or used up (pac solution online-version); then "
+                        "ppp export --solution <main> and the move. Always after a card")
 
     c = command("tenant", cmd_tenant, "Connected projects: what the tenant holds of this project, without the account: versions "
                                       "against the project, flows that are off, connection references without a connection or "
@@ -1075,6 +1098,12 @@ def main(argv: list[str] | None = None) -> int:
             pass
     args = build_parser().parse_args(argv)
     try:
+        if args.func in (cmd_connect, cmd_export, cmd_import, cmd_tenant, cmd_members):
+            root = _project_or_none(getattr(args, "project", None))
+            if root is not None:        # one call at a time against the tenant (projectlock)
+                from . import projectlock
+                with projectlock.held(root, f"ppp {args.command}"):
+                    return args.func(args)
         return args.func(args)
     except (ToolError, OSError) as ex:  # file errors too, as one line instead of a traceback
         print(f"ERROR: {ex}", file=sys.stderr)

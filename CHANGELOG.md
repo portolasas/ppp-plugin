@@ -2,6 +2,13 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.24.0 (2026-11-14)
+- Karte mit Code: jede Zeile CONFIRM FIRST endet mit --confirmed <code>; ppp import geht nur mit dem Code des jetzigen Stands weiter, sonst CHANGED und die neue Karte (Import, Rückspielen, Anlage, Umzug, Version heben)
+- Im Modus large hebt ppp import --environment <ziel> --raise-version die Version der Hauptlösung nach einer Karte (pac solution online-version, Runde 3 O1), mit Eintrag in imports.jsonl
+- Was nie beim Server ankam, verbraucht nichts: FAILED nur nach der Übergabe; ohne Übergabe, ohne Job nach 30 Minuten und bei DENIED bleibt die ZIP nutzbar. Eine Sperre je Projekt lässt nur einen Aufruf gegen den Tenant zugleich zu
+- Drift: CRMServerServiceabilityVersion in Other/ zählt nicht; die Vorschau zählt Zeilen und zeigt geänderte vor verschobenen; Import record nennt die Zeile definition replaced als üblich; mehrzeilige Werte werden gelesen
+- Umzugsziel mit Typ der Umgebung auf der Karte; ppp pack ändert bei bestehender ZIP nichts; ppp inventory findet im Modus large die Hauptlösung; ppp members nennt die Art; connected.py aufgeteilt (importlog.py, compare.py, cards.py, projectlock.py); Texte von ppp-package, ppp-intake und README nachgezogen
+
 ## 0.23.0 (2026-11-13)
 - ppp import --create [--solution <Name> [--transfer]] legt eine leere Solution samt Publisher der Einstellungen an (Vorlage im Plugin), immer nach Karte; in Citizen Developments nur mit vorhandenem Publisher. ppp connect gleicht den Publisher mit den Einstellungen ab
 - ppp members listet die Transferlösung und nimmt Flows, Umgebungsvariablen und Verbindungsreferenzen der Hauptlösung auf; ein Flow bringt seine Referenzen und Variablen mit

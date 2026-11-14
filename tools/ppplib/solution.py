@@ -16,7 +16,7 @@ from xml.sax.saxutils import escape
 
 from .gitutil import read_blobs, rel, tracked_files
 from .project import ToolError
-from .verify import SOLUTION_XML, canvas_apps, files_of, stable
+from .verify import OTHER_XML, SOLUTION_XML, canvas_apps, files_of, stable
 
 PAC_EXTENSION = "microsoft-isvexptools.powerplatform-vscode"
 
@@ -225,15 +225,23 @@ def unpack(zip_path: Path, target: Path) -> None:
 def keep_volatile(root: Path, folder: Path) -> list[str]:
     """After unpacking an export: the metadata file of an app that differs from the committed one only in the values the
     server rewrites on every export (verify.stable) gets its committed bytes back, if every other file of the app is
-    as committed. So an app nobody changed is no change in git and no commit. Returns the files put back."""
+    as committed. So an app nobody changed is no change in git and no commit. The same for Other/Customizations.xml and
+    Other/Solution.xml when only CRMServerServiceabilityVersion differs (an update of the server; review 14.11.).
+    Returns the files put back."""
     apps = folder / "CanvasApps"
-    tracked = [f for f in tracked_files(root, "HEAD", folder, missing_ok=True) if f.startswith("CanvasApps/")] if apps.is_dir() else []
+    tracked = [f for f in tracked_files(root, "HEAD", folder, missing_ok=True) if f.startswith("CanvasApps/") or f in OTHER_XML]
     if not tracked:
         return []
     prefix = rel(root, folder) + "/"
     committed = {k[len(prefix):]: v for k, v in read_blobs(root, "HEAD", [prefix + f for f in tracked]).items()}
     kept = []
-    for meta in sorted(apps.glob("*.meta.xml")):
+    for name in OTHER_XML:
+        path = folder / name
+        old = committed.get(name)
+        if old is not None and path.is_file() and path.read_bytes() != old and stable(name, old) == stable(name, path.read_bytes()):
+            path.write_bytes(old)
+            kept.append(name)
+    for meta in sorted(apps.glob("*.meta.xml")) if apps.is_dir() else []:
         name, app = f"CanvasApps/{meta.name}", meta.name[:-len(".meta.xml")] + "_"
         old, new = committed.get(name), meta.read_bytes()
         if old is None or old == new or stable(name, old) != stable(name, new):

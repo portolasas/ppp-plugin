@@ -6,7 +6,7 @@ A project is **connected** when `project.json` names an `environment`: `ppp` the
 `ppp export` replaces the user's export at the start of every package, after the scaffold of step 2 and after step 6 (the tenant's state becomes the next base). `ppp import` replaces the import of step 6; a card if it asks.
 
 ## Export
-`ppp export` fetches the package solution, unpacks and commits it as "Export <name> <version>". Only the portal's dialog raises the online version [B].
+`ppp export` fetches the package solution, unpacks and commits it as "Export <name> <version>". The online version rises by an import; in mode large `ppp import --environment <target> --raise-version` raises the main solution's ([connected-move.md](connected-move.md)).
 - Lines with `M`, `D` or `??` are manual tenant changes (the diff shows them), now in the working copy: compare with the notes in `STATE.md`, remove those settled.
 - Mode large: the transfer solution, as `ppp pack`. The main solution comes with `ppp export --solution <Name>`: at intake, after a scaffold created in it, and when the user asks.
 - Refusals: see "Refusals" in [connected-trouble.md](connected-trouble.md).
@@ -18,15 +18,16 @@ Done when it reports a commit or "Same content as the last commit."
 
 | Answer | What happened | You |
 |---|---|---|
-| `IMPORTED:` | Package online, job ended; below record, switches, bindings. Failures in the record are a `WARNING` line. The record's "The original workflow definition has been deactivated and replaced." is the usual message per replaced flow: no card, no `WARNING` line. `Import record: not readable yet` is no deviation (`ppp tenant --log` shows it later) | Report these lines; clear each `WARNING` or card it. Then one card for what stays by hand (changed flows saved in the designer, critical scenarios), then `ppp export` |
-| `CONFIRM FIRST` | Nothing imported; a card is due | Show its tenant-step card ("Import", "Not now"); then the same command with `--confirmed` |
+| `IMPORTED:` | Package online, job ended; below record, switches, bindings. Failures in the record are a `WARNING` line. The record's "The original workflow definition has been deactivated and replaced." is the usual message per replaced flow (normal after a flow was edited and imported again); the line names it so: do not show it, no card. `Import record: not readable yet` is no deviation (`ppp tenant --log` shows it later) | Report these lines; clear each `WARNING` or card it. Then one card for what stays by hand (changed flows saved in the designer, critical scenarios), then `ppp export` |
+| `CONFIRM FIRST` | Nothing imported; a card is due | Show its tenant-step card ("Import", "Not now"); after "Import" the command its line ends with, `--confirmed <code>` included. `CHANGED:`: the state moved on since the card; show the new one |
 | `DRIFT:` | Nothing imported; the tenant differs from the base | Show the files and lines; card: take the changes over (recommended) or overwrite them (`--accept-drift`, then `CONFIRM FIRST`); see "Drift" in [connected-trouble.md](connected-trouble.md) |
 | `RUNNING:` | The server still imports or does not show it yet (queue, long upload) or the version is online but the job has not ended (then record and switches are not final yet). pac was ended on purpose; the server imports on without it | Wait the "Usual here: about … from the start of an import to IMPORTED" it names, then the same command: it waits, starts no second import |
-| `FAILED:` | Rejected (reason from pac or this import's job), or the server showed no job 30 minutes after the start (then no record; `ppp tenant` shows the state) | "Failed import" in [connected-trouble.md](connected-trouble.md) |
-| `ERROR:` | A check refused, or pac did not get through | "Refusals" and "When pac does not get through" in [connected-trouble.md](connected-trouble.md) |
+| `FAILED:` | Rejected (reason from pac or this import's job) | "Failed import" in [connected-trouble.md](connected-trouble.md) |
+| `ERROR:` | A check refused, or pac did not get through; `… did not reach <alias>`: nothing was handed over or the server never showed it, nothing is used up | "Refusals" and "When pac does not get through" in [connected-trouble.md](connected-trouble.md) |
 
 - **After `IMPORTED`** `ppp pack` and `ppp import` refuse until `ppp export` ran (a `ppp unpack` of an export of the same version counts; `--compare` and `--no-commit` do not).
-- **Waiting**: `--wait <seconds>` (default 100; `--wait 540` where the terminal allows).
+- **Waiting**: `--wait <seconds>` (default 100; `--wait 540` only with the terminal tool's time limit above it, at most 10 minutes). A call the terminal ends goes on with the same command.
+- **One at a time**: `Another call of ppp runs in this project`: wait for it; never two calls against the tenant at once.
 
 Done when `ppp export` after `IMPORTED` reports "Same content as the last commit." or an explicable diff.
 
@@ -48,4 +49,4 @@ Before each import the tenant's state is saved as `exchange/tenant/<Name>/before
 - Scaffolds (an empty first solution excepted: `ppp import --create` builds it after a card), removing members of the transfer solution (ppp adds them: `ppp members`), the cards after an import, switching flows, connections, "paste code", publishing an app, deleting.
 - Production: `ppp import` refuses it; governance way (ppp-golive).
 
-The tenant is reached through `ppp connect`, `export`, `import`, `tenant` and `members` only. Where hooks run, a direct call of `pac` is refused, also a command line that only quotes it (a commit message) where `pac` stands in the quoted text after `;`, `|`, `&`, `(` or at the start of a line: write the text with the file tool or rephrase it. What these do not offer goes to the user on a card.
+The tenant is reached through `ppp connect`, `export`, `import`, `tenant` and `members` only. Where hooks run, a direct call of `pac` is refused, also a command line that only quotes it (a commit message) where `pac` stands in the quoted text after `;`, `|`, `&`, `(` or at the start of a line: write the text with the file tool or rephrase it. The hook stops slips, not intent: it reads the command line only. What these do not offer goes to the user on a card.

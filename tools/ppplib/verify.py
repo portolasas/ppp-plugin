@@ -61,6 +61,8 @@ SOLUTION_XML = "Other/Solution.xml"
 
 
 VOLATILE = re.compile(r"CanvasApps/[^/]+\.meta\.xml")
+OTHER_XML = ("Other/Customizations.xml", SOLUTION_XML)
+SERVICEABILITY = re.compile(rb'(\bCRMServerServiceabilityVersion=")[^"]*(")')
 
 
 def stable(name: str, data: bytes) -> bytes:
@@ -68,7 +70,11 @@ def stable(name: str, data: bytes) -> bytes:
     on every export and import, while the .msapp and the flows stay byte-identical (pac test 12.11., VERBUNDEN VB-9):
     the text of AppVersion, workflowName under parameterHints and parameterHintsV2, every iconUri. They are blanked
     here; everything else counts. JSON inside an element is read; if it cannot be read, the element stays as it is
-    and a difference in it counts."""
+    and a difference in it counts. In Other/Customizations.xml and Other/Solution.xml the attribute
+    CRMServerServiceabilityVersion changes with an update of the server, not with the solution (Erprobung 13.11.: the
+    only difference there between two exports and between source and target); its value is blanked (user, 13.11.)."""
+    if name in OTHER_XML:
+        return SERVICEABILITY.sub(rb"\1\2", data)
     if not VOLATILE.fullmatch(name):
         return data
 
@@ -368,7 +374,8 @@ def verify(root: Path, folder: Path, base: str, *, allowed: list[str] | None = N
     rep.info(f"C4 changed files ({len(changed)}): " + (", ".join(changed) or "-"))
     volatile = [f for f in current if f in base_data and data[f] != base_data[f] and f not in changed]
     if volatile:
-        rep.info("C4 not counted, only values the server rewrites differ (AppVersion, workflowName hints, iconUri): "
+        rep.info("C4 not counted, only values the server rewrites differ (AppVersion, workflowName hints, iconUri, "
+                 "CRMServerServiceabilityVersion): "
                  + ", ".join(volatile))
     if allowed:
         # C4 names files relative to the solution; a bare file name released nothing (SOL-20261025-WIN-01)

@@ -43,7 +43,7 @@ PAC_CALL = re.compile(r"(?:^|[\n;|&({`]|\$\()\s*" + _WRAPPER
                       re.I)
 TERMINAL = re.compile(r"bash|shell|terminal|command|exec", re.I)
 DENIED = ("ppp: this project is connected to the tenant (environment {alias}), and this command calls pac itself. Never call pac "
-          "there: the tool carries the checks a direct call skips. The tenant: ppp connect, ppp export, ppp import, ppp tenant. "
+          "there: the tool carries the checks a direct call skips. The tenant: ppp connect, ppp export, ppp import, ppp tenant, ppp members. "
           "An export or a package on disk: ppp unpack, ppp pack. What these do not offer goes to the user on a card. If the "
           "command only quotes pac in a text, write that text with the file tool.")
 

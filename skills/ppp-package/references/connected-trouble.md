@@ -8,11 +8,11 @@ The ordinary way: [connected.md](connected.md). Here: refusals, drift, a failed 
 
 ## Drift
 `DRIFT:` means the tenant differs from the base; nothing was imported.
-- **Drift lines**: `DRIFT:` and `ppp export --compare` (changes nothing) list under the first line per differing file the differing lines (`-` the project's base, `+` the tenant; a note when only their order differs). The card shows files and lines. If only `Other/Customizations.xml` or `Other/Solution.xml` differs and nobody changed the tenant, the server may have rewritten the file: the lines decide whether it is a manual change; the card stays.
+- **Drift lines**: `DRIFT:` and `ppp export --compare` (changes nothing) list under the first line per differing file the differing lines (`-` the project's base, `+` the tenant; a note when only their order differs; changed lines first, lines that only moved last). The card shows files and lines. `CRMServerServiceabilityVersion` in `Other/` changes with a server update and never counts. If only `Other/Customizations.xml` or `Other/Solution.xml` differs and nobody changed the tenant, the server may have rewritten the file: the lines decide whether it is a manual change; the card stays.
 - **Take drift over**: commit the work, `ppp export --force`, rebuild the work on the tenant's state (`git cherry-pick` its build commits or run its generators again), `ppp verify`, `ppp pack --version <next>`, `ppp import`. The package packed before is refused after the takeover: packing anew is a must.
 
 ## Failed import
-`FAILED:` uses the ZIP and its version up. `ppp tenant --log` gives the record's error texts (none after the 30 minutes). Find the cause (skills ppp-diagnose, ppp-power-automate `references/errors.md`), fix it, `ppp verify`, `ppp pack --version <next>`, `ppp import`. The work in the project stays; `ppp export` does not replace it (`ppp export --compare` shows the tenant's state).
+`FAILED:` uses the ZIP and its version up. `ppp tenant --log` gives the record's error texts. Find the cause (skills ppp-diagnose, ppp-power-automate `references/errors.md`), fix it, `ppp verify`, `ppp pack --version <next>`, `ppp import`. The work in the project stays; `ppp export` does not replace it (`ppp export --compare` shows the tenant's state).
 
 Done when the next import answers `IMPORTED:`.
 
@@ -22,14 +22,15 @@ Done when the next import answers `IMPORTED:`.
 | Kind | Meaning | You |
 |---|---|---|
 | `AUTH` | pac is not signed in here | Card, as offline; the user signs in (`pac auth create`), named once |
-| `DENIED` | The account may not do this in the environment | Card, as offline |
+| `DENIED` | The account may not do this in the environment | Card, as offline; nothing is used up |
 | `SYNTAX` | pac takes the call differently than ppp expects | Card, as offline; lesson proposal |
 | `TIMEOUT` | No answer in time | Once more; then a card, as offline |
 | `BUSY` | Another import of this solution runs | Wait; `ppp tenant` shows the state |
+| `FAILED` | pac failed otherwise (an export, a read) | Once more; then a card, as offline |
 
-Whatever fails before pac has started (an import, a restore, a creation or a move; a refused settings file too) leaves nothing started and nothing used up: the same command later runs through every check anew.
+Whatever fails before pac has handed the package over (an import, a restore, a creation or a move; a refused settings file too) leaves nothing started and nothing used up: the same command later runs through every check anew.
 
-`AUTH`, `SYNTAX` and `BUSY` at the start of an import leave the ZIP unused: the same command can run again. So does `ERROR:` without a kind when pac skips the import because the version online is not lower: pack the version it names (after a restore, `ppp import --restore` again). "As offline" means the card of SKILL.md step 2 or 6; the user's export goes in with `ppp unpack`.
+`AUTH`, `DENIED`, `SYNTAX` and `BUSY` at the start of an import, a failure before pac handed the package over and an import the server never showed (`… did not reach <alias>`) leave the ZIP unused: the same command can run again. So does `ERROR:` without a kind when pac skips the import because the version online is not lower: pack the version it names (after a restore, `ppp import --restore` again). "As offline" means the card of SKILL.md step 2 or 6; the user's export goes in with `ppp unpack`.
 
 ## Restore
-`ppp import --restore` brings the newest backup (`exchange/tenant/<Name>/before_<version>.zip`) back, only on the user's decision: `CONFIRM FIRST`, then "Restore" and `--confirmed`. The backup's components get their old content under a higher version; what an import added since stays, a new flow for example [B]. Apps need `--with-apps`. `ppp export` then shows later packages' changes as reverted.
+`ppp import --restore` brings the newest backup (`exchange/tenant/<Name>/before_<version>.zip`) back, only on the user's decision: `CONFIRM FIRST`, then "Restore" and `--confirmed <code>`. The backup's components get their old content under a higher version; what an import added since stays, a new flow for example [B]. Apps need `--with-apps`. `ppp export` then shows later packages' changes as reverted.

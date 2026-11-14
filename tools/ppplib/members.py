@@ -113,7 +113,7 @@ def _context(root: Path) -> dict:
     """Environment, main and transfer solution of a project that ppp members works in: connected, role set, mode large,
     a transfer solution other than the main solution, the transfer solution online and not managed (ERWEITERUNGEN B.2)."""
     env = tenant.environment(root)
-    connected._need_role(env)
+    connected.need_role(env)
     config = load_config(root)
     main, transfer = solution_with_role(config, "main"), solution_with_role(config, "transfer")
     if config.get("mode") != "large" or not main or not transfer or main.lower() == transfer.lower():
@@ -155,7 +155,8 @@ def run(root: Path, names: list[str]) -> int:
 
 def _list(root: Path, env: dict, main: str, transfer: str) -> int:
     """The members with the kind and the name the main solution gives them; a member the main solution does not have
-    stands as other with its ID. Reading only, so also in an environment of role production, and the folder of the main
+    stands as other with the kind the table gives it, if any, and its ID (the value of an environment variable is such a
+    member: Erprobung 13.11., B6). Reading only, so also in an environment of role production, and the folder of the main
     solution need not be committed: it only gives the names."""
     folder = root / "solution" / main
     held = _components(folder) if folder.is_dir() else {"flow": [], "variable": [], "reference": []}
@@ -164,7 +165,8 @@ def _list(root: Path, env: dict, main: str, transfer: str) -> int:
         for name, ids in tenant.component_ids(env["url"], kind, [n for n, _ in held[kind]]).items():
             named.update({i: (kind, name) for i in ids})
     found = tenant.members(env["url"], transfer)
-    lines = sorted(f"  {named[i][0]} {named[i][1]}" for i in found if i in named) + sorted(f"  other {i}" for i in found if i not in named)
+    lines = (sorted(f"  {named[i][0]} {named[i][1]}" for i in found if i in named)
+             + sorted(f"  other ({found[i]}) {i}" if found[i] else f"  other {i}" for i in found if i not in named))
     print(f"MEMBERS: {transfer} in {env['alias']}: {len(found)}")
     for line in lines:
         print(line)

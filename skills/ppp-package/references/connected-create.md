@@ -8,7 +8,7 @@ The ordinary cycle: [connected.md](connected.md). Refusals, drift, a failed impo
 1. `ppp connect` printed the publisher line. `Publisher <name>: as in the settings.`, `MISSING Publisher …: ppp import --create builds the first solution with it.` and `WARNING prefix … belongs to …` are the cases; read them to the user before the card.
 2. The solution is listed in `project.json › solutions` with role `main` or `transfer`; `--create` refuses any other. A new project names its main solution at `ppp init --solution <UniqueName>`. The transfer solution is not entered by hand: `ppp import --create --solution <prefix>Transfer --transfer` (mode large only, only while the project has no transfer solution) writes it into `project.json` itself on the call with `--confirmed` and prints `project.json: <Name> added as the transfer solution; commit it with the export.`; the call that answers `CONFIRM FIRST` changes nothing in the project, and its card says that `project.json` gets the entry.
 3. `ppp import --create [--solution <Name>]` answers `CONFIRM FIRST (a new solution with its publisher)`, always, whatever `confirmImport` says.
-4. Card with the answers "Create" and "Not now": environment and role, solution and version, empty, the publisher with its four values and whether it is new or in the environment already, and that solution and a new publisher stay in the tenant until the user deletes them by hand (first the solution, then the publisher). After "Create": the same command with `--confirmed`.
+4. Card with the answers "Create" and "Not now": environment and role, solution and version, empty, the publisher with its four values and whether it is new or in the environment already, and that solution and a new publisher stay in the tenant until the user deletes them by hand (first the solution, then the publisher). After "Create": the command the line ends with, `--confirmed <code>` included.
 5. `ppp export --solution <Name>` commits the first base (with the transfer solution, the `project.json` entry too).
 
 | Answer | You |
@@ -24,7 +24,7 @@ Refusals that need you:
 - `project.json names the publisher …, the settings …`: `ppp check` names what to align.
 - `--transfer needs mode large`, `project.json names <Name> as the transfer solution already`, `<Name> is the main solution`, `<Name> has the role …`: no second transfer solution and none in another mode; `--transfer` is left out where the project has the entry already.
 - `… is in … already` or `solution/<Name>/ exists already`: nothing to create; `ppp export --solution <Name>` takes it into the project.
-- `ppp import --create` with a package, `--restore`, `--environment`, `--accept-drift` or `--with-apps` is refused: leave them out. `--transfer` without `--solution` or without `--create` is refused.
+- `ppp import --create` with a package, `--restore`, `--environment`, `--accept-drift`, `--with-apps` or `--raise-version` is refused: leave them out. `--transfer` without `--solution` or without `--create` is refused.
 
 Offline, without a sign-in or when a card above says so, the card of SKILL.md step 2 stays (the portal creates solution and publisher).
 
@@ -46,7 +46,7 @@ Mode large, role `transfer` in `project.json`, the transfer solution online and 
 | `ADDED:` | Report; the members are in the tenant |
 | `ALREADY:` | Nothing to do; if only this line came, nothing was called |
 | `FAILED: <kind> <name>: <reason>` | Exit code 1; give the reason to the user, one component per line, then card the step by hand (Add existing) for it |
-| `MEMBERS:` | A line `other <objectid>` is a member the main solution does not hold: tell the user |
+| `MEMBERS:` | `other (<kind>) <objectid>` (`other <objectid>` without a kind): a member the main solution does not name, such as a variable's value (it travels with the export): tell the user |
 
 Refusals that need you:
 - `needs mode large and a solution of role transfer`, `<Transfer> is not in <alias>`: create it first (section above, with `--transfer`).

@@ -9,9 +9,10 @@ What pac prints is known from the pac test on the company computer (grundlage/we
   (not-null) and take the values of a row as words; no reader cuts columns by position.
 - A choice value stands there as a word of the display language, a time without seconds, a number with a thousands
   separator, an empty result as "No results returned.".
-Two calls change more than an import of a package and go only through their own function, which checks them first:
-pac solution add-solution-component through add_member (check, guarded), a settings file through start_import, which
-hands check the path and SHA-256 of the file it checked (check, settings). Each release opens only its own lock.
+Three calls change more than an import of a package and go only through their own function, which checks them first:
+pac solution add-solution-component through add_member (check, guarded), pac solution online-version through
+set_online_version (check, raising), a settings file through start_import, which hands check the path and SHA-256 of
+the file it checked (check, settings). Each release opens only its own lock.
 A reader that gets a row it cannot read raises SYNTAX; only no row (pac prints "No results returned.") means nothing found.
 """
 from __future__ import annotations
@@ -47,6 +48,7 @@ ALLOWED = {
                              "--skip-lower-version", "--settings-file"},
     ("connectivity", "list-connections"): {"--environment", "--json"},
     ("solution", "add-solution-component"): {"--environment", "--solutionuniquename", "--component", "--componenttype"},
+    ("solution", "online-version"): {"--environment", "--solution-name", "--solution-version"},
 }
 FLAGS = {"--json", "--overwrite", "--async", "--activate-plugins", "--skip-lower-version"}
 IMPORT_SWITCHES = ("--async", "--activate-plugins", "--skip-lower-version")  # VERBUNDEN VB-15, decided 2026-11-13
@@ -55,6 +57,10 @@ IMPORT_SWITCHES = ("--async", "--activate-plugins", "--skip-lower-version")  # V
 # start_import hands check the settings file it checked (path and SHA-256), and only exactly that file passes. run never
 # takes a settings file.
 ADD_MEMBER = ("solution", "add-solution-component")     # only through add_member
+# only through set_online_version (release raising=True), and only with a version: without one pac reads it, a call ppp
+# does not need (pac test round 3, O1: it sets the version, pac solution list and the export carry it)
+ONLINE_VERSION = ("solution", "online-version")
+VERSION_NUMBER = re.compile(r"\d+\.\d+\.\d+\.\d+")
 SETTINGS_FILE = "--settings-file"                       # only through start_import(..., settings=...)
 # The kinds of component ppp adds to the transfer solution, in exactly the form pac took them (pac test, T, T4, T6): the
 # type code of a connection reference differs per environment (VERBUNDEN VB-13), its name does not.
@@ -83,11 +89,12 @@ NEXT = {    # what the agent does after a failure it cannot repair itself
 }
 
 
-def check(args: list[str], guarded: bool = False, settings: tuple[str, str] | None = None) -> tuple[str, str]:
+def check(args: list[str], guarded: bool = False, settings: tuple[str, str] | None = None, *, raising: bool = False) -> tuple[str, str]:
     """Refuse every call that is not on the list, before pac starts (ERWEITERUNGEN B.2, C.2). No value of an option
     begins with --: pac would read it as the next option. guarded: the release of add_member, for pac solution
     add-solution-component only. settings: the release of start_import, the path and SHA-256 of the settings file it
-    checked; --settings-file passes only with exactly that path, and only while the file still has that SHA-256."""
+    checked; --settings-file passes only with exactly that path, and only while the file still has that SHA-256.
+    raising: the release of set_online_version, for pac solution online-version only."""
     verb = tuple(args[:2])
     if verb not in ALLOWED:
         raise ToolError(f"pac {' '.join(args[:2])} is not a command ppp runs against the tenant.")
@@ -95,6 +102,10 @@ def check(args: list[str], guarded: bool = False, settings: tuple[str, str] | No
         raise ToolError("pac solution add-solution-component runs only through tenant.add_member.")
     if guarded and verb != ADD_MEMBER:
         raise ToolError(f"pac {' '.join(verb)}: the release of tenant.add_member opens pac solution add-solution-component only.")
+    if verb == ONLINE_VERSION and not raising:
+        raise ToolError("pac solution online-version runs only through tenant.set_online_version.")
+    if raising and verb != ONLINE_VERSION:
+        raise ToolError(f"pac {' '.join(verb)}: the release of tenant.set_online_version opens pac solution online-version only.")
     if settings is not None and verb != ("solution", "import"):
         raise ToolError(f"pac {' '.join(verb)}: the release of tenant.start_import opens --settings-file of pac solution import only.")
     seen, values, i = set(), {}, 2
@@ -129,6 +140,13 @@ def check(args: list[str], guarded: bool = False, settings: tuple[str, str] | No
         if values["--componenttype"] not in MEMBER_KINDS.values():
             raise ToolError(f"pac solution add-solution-component: --componentType {values['--componenttype']} is none of "
                             + ", ".join(MEMBER_KINDS.values()) + ".")
+    if verb == ONLINE_VERSION:  # the values too: a solution by its unique name, a version of four numbers
+        if seen != {"--solution-name", "--solution-version"}:
+            raise ToolError("pac solution online-version needs --solution-name and --solution-version.")
+        if not SOLUTION_NAME.fullmatch(values["--solution-name"]):
+            raise ToolError(f"pac solution online-version: {values['--solution-name']!r} is not the unique name of a solution.")
+        if not VERSION_NUMBER.fullmatch(values["--solution-version"]):
+            raise ToolError(f"pac solution online-version: {values['--solution-version']!r} is no version of four numbers.")
     return verb
 
 
@@ -165,8 +183,9 @@ def problem(code: int | None, out: str) -> tuple[str, str] | None:
     return kind, (reason or error or (lines[-1] if lines else f"pac ended with exit code {code}"))[:400]
 
 
-def _command(url: str | None, args: list[str], guarded: bool = False, settings: tuple[str, str] | None = None) -> list[str]:
-    verb = check(args, guarded, settings)
+def _command(url: str | None, args: list[str], guarded: bool = False, settings: tuple[str, str] | None = None, *,
+             raising: bool = False) -> list[str]:
+    verb = check(args, guarded, settings, raising=raising)
     if "--environment" in ALLOWED[verb]:
         if not url:
             raise ToolError(f"pac {' '.join(verb)} needs the address of the environment.")
@@ -174,10 +193,11 @@ def _command(url: str | None, args: list[str], guarded: bool = False, settings: 
     return [solution.pac(), *args]
 
 
-def run(url: str | None, args: list[str], timeout: float = 600, *, guarded: bool = False) -> str:
+def run(url: str | None, args: list[str], timeout: float = 600, *, guarded: bool = False, raising: bool = False) -> str:
     """The one way ppp calls pac against the tenant: the environment is named in the call, never taken from pac's profile.
-    guarded only from add_member (check); a settings file never goes through run, only through start_import."""
-    command = _command(url, args, guarded)
+    guarded only from add_member, raising only from set_online_version (check); a settings file never goes through run,
+    only through start_import."""
+    command = _command(url, args, guarded, raising=raising)
     try:
         proc = subprocess.run(command, capture_output=True, stdin=subprocess.DEVNULL, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -311,7 +331,9 @@ def query(entity: str, columns: list[str], *conditions: str, more: str = "") -> 
 
 
 def fetch(url: str, xml: str) -> list[str]:
-    """The rows of a query, each one line: pac appends the key of the row, so a line with an ID is a row."""
+    """The rows of a query: pac appends the key of the row, so a row with an ID is a row. A value over several lines
+    (JSON, a text with line breaks: pac test round 3, F2) goes on in lines that begin with a blank, "}" or "]"; they
+    belong to the row before, joined by a line break, so its first line is not lost (review 14.11.)."""
     handle, name = tempfile.mkstemp(prefix="ppp-fetch-", suffix=".xml")
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as f:
@@ -319,7 +341,15 @@ def fetch(url: str, xml: str) -> list[str]:
         out = run(url, ["env", "fetch", "--xmlFile", name])
     finally:
         os.unlink(name)
-    return [line.rstrip() for line in out.splitlines() if GUID.search(line) and not line.startswith("Connected ")]
+    rows: list[list[str]] = []
+    for line in out.splitlines():
+        if line.startswith("Connected ") or not line.strip():
+            continue
+        if rows and re.match(r"[\s}\]]", line):
+            rows[-1].append(line.rstrip())
+        else:
+            rows.append([line.rstrip()])
+    return ["\n".join(row) for row in rows if any(GUID.search(part) for part in row)]
 
 
 def _ids(rows: list[str]) -> set[str]:
@@ -503,6 +533,17 @@ def add_member(url: str, solution: str, component: str, kind: str, timeout: floa
                      "--componentType", MEMBER_KINDS[kind]], timeout, guarded=True)
 
 
+def set_online_version(url: str, solution: str, version: str, timeout: float = 300) -> str:
+    """Set the version of an unmanaged solution in the environment (VERBUNDEN VB-20, mode large; user, 13.11.): the one
+    way to pac solution online-version, always with --solution-version. pac prints nothing but its account lines (pac
+    test round 3, O1); whether the version stands, says solutions, not the exit code of pac."""
+    if not (isinstance(solution, str) and SOLUTION_NAME.fullmatch(solution)):
+        raise ToolError(f"set_online_version needs the unique name of a solution, not {solution!r}.")
+    if not (isinstance(version, str) and VERSION_NUMBER.fullmatch(version)):
+        raise ToolError(f"set_online_version takes a version of four numbers, not {version!r}.")
+    return run(url, ["solution", "online-version", "--solution-name", solution, "--solution-version", version], timeout, raising=True)
+
+
 # ------------------------------------------------------------------ import
 def _settings_refused(settings: Path, why: str) -> ToolError:
     return ToolError(f"The settings file {settings.name} is not imported: {why}. Only ppp import --environment writes it.")
@@ -566,7 +607,8 @@ def start_import(url: str, package: Path, wait: float, settings: Path | None = N
     """Hand a package to the server and wait at most `wait` seconds. pac is only the trigger: once it has named the
     asynchronous operation the server holds the import and goes on without pac (pac test round 1, V3), so pac is ended
     after the wait and the state is read from the server (VERBUNDEN VB-10). Returns state: done (pac saw the end),
-    running (handed over, pac ended), failed (pac reports an error; kind and message), skipped (pac did not hand the
+    running (handed over, pac ended), failed (pac reports an error; kind, message and whether pac had handed the
+    package over), skipped (pac did not hand the
     package over, the version online is not lower; message). settings: a settings file for a move (ERWEITERUNGEN C.2),
     checked by check_settings against settings_sha before pac starts; the one way to --settings-file."""
     arguments, checked = ["solution", "import", "--path", str(package)], None
@@ -594,8 +636,9 @@ def start_import(url: str, package: Path, wait: float, settings: Path | None = N
     reader.join(timeout=10)
     out = decode(b"".join(parts))
     failed = problem(proc.returncode, out)
-    if failed:
-        return {"state": "failed", "kind": failed[0], "message": failed[1], "seconds": round(time.monotonic() - began)}
+    if failed:      # handed_over: pac named the asynchronous operation, so the server held the package (review 14.11.)
+        return {"state": "failed", "kind": failed[0], "message": failed[1], "seconds": round(time.monotonic() - began),
+                "handed_over": handed_over()}
     # --skip-lower-version: with a version online that is not lower pac hands nothing over and ends with exit code 0
     # (pac test 2026-11-12, S6)
     skipped = next((line.strip() for line in out.splitlines() if "skipping import" in line.lower()), None)

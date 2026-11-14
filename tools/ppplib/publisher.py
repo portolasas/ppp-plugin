@@ -15,7 +15,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-from . import agent, connected, solution, tenant
+from . import agent, cards, connected, importlog, solution, tenant
 from .project import ToolError, load_config
 from .tenant import TenantError
 
@@ -190,7 +190,7 @@ def _solution_of(config: dict, name: str | None) -> str:
 def _build(root: Path, env: dict, name: str, wanted: dict) -> Path:
     """The empty package in exchange/tenant/<Name>/create_1.0.0.1.zip, packed by pac from the template; one built by an
     earlier call that never reached the server is replaced."""
-    path = connected._backup_folder(root, env, name) / f"create_{solution.EMPTY_VERSION}.zip"
+    path = connected.backup_folder(root, env, name) / f"create_{solution.EMPTY_VERSION}.zip"
     path.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(prefix="ppp-create-") as tmp:
         folder = Path(tmp) / name
@@ -209,11 +209,11 @@ def create(root: Path, name: str | None, confirmed: bool, wait: float, transfer:
     always after a card (CONFIRM FIRST). name: a solution of role main or transfer in project.json; None: the main
     solution. transfer: name may be missing in project.json; in mode large without a transfer solution it is written there
     with the role transfer, only on the call with confirmed, right before the import starts (_new_transfer). The entry in
-    imports.jsonl has "kind": "create" and the fields connected._done reads for it (A.4). A create under way (an entry
+    imports.jsonl has "kind": "create" and the fields connected.report_imported reads for it (A.4). A create under way (an entry
     started) is waited for, never started twice."""
     called = datetime.now().isoformat(timespec="seconds")
     env = tenant.environment(root)
-    connected._need_role(env)                                        # 1
+    connected.need_role(env)                                        # 1
     if env["role"] == "production":
         raise ToolError(f"{env['alias']} has the role production: ppp import does not import there.")
     config = load_config(root)
@@ -221,9 +221,9 @@ def create(root: Path, name: str | None, confirmed: bool, wait: float, transfer:
     if adding:
         config = {**config, "solutions": [*(config.get("solutions") or []), {"uniqueName": name, "role": "transfer"}]}
     name = _solution_of(config, name)                                # 2
-    last = next((e for e in reversed(connected._imports(root)) if e.get("kind") == "create" and connected._of(e, name, env["alias"])), None)
+    last = next((e for e in reversed(importlog.entries(root)) if e.get("kind") == "create" and importlog.of(e, name, env["alias"])), None)
     if last and last.get("status") == "started":
-        return connected._follow(root, env, last, EMPTY_PARTS, wait, resumed=True)
+        return connected.follow_import(root, env, last, EMPTY_PARTS, wait, resumed=True)
     if (root / "solution" / name).exists():
         raise ToolError(f"solution/{name}/ exists already: a solution with an export in the project is created already.")
     wanted = _settings_publisher()                                   # 3
@@ -244,39 +244,39 @@ def create(root: Path, name: str | None, confirmed: bool, wait: float, transfer:
     new, warnings = _check_publisher(env, wanted)                    # 5
     path = _build(root, env, name, wanted)                           # 6
     digest = solution.sha256(path)
-    if not confirmed:       # always, whatever confirmImport says (A.5)
-        print(f"CONFIRM FIRST (a new solution with its publisher): show a tenant-step card with the environment {env['name']} "
-              f"(role {env['role']}), the solution {name} {solution.EMPTY_VERSION}, empty (package {path.name}, SHA-256 "
-              f"{digest[:12]}…), the publisher {wanted['uniqueName']} (display name \"{wanted['displayName']}\", prefix "
+    card = (f"CONFIRM FIRST (a new solution with its publisher): show a tenant-step card with the environment {env['name']} "
+              f"(role {env['role']}), the solution {name} {solution.EMPTY_VERSION}, empty (package {path.name}; its SHA-256 "
+              f"stands in the entry: the package is built anew with --confirmed), the publisher {wanted['uniqueName']} (display name \"{wanted['displayName']}\", prefix "
               f"{wanted['prefix']}, option value prefix {wanted['optionValuePrefix']}), "
               + ("created by this import" if new else f"in {env['alias']} already and used as it is")
               + ", that " + ("both stay" if new else "the solution stays") + " in the tenant until the user deletes "
               + ("them by hand: first the solution, then the publisher" if new else "it by hand")
               + (f"; project.json gets {name} as the transfer solution" if adding else "")
               + "; and the answers \"Create\" and \"Not now\". After \"Create\": the same command with --confirmed.")
+    if not cards.confirm(card, confirmed):       # always, whatever confirmImport says (A.5)
         for line in warnings:
             print(line)
         return 1
     if adding:      # only now, right before the start: the card changed nothing in the project
         print(_add_transfer(root, name))
-    entry = connected._record(root, {"solution": name, "version": solution.EMPTY_VERSION, "zip": path.name, "sha": digest,
+    entry = importlog.record(root, {"solution": name, "version": solution.EMPTY_VERSION, "zip": path.name, "sha": digest,
                                      "environment": env["alias"], "status": "started", "kind": "create", "called": called,
                                      "publisher": wanted["uniqueName"], "publisher_new": new, "publisher_values": wanted,
                                      "online_before": None, "flows_before": {}, "jobs_before": tenant.import_jobs(env["url"], name)})
-    result = connected._start(root, env, entry, path, wait)
+    result = connected.hand_over(root, env, entry, path, wait)
     if result["state"] == "skipped":
         try:        # records the entry as not_started and raises
-            connected._failed(root, env, entry, f"SKIPPED: {result['message']}", result=result)
+            connected.report_failed(root, env, entry, f"SKIPPED: {result['message']}", result=result)
         except ToolError:       # its message names ppp pack --version, which a create does not take
             raise ToolError(f"pac skipped the import of {path.name}: {name} came into {env['alias']} meanwhile ({result['message']}). "
                             f"Nothing was imported; ppp export --solution {name} takes it into the project.") from None
     if result["state"] == "failed":
-        return connected._failed(root, env, entry, f"{result.get('kind', 'FAILED')}: {result['message']}", result=result)
-    return connected._follow(root, env, entry, EMPTY_PARTS, max(wait - result["seconds"], 0), resumed=False)
+        return connected.report_failed(root, env, entry, f"{result.get('kind', 'FAILED')}: {result['message']}", result=result)
+    return connected.follow_import(root, env, entry, EMPTY_PARTS, max(wait - result["seconds"], 0), resumed=False)
 
 
 def after_import(root: Path, env: dict, entry: dict) -> list[str]:
-    """The hook of connected._done for an entry of kind create, after its line CREATED (ERWEITERUNGEN A.1): read the
+    """The hook of connected.report_imported for an entry of kind create, after its line CREATED (ERWEITERUNGEN A.1): read the
     solution and the publisher once more and return the WARNING lines when something differs (the solution belongs to
     another publisher, a value of the publisher differs from the settings); no line when all is as in the settings.
     Each line that starts with WARNING counts among ppp's warnings of the import. The values are those the package was
