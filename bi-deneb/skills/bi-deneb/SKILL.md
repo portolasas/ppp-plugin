@@ -47,7 +47,7 @@ standard visual that fell short.
    command ends with a `RESULT` line.
 
 5. **Look and improve.** Read the contact sheet `deneb/_preview/<name>_sheet.png`: typical rows and stress rows in
-   three sizes. Judge it against the user's question: does the eye land on the answer first? Then the findings:
+   three sizes, two rows and no rows in the first. Judge it against the user's question: does the eye land on the answer first? Then the findings:
    every ERROR and WARNING gets a fix or a reason; a finding that only the stress rows cause gets a judgement
    whether real data can get there. Fix through the brief (`bideneb types <type>` lists the options), then
    `bideneb build <name>`. Done after a build without errors whose picture you have looked at; at most three
@@ -55,7 +55,15 @@ standard visual that fell short.
 
 6. **No type fits** (shift bands, zoom, own layout): `bideneb new custom <name> --provider vega|vegaLite --field …`
    writes a scaffold in the brand design; you write the specification, `bideneb check <name>` renders and checks it.
-   Read [references/custom.md](references/custom.md) first.
+   Read [references/custom.md](references/custom.md) first. Own invented rows go into `deneb/<name>.data.json`.
+
+   **Live test.** For a custom specification, and for any specification with signals, run `bideneb live <name>`
+   before step 7: it writes `deneb/_preview/<name>_live.html`, which runs the specification in Deneb's Vega version
+   with data changes as slicers make them and with the states a click reaches (a page, a sort: taken from signals
+   with event handlers; others go into the brief as `"live": {"states": [{"page": 3}]}`). Open it with your browser
+   tool (a local file may need a small static server) and read `#result`; without a browser tool the user opens it.
+   Done at `RESULT: 0 error(s)`. An error is a visual that can turn empty in Power BI; 0 errors proves these
+   scenarios, not Desktop.
 
 7. **Embed.** Ask the user to close the project in Power BI Desktop first: Desktop does not see files change
    under it and writes its own state over them when it saves. Then `bideneb embed <name> --page "<page>"` (or
@@ -81,12 +89,15 @@ standard visual that fell short.
 - **Brand.** Colours, fonts and sizes come from the brand profile (`bideneb brand`): the corporate design, with
   the same colour values as the plugin bi-design. A colour outside it (finding B1) is replaced by the token the finding
   names. A colour that
-  carries a meaning of the business (a phase, a product) is the user's decision: ask, and keep the answer in the
-  brief under `description`.
+  carries a meaning of the business (a phase, a product, the colours the report already uses for them) is the
+  user's decision: ask, and keep the answer in the brief, `"colours": {"#1FBB3E": "Mahlen, wie im Bericht (Nutzer,
+  Datum)"}`.
 - **Grain.** The visual gets one row per combination of its grouping fields. Every field in the brief changes the
   rows: add what is drawn, nothing else (finding F2).
 - **Files.** Specification and config are files next to the brief; the copy in the report is written by
   `bideneb embed`. `visual.json` is never edited by hand: its text literals need exact quoting.
+- **Pages.** A visual copied from another page keeps its `parentGroupName`; Desktop drops it on save when the group
+  is not on the new page (finding R10). Replacing a visual: rename it in `visualInteractions` of `page.json` too.
 - **Two sides.** When `embed` or `pull` stops because the report and the file both changed, the user decides which
   side wins; `--force` only after their answer.
 - **A generated specification stays generated.** To go beyond the options of a type, set `"type": "custom"` in the

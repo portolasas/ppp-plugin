@@ -23,6 +23,9 @@ memory and writes it over the files when it saves; what bideneb embedded in betw
 ## What the answers mean
 | The user reports | Cause and next step |
 |---|---|
+| every visual of a copied report is empty, also the standard ones | a PBIP copied without `.pbi/cache.abf` has no rows until a refresh: Home › Refresh, then look again |
+| slicers or other visuals were gone after the first save | they belonged to a group that was not on the page (copied from another page): `bideneb check` (R10) |
+| the visual is empty after a slicer change or a click, with rows in the table | a signal kept a state from the old rows: `bideneb live` (L1, L3) |
 | "Can't display this visual" | Deneb is not in `publicCustomVisuals`, or AppSource visuals are blocked in the tenant: `bideneb check` (R1); otherwise the tenant setting is the user's to clarify |
 | Deneb landing page, no chart | no field arrived: the projections do not match the model; `bideneb check` (R5), `bideneb fields` |
 | an empty area | a field key or a filter: open the Deneb editor (… › Edit), the log pane names the error; send its text |

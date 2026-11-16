@@ -8,14 +8,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import __version__, brand as br, brief as bf, checks, deneb, expr as ex, model as md, pbir, render, sample
+from . import __version__, brand as br, brief as bf, checks, deneb, expr as ex, live, model as md, pbir, render, sample
 from .types import TYPES
 from .types.common import VEGA_SCHEMA, VL_SCHEMA, BriefError, base_config
 
 FIELD = re.compile(r"^(?:(?P<kind>[cmdn]):)?(?P<table>.+?)\[(?P<name>.+)\]$")
 SIZE = re.compile(r"^(\d{2,4})x(\d{2,4})$")
 UNPROVEN = [
-    "the render uses Vega {vega} and Vega-Lite {vl}; Deneb {deneb} runs Vega {dvega} and Vega-Lite {dvl}",
+    "the render uses Vega {vega} and Vega-Lite {vl}; Deneb {deneb} runs Vega {dvega} and Vega-Lite {dvl}; "
+    "`bideneb live` runs the specification in Vega {dvega} with data changes",
+    "the render draws one state; a running view in Power BI gets new rows from slicers and cross-filters: "
+    "`bideneb live`",
     "numbers and dates of pbiFormat are approximated; Power BI formats them with the format string and locale of the report",
     "rows are invented: real row counts, empty values, long names and the grain of the dataset show only in Power BI",
     "tooltips, cross-filtering, highlighting and the context menu run only in Power BI",
@@ -119,12 +122,20 @@ def nearby_reports(folder: Path) -> list[Path]:
 
 
 def rows_for(ctx, vtype, files: dict, scenario: str) -> list[dict]:
+    if scenario == "empty" and not files["data"].is_file():
+        return []
     if files["data"].is_file():   # own invented rows: a list (typical) or {"typical": [...], "stress": [...]}
         data = json.loads(files["data"].read_text(encoding="utf-8-sig"))
         if isinstance(data, dict) and isinstance(data.get(scenario), list):
             return data[scenario]
         if isinstance(data, list) and scenario == "typical":
             return data
+        if scenario == "empty":
+            return []
+        if scenario == "few" and isinstance(data, dict) and isinstance(data.get("typical"), list):
+            return data["typical"][:2]
+    if scenario == "empty":
+        return []
     if vtype is not None:
         return sample.rows(ctx, vtype, scenario)
     import random
@@ -140,7 +151,7 @@ def examine(ctx, vtype, spec, config, files, sizes, scenarios, pictures=True, ba
                            generated=vtype is not None and not edited(spec))
     groups, written, notes, frames = [], [], [], []
     if not pictures or checks.worst(static) == "ERROR" and any(f.code in ("D1",) for f in static):
-        return static, [], written, notes
+        return checks.accept_colours(static, ctx.brief.get("colours")), [], written, notes
     if render.available() is None:
         return static + [checks.Finding("WARNING", "P0", "not rendered: vl-convert-python is not installed "
                                                         "(`bideneb setup`); only the static rules ran")], [], written, notes
@@ -148,7 +159,7 @@ def examine(ctx, vtype, spec, config, files, sizes, scenarios, pictures=True, ba
     name = ctx.brief["name"]
     for sc in scenarios:
         rows = deneb.rows_for_deneb(rows_for(ctx, vtype, files, sc), ctx.select)
-        for (w, h) in sizes:
+        for (w, h) in (sizes if sc in ("typical", "stress") else sizes[:1]):
             label = f"{sc} {w}x{h}"
             try:
                 res = render.render(spec, config, rows, w, h, ctx.brand, ctx.locale)
@@ -175,6 +186,9 @@ def examine(ctx, vtype, spec, config, files, sizes, scenarios, pictures=True, ba
                 p.write_bytes(render.png(svg, 1.0))
                 written.append(p)
     merged = checks.merge(groups)
+    colours = ctx.brief.get("colours")
+    static = checks.accept_colours(static, colours)
+    merged = checks.accept_colours(merged, colours)
     written_colours = " ".join(f.text for f in static if f.code == "B1")
     merged = [f for f in merged if not (f.code == "B1" and re.search(r"#[0-9A-F]{6}", f.text)
                                         and re.search(r"#[0-9A-F]{6}", f.text).group() in written_colours)]
@@ -567,7 +581,7 @@ def cmd_check(args) -> int:
 
 def finish(args, path, brief, ctx, vtype, files, spec, config) -> int:
     sizes = parse_sizes(args, brief, vtype)
-    scenarios = [args.scenario] if getattr(args, "scenario", None) else ["typical", "stress"]
+    scenarios = [args.scenario] if getattr(args, "scenario", None) else ["typical", "stress", "few", "empty"]
     static, picture, written, notes = examine(ctx, vtype, spec, config, files, sizes, scenarios,
                                               pictures=not getattr(args, "no_render", False),
                                               background=brief.get("background", "#FFFFFF"))
@@ -579,15 +593,17 @@ def finish(args, path, brief, ctx, vtype, files, spec, config) -> int:
         except pbir.PbirError as err:
             extra = [checks.Finding("ERROR", "R0", str(err))]
     if written:
-        say(f"rendered {len(scenarios) * len(sizes)} picture(s) ({', '.join(scenarios)}; "
-            f"{', '.join(f'{w}x{h}' for w, h in sizes)}):")
+        say(f"rendered {len(written) and sum(len(sizes) if s in ('typical', 'stress') else 1 for s in scenarios)} "
+            f"picture(s) ({', '.join(scenarios)}; {', '.join(f'{w}x{h}' for w, h in sizes)}; few and empty in the "
+            f"first size):")
         for p in written:
             say(f"  {p}")
     code = report_findings(static, picture, extra)
     if written:
         unproven(notes)
         say("NEXT: look at the contact sheet. Fix errors and warnings (brief options, or the specification for a "
-            "custom type), build again; at most three rounds, then tell the user what stays open.")
+            "custom type), build again; at most three rounds, then tell the user what stays open. Before embedding a "
+            "custom specification or one with signals: `bideneb live " + brief["name"] + "`.")
     return code
 
 
@@ -628,6 +644,38 @@ def cmd_render(args) -> int:
             say(f"wrote {files['preview'] / (tag + '.vega.json')} (compiled Vega with the approximations)")
         for line in res.runtime:
             say(f"  Vega reported: {line}")
+    return 0
+
+
+def cmd_live(args) -> int:
+    path, brief, ctx, vtype, files = load(args.brief)
+    spec, config = read_spec(files)
+    sizes = parse_sizes(args, brief, vtype)
+    scenarios = {sc: deneb.rows_for_deneb(rows_for(ctx, vtype, files, sc), ctx.select)
+                 for sc in ("typical", "stress", "few", "empty")}
+    states = (brief.get("live") or {}).get("states") or []
+    if deneb.provider_of(spec) == "vegaLite" and render.available() is None:
+        raise Fail("a Vega-Lite specification is compiled to Vega first, which needs vl-convert-python: `bideneb setup`")
+    files["preview"].mkdir(parents=True, exist_ok=True)
+    out = files["preview"] / f"{brief['name']}_live.html"
+    html = live.build(brief["name"], spec, config, scenarios, sizes, ctx.brand, states)
+    out.write_bytes(html.encode("utf-8"))
+    payload = json.JSONDecoder().raw_decode(html.split("const P = ", 1)[1])[0]
+    states = payload["states"]
+    say(f"wrote {out}")
+    say(f"  Vega {deneb.VEGA_VERSION} from jsDelivr (needs the internet); sizes "
+        f"{', '.join(f'{w}x{h}' for w, h in sizes)}; scenarios "
+        f"{', '.join(f'{k} ({len(v)} rows)' for k, v in scenarios.items())}; states (from the brief and from the signals "
+        f"with event handlers) {json.dumps(states, ensure_ascii=False) if states else 'none'}")
+    say("  The page embeds the specification fresh for every scenario, then changes the data of one running view "
+        "from scenario to scenario (" + " > ".join(live.SEQUENCE) + ") as a slicer does: both must draw the same; then "
+        "it sets every state (a page, a sort) and narrows the data. A state the signals do not show goes into the brief: "
+        "`\"live\": {\"states\": [{\"page\": 3}]}`. 0 errors means: no fault in these scenarios, not a proof.")
+    say("NEXT: open the page in a browser (the browser tool of the chat, or the user's browser) and read the text of "
+        "the element #result, or `window.bidenebLive`. Every ERROR gets a fix in the specification, then `bideneb "
+        "check` and this command again. Codes: L0 the page failed, L1 a running view draws other marks than a fresh "
+        "one after a data change, L2 nothing drawn from rows, L3 a reachable state draws nothing after fewer rows, "
+        "L4 Vega reported an error or warning.")
     return 0
 
 
@@ -968,6 +1016,9 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--scale", type=float, default=2.0)
     s.add_argument("--svg", action="store_true")
     s.add_argument("--vega", action="store_true", help="also the compiled Vega specification")
+    s = add("live", cmd_live, "a test page that runs the specification in Deneb's Vega version with data changes")
+    s.add_argument("brief")
+    s.add_argument("--size", action="append", metavar="WxH")
     s = add("embed", cmd_embed, "write the visual into the report (PBIR) and check it there")
     s.add_argument("brief")
     s.add_argument("--report")

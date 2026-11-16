@@ -3,7 +3,7 @@ compactly, and check both before the user opens them in Power BI Desktop. Standa
 
 Findings: M1 indent, M2 unquoted name, M3 relationship column, M4 time function; R1 JSON, R2 BOM, R3 $schema, R4 name,
 R5 pageBinding, R6 filter name, R7 field reference, R8 page order, R9 legacy format, R10 no custom theme, R11 Deneb
-visuals; G1 data files and git; P1 path length.
+visuals, R12 group or interaction that is not on the page; G1 data files and git; P1 path length.
 """
 from __future__ import annotations
 
@@ -446,6 +446,7 @@ def _pbir(rep: ReportDef, definition: Path, base: Path) -> None:
             bindings.setdefault(binding, []).append(folder.name)
         page = Page(folder.name, data.get("displayName", ""), data.get("visibility") == "HiddenInViewMode", [],
                     _filters(data.get("filterConfig"), where, rep.findings), where)
+        parents = []                                   # (visual, parentGroupName, where)
         for vf in sorted((folder / "visuals").iterdir()) if (folder / "visuals").is_dir() else []:
             if not vf.is_dir():
                 continue
@@ -457,10 +458,24 @@ def _pbir(rep: ReportDef, definition: Path, base: Path) -> None:
             vdata, vwhere = load(vfile)
             vdata = vdata if isinstance(vdata, dict) else {}
             _same_name(vf, vdata, vwhere, rep)
+            if vdata.get("parentGroupName"):
+                parents.append((vf.name, vdata["parentGroupName"], vwhere))
             visual = vdata.get("visual") or {}
             kind = visual.get("visualType") or ("group" if "visualGroup" in vdata else "?")
             found = refs(visual.get("query")) + _filters(vdata.get("filterConfig"), vwhere, rep.findings)
             page.visuals.append(Visual(vf.name, kind, _title(visual.get("visualContainerObjects")), _unique(found), vwhere))
+        names = {v.name for v in page.visuals}
+        for name, group, vwhere in parents:
+            if group not in names:
+                rep.findings.append(("ERROR", f"R12 {vwhere}: belongs to group {group}, which is not on the page; Desktop "
+                                              "removes the visual when it saves. Remove parentGroupName or copy the group "
+                                              "with it (skill ppp-power-bi, references/pbip.md)"))
+        ghosts = sorted({x.get(k) for x in (data.get("visualInteractions") or []) if isinstance(x, dict)
+                         for k in ("source", "target") if x.get(k) and x.get(k) not in names})
+        if ghosts:
+            rep.findings.append(("WARN", f"R12 {where}: visualInteractions name visuals that are not on the page "
+                                         f"({', '.join(ghosts[:4])}); rename them to the visual that replaced them or "
+                                         "remove the entries"))
         rep.pages.append(page)
     for binding, pages in bindings.items():
         if len(pages) > 1:

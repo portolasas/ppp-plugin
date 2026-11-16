@@ -140,9 +140,12 @@ class Brand:
                       "ramp": self.palette("sequential"), "heatmap": self.palette("sequential"),
                       "diverging": self.palette("diverging")},
         }
-        if provider == "vega":
+        if provider == "vega":   # Vega has no top-level font: every part names it
             cfg.pop("background")
-            cfg["axis"]["grid"] = False
+            cfg.pop("font")
+            cfg["axis"].update({"grid": False, "labelFont": self.font, "titleFont": self.font})
+            cfg["legend"].update({"labelFont": self.font, "titleFont": self.font})
+            cfg["title"].update({"font": self.font, "subtitleFont": self.font})
         else:
             cfg["view"] = {"stroke": None}
             cfg["line"] = {"strokeWidth": 2.5, "strokeCap": "round", "strokeJoin": "round"}

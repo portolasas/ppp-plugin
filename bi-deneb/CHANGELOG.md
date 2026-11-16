@@ -2,6 +2,25 @@
 
 bi-deneb is released together with ppp and carries its version. This file lists the versions that changed bi-deneb.
 
+## 0.27.1 (2026-11-16)
+From SEQONIS package 006: two custom visuals were empty when the user first opened them in Desktop, and their
+slicers were gone after the save. The cause of the empty visuals is open (a copy without data before a refresh, or no size
+on the first embed: neither is proven); the session then reproduced a second fault in a browser: after paging, fewer rows drew nothing.
+- `bideneb live <name>`: a test page that runs the specification in Deneb's Vega version (6.4.0, from jsDelivr) in a
+  browser. It embeds every scenario fresh and changes the data of one running view as slicers do; both must draw the
+  same. Then it sets the states a click reaches (other values of signals with event handlers, plus states of the
+  brief) and narrows the rows. Findings L0 to L4. Against the faulty first-round spec it reports L3 without any state
+  in the brief; against its repair it reports nothing.
+- Scenarios `few` (two rows) and `empty` (no rows); `bideneb check` renders them in the first size.
+- R10: a visual of the page belongs to a group that is not on the page (Desktop drops it on save), or
+  `visualInteractions` name a visual that is not there; ppp pbi check has the same rule for every report (R12).
+- X3 no longer counts `fold` as aggregating: folded rows keep `__row__` (shown in Vega 6.4.0).
+- Brief `"colours"`: colours outside the brand that the user decided on; their B1 becomes one NOTE.
+- F1 ignores marks drawn from another mark (reactive geometry); their datum is a scene item.
+- The config of a custom Vega visual names the font for axes, legend and title (Vega has no top-level font).
+- custom.md: state from the data instead of signal events, size from `denebContainer`, empty datasets, label
+  backgrounds; desktop.md: empty copies without cache, vanished slicers, empty after a filter change.
+
 ## 0.27.0 (2026-11-16)
 - bi-deneb is a plugin of the marketplace of ppp, optional beside the plugin ppp, and carries the version of ppp.
 - The colours of the corporate design (`tokens.json`) are the file of the plugin bi-design, which lies beside

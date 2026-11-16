@@ -17,7 +17,8 @@ one of them: several bars per row on a time axis, a bullet, a box plot, marks th
 - **Tool `bideneb`** (Python): 17 visual types from a brief (bar, column, stacked, pareto, line, variance, bullet,
   dumbbell, waterfall, heatmap, status, scatter, histogram, boxplot, timeline, donut, kpi) and `custom` for a
   specification written by hand; a local render with invented rows in three sizes; checks of fields, Deneb rules,
-  brand colours, contrast and overlapping or cut text; embedding into the report (PBIR) and the way back.
+  brand colours, contrast and overlapping or cut text; a live test page that runs the specification in Deneb's Vega
+  version with data changes (`bideneb live`); embedding into the report (PBIR) and the way back.
   `bideneb types` lists them with what each is for.
 
 ## Install

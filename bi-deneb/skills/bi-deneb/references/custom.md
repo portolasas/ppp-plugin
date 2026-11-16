@@ -7,7 +7,12 @@ the local render, **[O]** open. Deneb 2.0.1 runs Vega 6.4.0 and Vega-Lite 6.4.3.
 `bideneb check <name>` after every change: it renders typical and stress rows in the sizes of the brief and prints
 findings. Build one mark at a time and look at the contact sheet before adding the next. Rows that the generic
 generator cannot guess (status words, start before end, a certain key) go into `<name>.data.json` as
-`{"typical": [...], "stress": [...]}`: invented rows with the dataset keys, dates as `2026-11-02T06:00:00`.
+`{"typical": [...], "stress": [...], "few": [...], "empty": []}`: invented rows with the dataset keys, dates as
+`2026-11-02T06:00:00`.
+
+Before embedding: `bideneb live <name>` runs the specification in Deneb's Vega (6.4.0) in a browser, with data
+changes as slicers make them and with the states a click reaches (taken from signals with handlers; more in the brief
+under `"live": {"states": [...]}`). Read `#result`; codes L0 to L4 in [findings.md](findings.md). [L]
 
 ## Vega-Lite or Vega
 Vega-Lite for one chart with axes and layers. Vega when the layout is yours: several header rows, bands in the
@@ -23,13 +28,14 @@ background, scrolling, buttons, signals for interaction, the advanced cross-filt
   d, h, mi)`); `utc…` shifts every value by the time-zone offset (finding D6). Convert defensively with
   `time(toDate(datum.Start))`. [S] Whether a value keeps the wall time of the model or is shifted is not confirmed
   in Desktop: keep the conversion to local time in the model and let the user compare one known value. [O]
-- **Size:** the signal `denebContainer` with `width`, `height` (and scroll values). Vega-Lite: leave `width` and
-  `height` out, Deneb sets `"container"`; for an expression use `denebContainer.width` or the signals `width`,
-  `height`. Vega: leave top-level `width` and `height` out, Deneb sets them to the container; set `"autosize":
-  "none"` and `"padding": 0` and lay out from the signals `width` and `height`. A fixed size does not follow the
-  visual (finding D5); a canvas larger than the container gets scroll bars (finding P3). [S][L]
+- **Size:** the signal `denebContainer` (`width`, `height`, scroll values). Vega-Lite: leave `width` and `height`
+  out, Deneb sets `"container"`. Vega: leave them out, Deneb stamps the container size as numbers; `"autosize":
+  "none"`, `"padding": 0`, layout from `W = max(…, denebContainer.width)` (the SEQONIS timeline in Desktop [B]). No
+  signals named `width`/`height`: Deneb then stamps nothing [S]. A new size is a new embed [S]. Fixed sizes: D5, P3.
 - **Measures** arrive on every row. A value that is one number for the whole visual (a window start, "now") is
   written as `CALCULATE(…, ALLSELECTED())` in DAX and reduced with an `aggregate` in the specification. [B]
+
+- **No rows** (a slicer without a match): draw a message instead of empty axes; scenario `empty`. [L]
 
 ## Formatting
 - Numbers and dates: `"format": "#,0.0", "formatType": "pbiFormat"` in Vega-Lite, `pbiFormat(value, '#,0.0')` in an
@@ -55,7 +61,7 @@ tooltip key that equals a dataset key gets the format of the model. [S]
 
 ## Cross-filter (a click filters the other visuals)
 - **Simple** (Vega-Lite and Vega): set `"crossFilter": true` in the brief; Deneb handles the click. A mark drawn
-  from a dataset row (filter, calculate, window, joinaggregate and stack keep rows) selects that row. A mark from
+  from a dataset row (filter, calculate, window, joinaggregate, stack and fold keep rows [L]) selects that row. A mark from
   aggregated rows has no `__row__`: Deneb then selects every row that has the values of the dataset fields the mark
   still carries, so keep the grouping fields under their names; `__selected__` is not on aggregated rows (finding
   X3). Show the state yourself: opacity 0.3 where `__selected__ == 'off'` (finding X1). At most 50 selected rows
@@ -78,6 +84,11 @@ tooltip key that equals a dataset key gets the format of the model. [S]
 - Labels only where they fit: test the pixel width of the bar against `length(text) * 6.6`.
 - Tick step from pixels per hour or day; legend rows from `floor((W - 16) / 128)` columns.
 - `clip` of a nested group goes into `encode.update` (`"clip": {"value": true}`).
+- **State from the data, not from events.** A page or offset reset by a signal event (`{"events": {"signal":
+  "count"}, "update": "0"}`) can stay stale when Power BI changes the rows: rows there, nothing drawn (finding L3).
+  Derive it: `shown = clamp(page, 0, max(1, ceil(count / capacity)) - 1)`. Better: no paging. [L]
+- Axes inside a group at the plot position: the grid spans the plot, labels stay in the container. Label
+  backgrounds: a `rect` `"from": {"data": "<text mark>"}` reads `datum.x`, `datum.y`, `datum.text`. [L]
 
 ## Limits
 - 30,000 rows by default; more load in batches and may miss in PDF and PowerPoint export. [S]

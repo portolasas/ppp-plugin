@@ -101,10 +101,10 @@ def locale_name(locale: str | None) -> str:
 
 def to_vega(spec: dict, config: dict | None, rows: list[dict], width: int, height: int, brand) -> tuple[dict, list]:
     """The Vega specification Deneb would run for this container size, with Deneb-only parts approximated."""
-    import vl_convert as vlc
     provider = deneb.provider_of(spec)
     dates = date_fields(rows)
     if provider == "vegaLite":
+        import vl_convert as vlc
         vl = deneb.prepare_vegalite(spec, rows, width, height)
         if config:
             vl["config"] = merge(config, vl.get("config", {}))

@@ -10,7 +10,7 @@ from . import expr as ex
 from . import scene as sc
 
 LEVELS = ("ERROR", "WARNING", "NOTE")
-AGGREGATING = {"aggregate", "bin", "fold", "pivot", "flatten", "density", "regression", "loess", "quantile",
+AGGREGATING = {"aggregate", "bin", "pivot", "flatten", "density", "regression", "loess", "quantile",
                "countpattern", "kde", "nest", "stratify", "pack", "treemap", "partition"}
 DERIVED_DEFAULTS = {"aggregate": ["count"], "stack": ["y0", "y1"], "bin": ["bin0", "bin1"], "fold": ["key", "value"],
                     "sequence": ["data"], "pie": ["startAngle", "endAngle"], "flatten": [], "window": [],
@@ -59,6 +59,26 @@ def order(findings: list) -> list:
         if (f.code, f.text) not in seen:
             seen.add((f.code, f.text))
             out.append(f)
+    return out
+
+
+def accept_colours(findings: list, colours: dict | None) -> list:
+    """B1 for a colour the user decided on (brief "colours": {"#1FBB3E": "milling, colour of the report"}) becomes
+    one NOTE that names the decision; the other findings stay."""
+    if not colours:
+        return findings
+    kept = {br.norm(k): v for k, v in colours.items() if br.norm(k)}
+    out, used = [], []
+    for f in findings:
+        m = re.match(r"(#[0-9A-F]{6})(?![0-9A-F])", f.text) if f.code == "B1" else None
+        if m and m.group(1) in kept:
+            if m.group(1) not in used:
+                used.append(m.group(1))
+            continue
+        out.append(f)
+    if used:
+        out.append(Finding("NOTE", "B1", "outside the brand by the user's decision (brief \"colours\"): "
+                           + "; ".join(f"{c} {kept[c]}" for c in used)))
     return out
 
 
@@ -137,9 +157,12 @@ def derived_fields(spec: dict) -> set:
 def field_uses(spec: dict) -> dict:
     """Field name -> first place it is read (expressions and field properties)."""
     uses = {}
+    geometry = _reactive_geometry(spec)
     for path, text in ex.expressions(spec):
         if path[-1] == "labelExpr" or "axis" in path or "legend" in path or "axes" in path or "legends" in path:
             continue   # datum is the tick or legend entry there, not a row
+        if any(tuple(path[:len(g)]) == g for g in geometry):
+            continue   # a mark drawn from another mark: datum is the scene item (x, y, text, datum), not a row
         for f in ex.analyse(text)["fields"]:
             uses.setdefault(f, ex.show(path))
     for path, key, value in ex.walk(spec):
@@ -152,6 +175,19 @@ def field_uses(spec: dict) -> dict:
         elif key == "field" and isinstance(value, str):
             uses.setdefault(_plain(value), ex.show(path + (key,)))
     return uses
+
+
+def _reactive_geometry(spec: dict) -> list:
+    """Paths of Vega marks whose "from.data" names another mark (reactive geometry): their datum is a scene item."""
+    marks = {v for _, key, v in ex.walk(spec) if key == "name" and isinstance(v, str)}
+    data = {d.get("name") for d in spec.get("data", []) if isinstance(d, dict)} if isinstance(spec.get("data"), list) else set()
+    out = []
+    for path, key, value in ex.walk(spec):
+        if key == "from" and isinstance(value, dict) and isinstance(value.get("data"), str):
+            src = value["data"]
+            if src in marks and src not in data:
+                out.append(tuple(path))
+    return out
 
 
 def _plain(name: str) -> str:

@@ -204,6 +204,31 @@ def boxes(page: dict, skip: str = "") -> list:
     return out
 
 
+def dangling(page: dict) -> list:
+    """References on a page that point at no visual of the page: a parentGroupName (Desktop drops such a visual when
+    it saves, as happened to slicers copied from another page) and visualInteractions of page.json."""
+    names, parents = set(), []
+    for other in sorted(page["path"].glob("visuals/*/visual.json")):
+        try:
+            data = _read(other)
+        except (OSError, json.JSONDecodeError):
+            continue
+        names.add(data.get("name", other.parent.name))
+        if data.get("parentGroupName"):
+            parents.append((data.get("name", other.parent.name), data["parentGroupName"]))
+    out = [f"visual {n} belongs to group {g}, which is not on the page: Desktop removes the visual when it saves; "
+           f"remove parentGroupName or copy the group with it" for n, g in parents if g not in names]
+    try:
+        inter = _read(page["path"] / "page.json").get("visualInteractions") or []
+    except (OSError, json.JSONDecodeError):
+        inter = []
+    missing = sorted({x.get(k) for x in inter for k in ("source", "target") if x.get(k) and x.get(k) not in names})
+    if missing:
+        out.append(f"page.json visualInteractions name visual(s) that are not on the page ({', '.join(missing)}): "
+                   f"rename them to the visual that replaced them, or remove the entries")
+    return out
+
+
 def overlapping(pos: dict, others: list) -> list:
     x0, y0, x1, y1 = pos.get("x", 0), pos.get("y", 0), pos.get("x", 0) + pos.get("width", 0), pos.get("y", 0) + pos.get("height", 0)
     return [o[4] for o in others if min(x1, o[2]) - max(x0, o[0]) > 8 and min(y1, o[3]) - max(y0, o[1]) > 8]
@@ -453,6 +478,8 @@ def verify(report: Path, name: str, fields: list, spec: dict | None, config: dic
         if over:
             add("WARNING", "R9", f"{where}: lies over {len(over)} other visual(s) of the page ({', '.join(over[:4])}): "
                                  f"move it in Desktop, or embed with --position x,y,width,height")
+        for text in dangling(page):
+            add("WARNING", "R10", f"page {page['displayName'] or page['name']}: {text}")
     odd = [p.get("queryRef") or "?" for p in v["projections"] if not plain(p)]
     if odd:
         add("WARNING", "R5", f"{where}: field(s) with an implicit aggregation or a hierarchy ({', '.join(odd)}): their "

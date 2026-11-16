@@ -2,7 +2,7 @@
 import datetime as dt
 import random
 
-SCENARIOS = ("typical", "stress", "few")
+SCENARIOS = ("typical", "stress", "few", "empty")
 LONG = ["Sehr lange Bezeichnung mit Zusatz und Nummer", "Übergreifende Qualitätsprüfung Standort Süd",
         "Kurz", "Abfüllung und Verpackung Linie 3 (Nachtschicht)", "Größenänderung ÄÖÜ ß", "Mittel lang benannt"]
 ANCHOR = dt.date(2026, 11, 1)
@@ -101,6 +101,8 @@ def generic(c, scenario: str, rng: random.Random, signed: bool = False) -> list[
 
 
 def rows(c, vtype, scenario: str = "typical") -> list[dict]:
+    if scenario == "empty":
+        return []
     rng = random.Random(f"{c.brief['name']}|{scenario}")
     out = vtype.sample(c, scenario, rng)
     return generic(c, scenario, rng) if out is None else out

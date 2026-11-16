@@ -26,6 +26,8 @@ possible.
   from the model and name your decisions when you hand over.
 - Show the result: name the path of the contact sheet and say in two sentences what it shows and what you changed
   after looking at it.
+- Before embedding a custom specification or one with signals: `bideneb live <name>`, open the page with the browser
+  tool and read `#result`; an error there is a visual that turns empty in Power BI.
 - Report plainly what is not proven: the local render works with invented rows; the visual counts as done when the
   user has opened it in Power BI Desktop. Give them the checks for Desktop.
 - Brand questions beyond the visual (report theme, page layout, logo) belong to the skill **bi-designer** of the

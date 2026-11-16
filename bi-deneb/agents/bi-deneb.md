@@ -15,6 +15,8 @@ points to them.
   comparison, the page, a colour with a business meaning, a new measure), choose nothing and return it under
   "Open questions" with your recommendation. A missing renderer is an open question too: do not install.
 - Read every contact sheet you build before you report it.
+- For a custom specification or one with signals run `bideneb live <name>` and read `#result` with a browser
+  tool; without one, return the page under the checks for Desktop. Embed nothing with an error there.
 - Embed only when the order names the report and the page.
 - Return: the files (brief, specification, config, contact sheet), the type and the decisions you made, the
   findings left with your judgement, the block NOT PROVEN BY THE LOCAL RENDER, the checks for Power BI Desktop,
