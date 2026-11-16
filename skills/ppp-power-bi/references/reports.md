@@ -10,9 +10,8 @@
 - Limits: Pro or shared about 8 refreshes per day, Premium or Fabric clearly more [D]. Note the confirmed limit of the tenant in the README.
 
 ## Visuals and embedding
-- Standard visuals first; custom visuals only if the tenant allows them.
-- Deneb (Vega or Vega-Lite) for special charts such as Gantt and timelines: choice of the visual, segment table, Deneb facts and local preview in [visuals.md](visuals.md). Inside an app a Gantt view is better built in the app (skill ppp-power-apps, layout).
-- Brand: the theme JSON from the skill bi-designer.
+- Brand theme, standard visuals first, a custom visual (Deneb) only for a named requirement, the optional plugin bi-deneb: [design.md](design.md).
+- Gantt and timelines: choice of the visual, segment table and Deneb facts in [visuals.md](visuals.md). Inside an app a Gantt view is better built in the app (skill ppp-power-apps, layout).
 - The Power Apps "Power BI tile" shows a pinned dashboard tile, not a whole report page; open the report through a link. [D]
 - Viewers need Pro or PPU unless the workspace runs on Premium P or Fabric F64 and above; smaller F SKUs still need Pro. [D]
 

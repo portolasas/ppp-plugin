@@ -3,12 +3,22 @@
   "owner": {
     "name": "Pascal Naumann"
   },
-  "description": "Releases of ppp: Power Platform solutions offline from solution exports.",
+  "description": "Releases of ppp: Power Platform solutions offline from solution exports. Optional: bi-deneb, Deneb visuals for Power BI; bi-design, the corporate design of Boehringer Ingelheim.",
   "plugins": [
     {
       "name": "ppp",
       "source": "./",
       "description": "ppp: builds Power Platform solutions (Power Automate, Power Apps, SharePoint, Power BI, Copilot Studio) offline from solution exports; the user carries out tenant steps guided by cards."
+    },
+    {
+      "name": "bi-deneb",
+      "source": "./bi-deneb",
+      "description": "bi-deneb: Deneb visuals for Power BI in the brand design - skill and agent bi-deneb build a custom visual (Vega-Lite or Vega) from a brief with the generator bideneb, render it locally, check fields, Deneb rules, brand colours and legibility, and embed it into a Power BI project."
+    },
+    {
+      "name": "bi-design",
+      "source": "./bi-design",
+      "description": "bi-design: Boehringer Ingelheim corporate design for agents - skill bi-designer for any visual output (colours, fonts, logo, icons, recipes per medium) and agent bi-ppt, which builds, updates, checks and converts PowerPoint decks in the BI master v2.1 with the generator bippt."
     }
   ]
 }

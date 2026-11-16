@@ -2,6 +2,14 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.27.0 (2026-11-16)
+- Zweites, wählbares Plugin bi-deneb im selben Marktplatz (PLUGIN PL-24): Skill und Agent bi-deneb mit dem Werkzeug bideneb bauen, prüfen und verbessern Deneb-Visuals für Power BI im Markendesign (17 Typen aus einem Brief und custom, lokaler Render mit erfundenen Zeilen, Prüfung von Feldern, Deneb-Regeln, Markenfarben, Kontrast und Text, Einbetten in PBIR); ppp setzt es nicht voraus und prüft an der Skill-Liste, ob es eingeschaltet ist
+- ppp-power-bi: Markendesign immer (Theme von bi-designer, ohne bi-designer eine Karte) und Standard-Visuals zuerst; ein eigenes Visual (Deneb) nur für eine benannte Anforderung, mit Begründung in der README; neue Referenz design.md mit der Auswahl je Aussage (PLUGIN PL-25)
+- ppp pbi check: R10 meldet einen Bericht ohne eigenes Theme, R11 nennt die Deneb-Visuals eines Berichts mit ihren Seiten
+- Vorlage components/power-bi/README.md mit den Abschnitten Design und Custom visuals; ppp setup nennt das wählbare Plugin
+- Drittes, wählbares Plugin bi-design im selben Marktplatz (PLUGIN PL-26): Skill bi-designer, Skills bi-inhalt und bi-ppt, Agent bi-ppt, Generator bippt und die Vorlagen ziehen aus dem Repo portolasas/bi-design (2.13.0) hierher und tragen die Version von ppp; ppp setzt es nicht voraus; ppp guide --kind deck findet bippt auch im Ordner neben ppp
+- bi-deneb trägt die Farben des Markendesigns selbst (dieselbe tokens.json wie bi-design, ein Test hält sie gleich)
+
 ## 0.26.1 (2026-11-16)
 - Korrekturen nach der unabhängigen Prüfung von 0.26.0 – ppp runs: der Server filtert nach den Flows des Projekts, jede Kennung in Klein- und Großschreibung (eine leere Antwort wird ohne diesen Filter für höchstens 24 Stunden wiederholt), jede abgefragte Spalte ist als gefüllt verlangt, ein Fehlertext ohne JSON über mehrere Zeilen wird zusammengefügt oder als nicht lesbar benannt, statt den Aufruf für alle Flows scheitern zu lassen; eine Partition, die mit einem Buchstaben beginnt, gilt nicht als Fehlercode
 - Gehaltene Datei: gewartet wird nur bei einer Sperre (Windows: Sharing Violation), ein fehlendes Recht wird sofort gemeldet; ein gehaltenes Paket wird nicht zugunsten eines älteren übersprungen; die Meldung nennt ppp unpack nur für einen Export, nicht für ein Paket; pacs Entpacken wird nur wiederholt, wenn pac diese ZIP als gehalten nennt

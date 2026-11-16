@@ -1,0 +1,19 @@
+{
+  "name": "Boehringer Ingelheim",
+  "dataColors": ["#08312A", "#00E47C", "#076D7E", "#6AD2E2", "#E18600", "#EE6541", "#5D4495", "#928BDE", "#86251B", "#FFD03D"],
+  "background": "#FFFFFF",
+  "foreground": "#08312A",
+  "tableAccent": "#00E47C",
+  "good": "#00E47C",
+  "neutral": "#FFD03D",
+  "bad": "#EE6541",
+  "maximum": "#08312A",
+  "center": "#6AD2E2",
+  "minimum": "#D2F2F7",
+  "textClasses": {
+    "callout": { "fontSize": 28, "fontFace": "Segoe UI Semibold", "color": "#08312A" },
+    "title":   { "fontSize": 14, "fontFace": "Segoe UI Semibold", "color": "#08312A" },
+    "header":  { "fontSize": 12, "fontFace": "Segoe UI Semibold", "color": "#08312A" },
+    "label":   { "fontSize": 10, "fontFace": "Segoe UI", "color": "#08312A" }
+  }
+}

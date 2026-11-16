@@ -1,0 +1,127 @@
+{
+  "ausgabe": "Beispiel_Steering-Update.pptx",
+  "fusszeile": "Projekt Beispiel | Steering-Committee-Update",
+  "heute": "2026-10-07",
+  "zweck": "Steering-Committee-Update am 07.10.2026 – Muster mit allen Folientypen",
+  "quellen": ["Transkript.vtt", "Projektauftrag.docx"],
+  "folien": [
+    {"typ": "titel", "titel": "Projekt Beispiel", "untertitel": ["Steering-Committee-Update", "Vorname Name | 07.10.2026"]},
+    {"typ": "status", "titel": "Status auf einen Blick – Zugriffsweg geklärt, Eskalation nicht nötig",
+     "phasen": ["Scoping", "Design", "Umsetzung", "Validierung"],
+     "straenge": [
+       {"titel": "A · Datenzugriff", "ampel": "Y", "stand": [2, 2, 1, 0],
+        "punkte": ["IT erlaubt eine Skript-Lösung – keine Zwischendatenbank", "Abfrage mit Testdaten erfolgreich", "Freigabe bis Ende 10/2026"],
+        "naechster": "Folgetermin KW 43: Bereitstellung festlegen"},
+       {"titel": "B · Schnittstelle", "ampel": "G", "stand": [2, 1, 0, 0],
+        "punkte": ["Grobplan des Partners liegt vor", "Nicht zeitkritisch – früher Start schafft Puffer"],
+        "naechster": "Abschätzung und Projektauftrag 11/2026"},
+       {"titel": "C · QM-Daten", "ampel": "G", "stand": [2, 2, 1, 0],
+        "punkte": ["Neuer Report enthält alle Daten, Format weicht ab", "Validierung bis 11/2026"],
+        "naechster": "Validierung der angepassten Sheets"}
+     ],
+     "band": {"label": "Eskalation vom Tisch", "text": "–  Go-Live Mitte 01/2027 in Reichweite"}},
+    {"typ": "vergleich", "titel": "Was hat sich seit dem letzten Update geändert?",
+     "spalten": ["Thema", "Stand 24.09.2026", "Stand 07.10.2026"],
+     "zeilen": [
+       ["Zugriffsweg", "IT fordert eine Zwischendatenbank (volles Assessment)", "Skript-Lösung direkt auf der Datenbank erlaubt"],
+       ["Eskalation", "Über die Leitungsrunde vorbereitet", "Nicht nötig – High-Level-Update im Sounding Board"],
+       ["Go-Live", "Ende 01/2027 bzw. 03–04/2027", "Ziel Mitte 01/2027"],
+       ["Ampel A / B / C", {"ampel": ["R", "G", "G"], "labels": ["A", "B", "C"]}, {"ampel": ["Y", "G", "G"], "labels": ["A", "B", "C"]}]
+     ],
+     "band": {"label": "Kernänderung:", "text": "Aus „Eskalation vorbereiten“ wird „Freigabe formalisieren“."}},
+    {"typ": "prozess", "titel": "Strang A – Skript-Lösung statt Zwischendatenbank",
+     "kopf": {"label": "Ergebnis Termin:", "text": "Die IT erlaubt den Abruf über ein SQL-Skript."},
+     "schritte": [
+       {"icon": "server", "titel": "Quelle", "text": "Datenbank mit Zeitstempeln und Kontext"},
+       {"icon": "gear", "titel": "SQL-Skript", "text": "Select-Abfrage über technischen Account"},
+       {"icon": "doc-file", "titel": "Export-Datei", "text": "Liefert die relevanten Daten"},
+       {"icon": "eye", "titel": "Vier-Augen-Übertrag", "text": "Kopie ins Excel-Tool"},
+       {"icon": "table", "titel": "Excel-Tool", "text": "Filter liefert Start- und Endzeitstempel"}
+     ],
+     "hinweis": "**Option in Klärung (nice-to-have):** periodischer Export durch die IT", "hinweis_ab": 1,
+     "karten": [
+       {"titel": "Erreicht", "akzent": "G", "icon": "check-circle", "punkte": ["Abfragedesign erfolgreich getestet", "Variante Zwischendatenbank entfällt"]},
+       {"titel": "Offen – Klärung bis KW 43", "akzent": "Y", "icon": "magnifying-glass", "punkte": ["Wer führt das Skript aus?", "Periodischer Export möglich?"]}
+     ],
+     "band": {"label": "Keine Eskalation nötig", "text": "–  Freigabe bis Ende Oktober 2026"}},
+    {"typ": "karten", "titel": "Strang B und C – beide im Plan",
+     "karten": [
+       {"titel": "B · Schnittstelle", "ampel": "G", "inhalt": [
+         {"schritte": [
+           {"status": "fertig", "titel": "Kick-off und Grobplan", "text": "Lösungsidee liegt vor"},
+           {"status": "aktiv", "titel": "Termin mit Fachbereich", "text": "Aktuelle Lösung verstehen"},
+           {"status": "offen", "titel": "Abschätzung und Auftrag", "text": "11/2026"},
+           {"status": "offen", "titel": "Entwicklung und Validierung", "text": "12/2026 – 06/2027"}]},
+         {"hinweis": "Nicht zeitkritisch – der frühe Start puffert.", "unten": true}]},
+       {"titel": "C · QM-Daten", "ampel": "G", "inhalt": [
+         {"von_nach": {"von": {"klein": "heute", "gross": "REPORT_ALT"}, "nach": {"klein": "künftig", "gross": "REPORT_NEU"}}},
+         {"punkte": ["Vergleichstest: alle Daten enthalten", "Partner passt die Charts an", "Validierung bis 11/2026"]},
+         {"hinweis": "Abschluss vor dem Cut-Over – Stand unverändert.", "unten": true}]}
+     ],
+     "band": {"label": "Zielbild hält:", "text": "validierte Schnittstelle Mitte 2027"}},
+    {"typ": "timeline", "titel": "Timelines – Gesamtüberblick", "von": "2026-08", "bis": "2027-12", "skala": "monat",
+     "marker": [{"datum": "2027-01-03", "text": "Cut-Over 03.01."}],
+     "zeilen": [
+       {"titel": "Systemwechsel", "elemente": [{"art": "balken", "von": "2026-11-01", "bis": "2027-01-03", "text": "Cut-Over", "status": "extern"}]},
+       {"titel": "Datenzugriff", "elemente": [
+         {"art": "balken", "von": "2026-09-14", "bis": "2026-10-07", "status": "fertig"},
+         {"art": "balken", "von": "2026-10-07", "bis": "2026-10-31", "status": "klaerung"},
+         {"art": "meilenstein", "datum": "2026-10-31", "text": "Freigabe", "status": "klaerung"},
+         {"art": "balken", "von": "2026-11-02", "bis": "2026-12-23", "text": "Umsetzung & Q/V", "status": "plan"},
+         {"art": "ueberbrueckung", "von": "2027-01-03", "bis": "2027-01-15"},
+         {"art": "meilenstein", "datum": "2027-01-15", "text": "Go-Live Mitte 01/2027", "status": "plan"}]},
+       {"titel": "QM-Daten", "elemente": [
+         {"art": "balken", "von": "2026-09-01", "bis": "2026-11-30", "text": "Anpassung & Validierung", "status": "plan"}]},
+       {"titel": "Schnittstelle", "elemente": [
+         {"art": "balken", "von": "2026-08-01", "bis": "2026-11-30", "text": "Lösungsdesign", "status": "plan"},
+         {"art": "balken", "von": "2026-12-01", "bis": "2027-06-30", "text": "Entwicklung & Validierung", "status": "plan"},
+         {"art": "meilenstein", "datum": "2027-06-30", "text": "validiert", "status": "plan"}]},
+       {"titel": "Projektende", "elemente": [
+         {"art": "meilenstein", "datum": "2027-01-31", "text": "Teil 1", "status": "fertig"},
+         {"art": "meilenstein", "datum": "2027-12-15", "text": "Teil 2", "status": "fertig", "pos": "links"}]}
+     ],
+     "fakten": {"titel": "Key Facts", "punkte": ["Taktgeber ist die Freigabe Ende 10/2026 – jede Woche Verzug verschiebt den Go-Live 1:1", "Überbrückung ab Cut-Over nur noch ca. 2 Wochen"]}},
+    {"typ": "timeline", "titel": "Timeline Strang A – Weg zum Go-Live", "von": "2026-W39", "bis": "2027-W04", "skala": "woche",
+     "marker": [{"datum": "2027-01-03", "text": "Cut-Over"}],
+     "schatten": [{"von": "2026-12-21", "bis": "2027-01-03", "text": "Feiertage"}],
+     "zeilen": [
+       {"titel": "Machbarkeitsnachweis", "elemente": [{"von": "2026-09-21", "bis": "2026-10-07", "text": "Test ✓", "status": "fertig"}]},
+       {"titel": "Klärung Bereitstellung", "elemente": [{"von": "2026-10-07", "bis": "2026-10-25", "text": "KW 42/43", "status": "klaerung"}]},
+       {"titel": "Freigabe", "elemente": [{"von": "2026-10-19", "bis": "2026-10-30", "text": "Freigabe", "status": "klaerung"}, {"datum": "2026-10-30", "text": "bis 30.10.", "status": "klaerung"}]},
+       {"titel": "Umsetzung", "elemente": [{"von": "2026-11-02", "bis": "2026-11-29", "text": "Umsetzung", "status": "plan"}]},
+       {"titel": "Qualifizierung", "elemente": [{"von": "2026-11-23", "bis": "2026-12-20", "text": "Q/V", "status": "plan"}]},
+       {"titel": "Go-Live", "elemente": [{"von": "2027-01-04", "bis": "2027-01-15", "text": "Abschluss", "status": "plan"}, {"datum": "2027-01-15", "text": "Go-Live", "status": "plan"}]}
+     ],
+     "boxen": [{"titel": "Taktgeber ist die Freigabe", "text": "Jede Woche Verzug verschiebt den Go-Live 1:1."},
+               {"titel": "Überbrückung ca. 2 Wochen", "text": "Händisches Monitoring innerhalb des tolerierbaren Fensters."}]},
+    {"typ": "massnahmen", "titel": "Nächste Schritte und Termine",
+     "zeilen": [
+       {"wann": "KW 42", "was": "Teamtage", "details": "Klären, ob ein periodischer Export möglich ist", "tag": "A"},
+       {"wann": "Anfang KW 43", "was": "Folgetermin IT", "details": "Bereitstellung festlegen", "tag": "A"},
+       {"wann": "bis Ende 10/2026", "was": "Finale Freigabe", "details": "Start der produktiven Umsetzung", "tag": "A"},
+       {"wann": "11/2026", "was": "Abschätzung und Projektauftrag", "details": "Zeit- und Kostenabschätzung Partner", "tag": "B · C"}
+     ],
+     "band": {"label": "Kritischer Pfad:", "text": "Freigabe des Zugriffswegs bis Ende Oktober 2026"}},
+    {"typ": "kennzahlen", "titel": "Kennzahlen – Validierungsfortschritt",
+     "kacheln": [
+       {"wert": "12 / 15", "label": "Sheets angepasst", "text": "Rest bis KW 45", "ampel": "G"},
+       {"wert": "80 %", "label": "Testfälle bestanden", "text": "3 Abweichungen in Klärung", "ampel": "Y"},
+       {"wert": "2 Wo.", "label": "Überbrückung", "text": "vorher 3–4 Monate", "ampel": "G"}
+     ]},
+    {"typ": "diagramm", "titel": "Diagramm – Aufwand je Quartal", "art": "saeulen",
+     "kategorien": ["Q3/26", "Q4/26", "Q1/27", "Q2/27"],
+     "reihen": [{"name": "intern", "werte": [20, 35, 25, 10]}, {"name": "extern", "werte": [5, 30, 40, 15]}],
+     "werte_anzeigen": true,
+     "fazit": {"titel": "Fazit", "icon": "bar-chart-up", "punkte": ["Spitze in Q1/27 durch Partnerentwicklung", "Intern ab Q2/27 rückläufig"]}},
+    {"typ": "tabelle", "titel": "Tabelle – Risiken", "kopf": ["Risiko", "Wirkung", "Maßnahme", "Status"],
+     "breiten": [3, 3, 4, 1.5],
+     "zeilen": [["Freigabe verzögert", "Go-Live verschiebt sich", "Wöchentlicher Check mit IT", {"ampel": "Y", "t": "offen"}],
+                ["Format weicht ab", "Nacharbeit Charts", "Partner passt an", {"ampel": "G", "t": "im Plan"}]]},
+    {"typ": "kernaussage", "titel": "Eskalation nicht nötig – Freigabe ist eine Formalie", "text": "Wir bitten um Kenntnisnahme."},
+    {"typ": "kapitel", "titel": "Backup", "ab_hier_ausblenden": true},
+    {"typ": "text", "titel": "Text – Detailfolie im Backup", "punkte": ["Erste Ebene", {"t": "Zweite Ebene", "ebene": 1}, "Noch ein Punkt",
+        "Weiterer Punkt mit einer ganzen Aussage",
+        "Letzter Punkt mit einer ganzen Aussage"]},
+    {"typ": "abschluss", "titel": "Vielen Dank"}
+  ]
+}

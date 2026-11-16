@@ -9,8 +9,15 @@ Reports are kept as PBIP in this folder: `<Name>.pbip`, `<Name>.SemanticModel/` 
 ## Model
 <Per report: tables with their source and filters, relationships, measures with their meaning.>
 
+## Design
+<Brand theme of the report (file, source bi-designer) or the user's decision for another look.>
+
 ## Pages
-<Per page: purpose, visuals and the requirement they serve.>
+<Per page: purpose, visuals and the requirement they serve. Standard visuals unless a requirement needs more.>
+
+## Custom visuals
+| Page | Visual | Requirement | Standard visual that fell short, and why | Brief |
+|---|---|---|---|---|
 
 ## Tests
 <Refresh, row counts, time, values, access, as in the skill ppp-power-bi.>

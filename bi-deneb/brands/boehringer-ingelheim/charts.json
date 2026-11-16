@@ -1,0 +1,43 @@
+{
+  "source": "bi-design: skill bi-designer, MARKE.md (contrast rules, chart order), reference/diagramme.md (palettes), powerbi-theme.json. Entries marked derived are not in the brand sources and follow from their rules.",
+  "font": "Segoe UI",
+  "fontSizesPx": [12, 14, 18, 22, 28],
+  "size": { "title": 14, "subtitle": 12, "label": 12, "value": 12, "kpi": 28, "kpiSmall": 18 },
+  "background": "white",
+  "text": "darkGreen",
+  "textSecondary": "gray7",
+  "grid": "warmGray",
+  "axis": "warmGray",
+  "band": "lightGray",
+  "category": ["darkGreen", "accentGreen", "darkBlue", "mediumBlue", "darkYellow", "mediumRed", "darkViolet", "mediumViolet", "darkRed", "mediumYellow"],
+  "line": ["darkGreen", "darkBlue", "darkViolet", "darkRed", "mediumRed", "darkYellow"],
+  "sequential": ["lightGray", "lightBlue", "mediumBlue", "darkBlue", "darkGreen"],
+  "diverging": { "derived": true, "colors": ["darkRed", "mediumRed", "lightRed", "lightGray", "lightBlue", "mediumBlue", "darkBlue"] },
+  "focus": "darkGreen",
+  "context": { "derived": true, "color": "gray5" },
+  "reference": { "derived": true, "color": "gray7" },
+  "good": "accentGreen",
+  "bad": "mediumRed",
+  "goodText": "darkGreen",
+  "badText": "darkRed",
+  "trafficLight": { "green": "signalGreen", "yellow": "signalYellow", "red": "signalRed", "none": "warmGray" },
+  "status": {
+    "success": { "fill": "accentGreen", "text": "darkGreen" },
+    "info": { "fill": "lightBlue", "text": "darkBlue" },
+    "warning": { "fill": "mediumYellow", "text": "darkGreen" },
+    "error": { "fill": "lightRed", "text": "darkRed" },
+    "neutral": { "fill": "warmGray", "text": "darkGreen" }
+  },
+  "neverAsText": ["accentGreen", "darkYellow", "gray5", "gray6", "signalGreen", "signalYellow", "signalRed", "mediumYellow", "mediumBlue", "yellow", "blue", "red", "violet"],
+  "neverAsThinMarkOnLight": ["accentGreen", "mediumBlue", "mediumYellow", "yellow", "lightYellow", "lightBlue", "blue"],
+  "signalOnly": ["signalGreen", "signalYellow", "signalRed"],
+  "largeTextOnly": ["mediumRed"],
+  "cornerRadiusMaxPx": 4,
+  "rules": {
+    "noTints": true,
+    "noGradients": true,
+    "noShadows": true,
+    "legendOnlyWithSeveralSeries": true,
+    "trafficLightNeedsLabel": true
+  }
+}

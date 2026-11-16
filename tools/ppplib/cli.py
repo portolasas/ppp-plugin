@@ -317,8 +317,9 @@ def cmd_walk(a) -> int:
 
 
 def _bippt(given: str) -> Path | None:
-    """The generator bippt of the plugin bi-design: given, else from PPP_BIPPT, the plugins of Claude Code and VS Code, or a
-    clone of bi-design beside the ppp repository; the newest one found."""
+    """The generator bippt of the plugin bi-design: given, else from PPP_BIPPT, the plugins of Claude Code and VS Code, the
+    plugin bi-design beside this one in the marketplace of ppp (since 0.27.0), or a clone of the former repository
+    bi-design beside the ppp repository; the newest one found."""
     if given:
         path = Path(given).expanduser()
         if not path.is_file():
@@ -331,7 +332,8 @@ def _bippt(given: str) -> Path | None:
              home / "Library" / "Application Support" / "Code", Path(os.environ.get("APPDATA", home)) / "Code"]
     found = [p for r in roots if r.is_dir() for p in r.glob("**/bi-design*/**/tools/bippt.py")]
     clone = TOOLS.parents[2] / "bi-design"  # the plugin at the root since bi-design 2.13.0, before in plugin/
-    found += [p for p in (clone / "tools" / "bippt.py", clone / "plugin" / "tools" / "bippt.py") if p.is_file()]
+    beside = TOOLS.parent / "bi-design"     # PLUGIN PL-26: the folder lies in the copy of ppp, enabled or not
+    found += [p for p in (beside / "tools" / "bippt.py", clone / "tools" / "bippt.py", clone / "plugin" / "tools" / "bippt.py") if p.is_file()]
     return max(found, key=lambda p: p.stat().st_mtime) if found else None
 
 

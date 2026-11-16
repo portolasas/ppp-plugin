@@ -741,6 +741,10 @@ def main(options: dict) -> int:
         sys.stdout.write(proc.stdout)
         sys.stderr.write(proc.stderr)
         code = code or proc.returncode
+        if proc.returncode and args[0] == "bauen":   # the generator lies beside ppp even where bi-design was never set up
+            print(f"NOTE: bippt could not build the deck; the spec is written. If Python packages are missing: "
+                  f"\"{sys.executable}\" \"{bippt}\" einrichten (pip --user), then run the command again.")
+            break
     return code
 
 

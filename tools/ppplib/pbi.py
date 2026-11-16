@@ -2,7 +2,8 @@
 compactly, and check both before the user opens them in Power BI Desktop. Standard library only; reads no row data.
 
 Findings: M1 indent, M2 unquoted name, M3 relationship column, M4 time function; R1 JSON, R2 BOM, R3 $schema, R4 name,
-R5 pageBinding, R6 filter name, R7 field reference, R8 page order, R9 legacy format; G1 data files and git; P1 path length.
+R5 pageBinding, R6 filter name, R7 field reference, R8 page order, R9 legacy format, R10 no custom theme, R11 Deneb
+visuals; G1 data files and git; P1 path length.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ from .project import ToolError
 from .report import Report
 
 NAME = re.compile(r"^[\w-]+$")
+DENEB = "deneb"   # visualType of the AppSource visual Deneb begins with it (deneb7E15AEF80B9E4D4F8E12924291ECE89A)
 AUTO_DATE = re.compile(r"^(LocalDateTable_|DateTableTemplate_)", re.I)
 SOURCES = re.compile(r"\b(SharePoint\.\w+|Sql\.Databases?|Excel\.Workbook|Excel\.CurrentWorkbook|Csv\.Document|"
                      r"Json\.Document|Xml\.Tables|Web\.Contents|OData\.Feed|File\.Contents|Folder\.Files|Folder\.Contents|"
@@ -92,6 +94,7 @@ class ReportDef:
     bookmarks: list = field(default_factory=list)    # (name, refs, where)
     extension: dict = field(default_factory=dict)    # casefold entity -> {casefold measure}
     findings: list = field(default_factory=list)
+    theme: str | None = None                         # name of the custom theme, '' for none; None: report.json not read
 
 
 # ------------------------------------------------------------------ helpers
@@ -405,6 +408,8 @@ def _pbir(rep: ReportDef, definition: Path, base: Path) -> None:
     data, where = load(definition / "report.json") if (definition / "report.json").is_file() else (None, "")
     if isinstance(data, dict):
         rep.filters = _filters(data.get("filterConfig"), where, rep.findings)
+        theme = (data.get("themeCollection") or {}).get("customTheme")
+        rep.theme = str(theme.get("name") or "unnamed") if isinstance(theme, dict) else ""
     ext = definition / "reportExtensions.json"
     if ext.is_file():
         data, _ = load(ext)
@@ -492,6 +497,9 @@ def _legacy(rep: ReportDef, f: Path, base: Path) -> None:
             rep.extension.setdefault(ent.get("name", "").casefold(), set()).update(
                 m.get("name", "").casefold() for m in ent.get("measures") or [])
     rep.filters = _unique(refs(_loads(data.get("filters"))))
+    if data and isinstance(config, dict):
+        theme = (config.get("themeCollection") or {}).get("customTheme")
+        rep.theme = str(theme.get("name") or "unnamed") if isinstance(theme, dict) else ""
     for s in data.get("sections") or []:
         sconf = _loads(s.get("config")) or {}
         page = Page(s.get("name", ""), s.get("displayName", ""), isinstance(sconf, dict) and sconf.get("visibility") == 1,
@@ -649,6 +657,17 @@ def check(models: dict, reports: list, rep: Report, base: Path) -> str:
     for r in reports:
         for level, msg in r.findings:
             rep.add(level, msg)
+        if r.theme == "" and r.pages:
+            rep.warn(f"R10 {r.path.name}: no custom theme; a report carries the brand theme (skill bi-designer of the "
+                     "plugin bi-design: powerbi-theme.json; in Desktop View › Themes › Browse for themes), "
+                     "skill ppp-power-bi, references/design.md")
+        deneb = [(p.display or p.name, v.name) for p in r.pages for v in p.visuals if v.type.startswith(DENEB)]
+        if deneb:
+            pages = _unique([page for page, _ in deneb])
+            rep.info(f"R11 {r.path.name}: {len(deneb)} Deneb visual{'s' if len(deneb) > 1 else ''} on "
+                     f"{', '.join(pages[:4])}{' …' if len(pages) > 4 else ''}; a custom visual stands only where no "
+                     "standard visual meets the requirement, with its reason in the README; build and check it with "
+                     "the skill bi-deneb if it is in your skill list (skill ppp-power-bi, references/design.md)")
         model = models.get(r.model_path) if r.model_path else None
         if model is None:
             rep.info(f"R7 {r.path.name}: {r.connection or 'model not found'}; field references not checked")

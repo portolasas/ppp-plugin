@@ -94,6 +94,10 @@ def setup() -> list[str]:
     lines += ["", "Claude Code: once per computer", f"  /plugin marketplace add {MARKETPLACE}", "  /plugin install ppp@ppp"]
     if _development_clone():
         lines.append(f"  development clone instead: /plugin marketplace add {REPO}, then /plugin install ppp@ppp-dev")
+    market = "ppp-dev" if _development_clone() else "ppp"
+    lines += ["", "Optional, from the same marketplace, installed the same way:",
+              f"  bi-design: the corporate design (skill bi-designer, agent bi-ppt for PowerPoint; Claude Code: /plugin install bi-design@{market})",
+              f"  bi-deneb: Deneb visuals for Power BI, if you build custom visuals (Claude Code: /plugin install bi-deneb@{market})"]
     return lines
 
 

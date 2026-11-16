@@ -1,6 +1,6 @@
 # Training deck
 
-`ppp guide docs/handbook/<name>.md --role <role> --kind deck [--title "<app>"] [--out docs/training/<file>.pptx]` builds one compact deck per role in the corporate design of bi-design (BI-Master), from the same Markdown and pictures as the handbook, so a change of the handbook reaches Word and slides alike. Without bi-design the command writes the spec only, and bi-ppt builds it. It finds bippt in the installed plugins or a clone of bi-design beside ppp; `--bippt <path to bippt.py>` names it, `--bippt -` writes the spec only.
+`ppp guide docs/handbook/<name>.md --role <role> --kind deck [--title "<app>"] [--out docs/training/<file>.pptx]` builds one compact deck per role in the corporate design of bi-design (BI-Master), from the same Markdown and pictures as the handbook, so a change of the handbook reaches Word and slides alike. It finds bippt in the installed plugins or in the folder `bi-design` beside the plugin ppp (same marketplace, since 0.27.0); `--bippt <path to bippt.py>` names it, `--bippt -` writes the spec only, and bi-ppt builds it. bippt needs its Python packages: if the build fails for a missing package, the spec is still written; ask the user whether `bippt einrichten` may install them (pip --user), then run the command again.
 
 ## Parts
 - Title and agenda; per handbook chapter a divider and per section one slide; the quick guide as a chapter; the exercises, their solutions on hidden slides at the end.

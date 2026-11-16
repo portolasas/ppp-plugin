@@ -2,19 +2,64 @@
 
 ppp is an agent plugin for **VS Code (GitHub Copilot)** and **Claude Code** that builds Power Platform solutions with you: Power Automate flows, Power Apps canvas screens, SharePoint lists, Power BI reports and Copilot Studio prompts.
 
+This repository is a marketplace with three plugins. You choose which ones you install:
+
+| Plugin | What it is | Needed |
+|---|---|---|
+| **ppp** | the agent `ppp`, 15 skills, the command line `ppp` and its hooks | yes |
+| **bi-design** | the corporate design of Boehringer Ingelheim for agents: skill `bi-designer`, agent `bi-ppt` and generator `bippt` for PowerPoint | optional |
+| **bi-deneb** | Deneb visuals for Power BI in the brand design: skill and agent `bi-deneb`, generator `bideneb` | optional |
+
+All three are released together and carry one version.
+
+## How ppp works
 It works **offline from solution exports**. The agent has no tenant access, no connector and no live API. It reads the exported files, writes flow JSON, screen YAML and list schemas, checks them and packs an importable solution. Everything in the tenant (creating a scaffold, exporting, importing, testing) you do yourself, guided by short cards with the expected result.
 
-A project can be **connected** to one environment (`ppp connect`). Then the agent fetches the export and imports the package itself, through the Power Platform CLI `pac` with your sign-in: each import after its checks (the right solution, unmanaged, a higher version, no change in the tenant it would overwrite), with a backup of the tenant's state, and after a card if you want one. It never imports into an environment of role production. It creates the first, empty solution with your publisher after a card and adds the members of the transfer solution (membership only). Every card names a code, and the agent goes on only with that code: your answer holds for the state you saw. One call against the tenant runs at a time. A hook stops a direct pac call by mistake; it is no barrier against intent. Scaffolds, switching flows, connections, "paste code" and tests stay with you. Offline is the default.
+A project can be **connected** to one environment (`ppp connect`). Then the agent fetches the export and imports the package itself, through the Power Platform CLI `pac` with your sign-in: each import after its checks (the right solution, unmanaged, a higher version, no change in the tenant it would overwrite), with a backup of the tenant's state, and after a card if you want one. It never imports into an environment of role production. It creates the first, empty solution with your publisher after a card, adds the members of the transfer solution (membership only), and reads the runs of the project's flows with their errors. Every card names a code, and the agent goes on only with that code: your answer holds for the state you saw. One call against the tenant runs at a time. A hook stops a direct pac call by mistake; it is no barrier against intent. Scaffolds, switching flows, connections, "paste code" and tests stay with you. Offline is the default.
 
-## What you get
-- **Agent `ppp`** with the core rules: questions as cards with a recommendation first, no silent assumptions, a commit after each confirmed step, stopping points with a model recommendation.
+## What you get with ppp
+- **Agent `ppp`** with the core rules: questions as cards with a recommendation first, no silent assumptions, evidence before claims, a commit after each confirmed step, stopping points with a model recommendation.
 - **15 skills**, loaded when a task needs them:
   - phases: `ppp-intake`, `ppp-clarify`, `ppp-prototype`, `ppp-plan`, `ppp-package`, `ppp-diagnose`, `ppp-docs`, `ppp-golive`;
   - platform knowledge, each statement marked observed, documented, open or version-dependent: `ppp-power-automate`, `ppp-power-apps`, `ppp-sharepoint`, `ppp-power-bi`, `ppp-copilot-studio`;
-  - `ppp-app-walk`: walks through your running app in Edge with automated clicks, reviews layout and usability from measurements and pictures, checks expected values and load times, reproduces errors, compares with the last run, and builds the illustrated Word handbook from its Markdown text, and training videos (optional packages `playwright`, `python-docx`).
+  - `ppp-app-walk`: walks through your running app in Edge with automated clicks, reviews layout and usability from measurements and pictures, checks expected values and load times, reproduces errors, compares with the last run, and builds the illustrated Word handbook from its Markdown text, and training videos;
   - `ppp-sessions`: on your request, uploads the session logs of your ppp projects to a private repository of yours, to improve ppp from them.
-- **Command line `ppp`** (Python standard library only): unpack and pack solutions with `pac`, in a connected project export, import and read the tenant (`ppp connect`, `export`, `import`, `tenant`), create the first solution with its publisher (`ppp import --create`), add members to the transfer solution (`ppp members`) and move the exported version into a test environment (`ppp connect --target`, `ppp import --environment`), inventory flows, check flows before packing (`ppp verify`, checks C1–C14), check screen YAML before "paste code" (`ppp canvas`), convert App.Formulas to de-DE, simulate flows, create project files from templates, record usage. `ppp --help` lists every command.
+- **Command line `ppp`** (Python standard library only; `ppp --help` lists every command with its options):
+
+  | Task | Commands |
+  |---|---|
+  | Solution offline | `unpack`, `inventory`, `verify` (checks C1–C14), `pack` |
+  | Connected project | `connect`, `export`, `import`, `tenant`, `members`, `runs` |
+  | Checks per module | `canvas` (screen YAML before "paste code"), `pbi` (Power BI as PBIP: `list`, `check`), `schema` (SharePoint lists), `formulas` (App.Formulas to de-DE) |
+  | Generators and tests | `run` (project scripts with the central building blocks and the flow simulator `wdl_sim`), `setupflow` |
+  | Project files | `init`, `new`, `check`, `migrate`, `archive`, `tidy`, `mail` (read an Outlook `.msg`) |
+  | Storage | `storage`, `backup`, `restore` |
+  | Across projects | `projects` (register of this computer), `catalog` (building blocks that proved themselves), `team` (shared team folder) |
+  | Documents | `walk` (app walk in Edge), `guide` (Word handbook, quick guide, exercise sheet, training deck) |
+  | Computer | `setup`, `settings`, `usage`, `sessions` |
+
 - **Hooks** for session start, turn end and compaction; they run only in ppp projects and never block. One more refuses a direct call of `pac` in a connected project, so that the tenant is reached through `ppp` and its checks only.
+
+## The optional plugins
+ppp never assumes that one of them is enabled. Before it relies on one, the agent checks whether its skill is in the skill list of the session, and asks you on a card if it is not.
+
+### bi-design: the corporate design
+[bi-design/README.md](bi-design/README.md)
+- **Skill `bi-designer`**: the brand for everything visual: colours as tokens with roles and allowed contrast pairs, fonts, logo and icon rules, and recipes for Power Apps, Power BI, PowerPoint, Word, Excel, charts, web, HTML mail and Teams cards.
+- **Agent and skill `bi-ppt`**, generator **`bippt`**: PowerPoint decks in the BI master, built from a specification, with slides copied from the BI Slide Library; new versions of existing decks, conversion of foreign decks, brand check and render for review. Skill `bi-inhalt` works out the content of a deck in a dialogue first.
+- **What ppp takes from it**: the theme of a canvas app, the look of a click prototype, the theme of a Power BI report, the Word template of the handbook, and the training deck per role (`ppp guide --kind deck` calls `bippt`).
+- Until 2.13.0 bi-design had a repository of its own (`portolasas/bi-design`, now archived). If you installed it from there, see "Moving from the former bi-design repository" below.
+
+### bi-deneb: custom visuals for Power BI
+[bi-deneb/README.md](bi-deneb/README.md)
+- Builds a Deneb visual (Vega-Lite or Vega) from a brief: 17 types such as bullet, dumbbell, waterfall, timeline, box plot, and `custom` for a hand-written specification.
+- Renders it locally with invented rows in three sizes, checks fields, Deneb rules, brand colours, contrast and overlapping text, and embeds it into the report (PBIR). It reads metadata of the model only, never row data.
+- The local render proves the picture, not the data: a visual counts as done when you have opened it in Power BI Desktop.
+
+### Power BI reports: brand design and standard visuals first
+Two rules of the skill `ppp-power-bi` hold with or without the optional plugins:
+1. **Every report is built in the brand design.** It carries the brand theme of `bi-designer`; `ppp pbi check` reports a report without a custom theme (R10). Without bi-design the agent asks before a page is designed; a neutral look is your decision, never the silent default.
+2. **Standard visuals first.** A page is built from the standard visuals of Power BI. A custom visual (Deneb) stands only where a named requirement cannot be met by a standard visual; the README of the module records the requirement, and `ppp pbi check` names the Deneb visuals of a report (R11).
 
 ## Requirements
 - VS Code with GitHub Copilot and agent plugins enabled, or Claude Code.
@@ -23,13 +68,27 @@ A project can be **connected** to one environment (`ppp connect`). Then the agen
 - git. Each project chooses its storage at intake: a private GitHub repository, or a local folder without any server (git without a remote, backed up on request with `ppp backup` into a folder you choose, restored with `ppp restore`). Bitbucket is prepared.
 - In VS Code a model that follows the agent text: GPT-6.1 Sol for building, Claude Opus 5.5 for clarification, planning and diagnosis. Not GPT-6 Luna. GPT models with the small context size (272k) in the model picker: the long context costs double above 272k; Claude models cost the same in both.
 
+Optional, only for the feature named:
+
+| Package or program | For |
+|---|---|
+| `playwright` and an installed Microsoft Edge | `ppp walk` (app walk); `ppp walk --video` uses the ffmpeg of playwright |
+| `python-docx` | `ppp guide` (Word handbook, quick guide, exercise sheet) |
+| Microsoft Word | `ppp guide --word` (update table of contents and fields) |
+| plugin bi-design with its packages (`bippt einrichten`: python-pptx and others, `pip --user`) | `ppp guide --kind deck`, agent `bi-ppt` |
+| PowerPoint | render of a deck for review (bi-design) |
+| `vl-convert-python`, Pillow (`bideneb setup`, `pip --user`) | local render of bi-deneb; without them only its static rules run |
+| Power BI Desktop | opening a report (PBIP) and proving a visual |
+
+ppp itself is called with `python -I`; `bippt` and `bideneb` without `-I`, because it hides the packages of `pip --user`.
+
 ## Quick start
 
 ### 1. Install
 **VS Code.** No JSON editing and no install script:
 1. Add the marketplace: open the Settings, search for `chat.plugins.marketplaces`, choose "Add Item" and enter `portolasas/ppp-plugin`. Or in the Agents view: Customizations › Browse › Configure Marketplaces › Add Marketplace.
-2. Install **ppp** from the marketplace (Customizations › Browse, or the Extensions view under Agent Plugins) and confirm the trust prompt.
-3. Run "Developer: Reload Window" and choose the agent **ppp** once in the agent picker; it stays chosen.
+2. Install **ppp** from the marketplace (Customizations › Browse, or the Extensions view under Agent Plugins) and confirm the trust prompt. Install **bi-design** and **bi-deneb** the same way if you want them.
+3. Run "Developer: Reload Window" and choose the agent **ppp** once in the agent picker; it stays chosen. With the optional plugins the picker also shows `bi-ppt` and `bi-deneb`; in a ppp project you stay with `ppp`, which loads their skills itself.
 
 If ppp does not appear, check that agent plugins are on (`chat.plugins.enabled`).
 
@@ -38,31 +97,41 @@ If ppp does not appear, check that agent plugins are on (`chat.plugins.enabled`)
 /plugin marketplace add portolasas/ppp-plugin
 /plugin install ppp@ppp
 ```
+Optional:
+```
+/plugin install bi-design@ppp
+/plugin install bi-deneb@ppp
+```
 Then start a new session.
+
+**Moving from the former bi-design repository.** If bi-design is installed from `portolasas/bi-design` (up to 2.13.0), remove that installation once, otherwise the agent `bi-ppt` and the skills appear twice and the old copy gets no new versions. VS Code: uninstall that plugin and delete `portolasas/bi-design` from `chat.plugins.marketplaces`. Claude Code: `/plugin uninstall bi-design@bi-design`, then `/plugin marketplace remove bi-design`. Then install bi-design from this marketplace. Your settings in `~/.bi-design/config.json` stay.
+
+`ppp setup` prints these entries for your computer and removes an agent copy of ppp versions before 0.2.0.
 
 ### 2. Start a project
 Open a folder for the project and tell the agent what you want, for example:
 - "New solution: an app to request training slots, with an approval flow."
 - "Take over the existing solution; the export is in `exchange/`."
 
-The agent asks name, prefix, modules, mode (small, medium, large) and handbook language on one card and creates the project with `ppp init`. For an existing solution it unpacks the export, inventories every flow and drafts the specs.
+The agent asks name, prefix, modules, mode (small, medium, large), storage and handbook language on one card and creates the project with `ppp init`. For an existing solution it unpacks the export, inventories every flow and drafts the specs.
 
 ### 3. Work in packages
-1. **Clarify** the requirements in card rounds (`specs/`, `decisions/`), optionally with a click prototype.
+1. **Clarify** the requirements in card rounds (`specs/`, `decisions/`), optionally with a click prototype. The agent looks into the catalog of building blocks that proved themselves in your other projects.
 2. **Plan** packages in `ROADMAP.md`.
-3. **Build** each package in `changes/NNN-name/`: you confirm the proposal, the agent builds and checks offline, packs the solution into `exchange/`, you import it and test the critical scenarios on cards. App screens reach Power Apps Studio by "paste code".
-4. **Go live**: full test, move to test and production, hypercare.
+3. **Build** each package in `changes/NNN-name/`: you confirm the proposal, the agent builds and checks offline, packs the solution into `exchange/`, you import it (or the agent does, in a connected project) and test the critical scenarios on cards. App screens reach Power Apps Studio by "paste code".
+4. **Document**: an app walk in Edge takes the pictures, and `ppp guide` builds handbook, quick guide and exercise sheet per role in Word from one Markdown text, and with bi-design a training deck per role.
+5. **Go live**: full test, move to test and production, hypercare.
 
 After a break the agent continues from `STATE.md`.
 
 ### 4. Updates
-VS Code fetches new versions itself (with `extensions.autoUpdate`, about every 24 hours); reload the window afterwards. In Claude Code:
+VS Code fetches new versions itself (with `extensions.autoUpdate`, about every 24 hours); reload the window afterwards. In Claude Code, for each plugin you installed:
 ```
 /plugin marketplace update ppp
 /plugin uninstall ppp@ppp
 /plugin install ppp@ppp
 ```
-What changed is in [CHANGELOG.md](CHANGELOG.md).
+What changed is in [CHANGELOG.md](CHANGELOG.md); the optional plugins list their own changes in [bi-design/CHANGELOG.md](bi-design/CHANGELOG.md) and [bi-deneb/CHANGELOG.md](bi-deneb/CHANGELOG.md).
 
 ## Project layout
 ```
@@ -73,14 +142,27 @@ ROADMAP.md            all packages with goal and status
 specs/, decisions/    confirmed requirements and decisions
 changes/NNN-name/     one folder per package (proposal, tasks); finished ones in changes/archive/
 solution/<Name>/      working copy of the solution (pac unpack format)
-components/<module>/  inventory, screens, list schema, flow documents, generators
+components/<module>/  inventory, screens, list schema, flow documents, generators, the report as PBIP
+environments/         connected projects: address, role and use of each environment
 exchange/             exports in, packages out (in git only with exchange git in project.json)
 inputs/, docs/, ...   material as handed over; handbook and training; created when needed
 ```
 
+## Across projects
+- `ppp projects` lists the ppp projects of this computer.
+- `ppp catalog` lists the building blocks that proved themselves in your other projects; only you call something proven, on a card.
+- `ppp team share` shares a project with a team folder you set (`ppp settings --team <folder> --person <name>`): who works on it and what proved itself; a local project then backs up there.
+
 ## Data
-ppp keeps everything in your project folder and its git repository. Exports can contain personal data and tenant details; keep project repositories private, or choose the local folder, which stores no project data on GitHub. Backups of a local project go only to the folder you set (`ppp settings --backup <folder>`). The plugin itself holds no tenant, personal or customer data. Session logs leave the computer only when you ask for an upload, only to the repository you name (`ppp settings --sessions <clone>`), and only for projects on GitHub; keep it private.
+ppp keeps everything in your project folder and its git repository. Exports can contain personal data and tenant details; keep project repositories private, or choose the local folder, which stores no project data on GitHub. Backups of a local project go only to the folder you set (`ppp settings --backup <folder>`). In Power BI projects the agent reads metadata only: no row data, no exports of data, no `.pbi/cache.abf`. Session logs leave the computer only when you ask for an upload, only to the repository you name (`ppp settings --sessions <clone>`), and only for projects on GitHub; keep it private.
+
+The plugins hold no tenant, personal or customer data. bi-design and bi-deneb contain brand material of Boehringer Ingelheim (colours, the PowerPoint and Word templates with their embedded fonts, the slide library); it is not under the licences named in THIRD_PARTY.md.
+
+## What is not proven yet
+- Installing bi-design and bi-deneb from this marketplace was not yet tried in VS Code and Claude Code; they lie in subfolders of the repository (`./bi-design`, `./bi-deneb`).
+- No visual generated by `bideneb` has been opened in Power BI Desktop so far.
 
 ## More
 - [CHANGELOG.md](CHANGELOG.md): versions and changes.
 - [THIRD_PARTY.md](THIRD_PARTY.md): adopted templates, their licences, and the icon.
+- [bi-design/README.md](bi-design/README.md), [bi-deneb/README.md](bi-deneb/README.md): the optional plugins.
