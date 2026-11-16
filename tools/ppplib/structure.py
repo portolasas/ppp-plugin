@@ -275,7 +275,7 @@ def _environments(root: Path, config: dict, rep: Report) -> None:
             rep.info(f"S connected project: environment {alias}, role {data.get('role') or 'not set yet'}"
                      + (", in productive use" if data["inUse"] else "")
                      + f"; card before each import: {'always' if confirm else 'only on a deviation in the tenant'}. Never call pac "
-                       "against the tenant yourself: only ppp connect, export, import and tenant reach it.")
+                       "against the tenant yourself: only ppp connect, export, import, tenant, runs and members reach it.")
 
 
 def _numbered(entries: list[str], where: str, rep: Report, suffix: str = "") -> None:
@@ -316,17 +316,27 @@ def _empty_tree(path: Path) -> int | None:
     return folders
 
 
+def package_leftovers(root: Path) -> list[Path]:
+    """Folders in changes/ that hold no file. Git tracks no empty folder: where a pull archived a package, an empty
+    subfolder of it stays behind under the old name. Such a folder is no package."""
+    changes = root / "changes"
+    if not changes.is_dir():
+        return []
+    return [p for p in sorted(changes.iterdir())
+            if p.is_dir() and p.name != "archive" and not p.name.startswith(".") and _empty_tree(p) is not None]
+
+
 def remove_leftovers(root: Path, dry_run: bool = False) -> list[str]:
-    """Remove local leftover trees outside git that hold no files; GEN-20261025-WIN-01."""
+    """Remove local leftover trees outside git that hold no files (GEN-20261025-WIN-01), and the folders in changes/
+    without files."""
     removed, kept = [], []
-    for p, local in _outside(root):
-        if not (local and p.is_dir()):
-            continue
+    trees = [(p, p.name + "/") for p, local in _outside(root) if local and p.is_dir()]
+    for p, label in trees + [(p, f"changes/{p.name}/") for p in package_leftovers(root)]:
         count = _empty_tree(p)
         if count is None:
-            kept.append(p.name + "/")
+            kept.append(label)
             continue
-        removed.append(f"{p.name}/ ({count} folders)")
+        removed.append(f"{label} ({count} folders)")
         if dry_run:
             continue
         for top, _, _ in os.walk(p, topdown=False):
@@ -454,7 +464,11 @@ def check(root: Path, *notes: str | None, settings_publisher: str | None = None)
     # changes/, decisions/, specs/
     changes = root / "changes"
     if changes.is_dir():
-        entries = [p.name for p in changes.iterdir() if not p.name.startswith(".") and p.name != "archive"]
+        leftovers = {p.name for p in package_leftovers(root)}
+        for name in sorted(leftovers):
+            rep.warn(f"S changes/{name}/: a leftover without files, no package (a pull that archived the package leaves it); "
+                     "ppp tidy --leftovers removes it")
+        entries = [p.name for p in changes.iterdir() if not p.name.startswith(".") and p.name != "archive" and p.name not in leftovers]
         archived = [p.name for p in (changes / "archive").iterdir() if not p.name.startswith(".")] if (changes / "archive").is_dir() else []
         _numbered(entries + archived, "changes", rep)
         for name in entries + archived:

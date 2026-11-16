@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 from xml.etree import ElementTree
@@ -136,7 +137,45 @@ def read_publisher(source: Path) -> dict | None:
     return publisher_of(path.read_bytes())
 
 
+ZIP_WAIT = 20.0     # seconds a file may stay held by another process before ppp gives up
+ZIP_HELD = re.compile(r"being used by another process|sharing violation|von einem anderen Prozess verwendet", re.I)
+SHARING = (32, 33)  # Windows: ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION
+
+
+class ZipHeld(ToolError):
+    """A file another process still holds after ZIP_WAIT seconds. Its own kind, so that a caller that skips unreadable
+    ZIPs does not skip a held one and take an older package instead."""
+
+
+def _held(path: Path, why: str) -> ZipHeld:
+    step = "once it is free, run the same command again"
+    if path.suffix.lower() == ".zip" and not path.name.upper().endswith("_IMPORTABLE.ZIP"):    # an export, not a package
+        step += f"; after ppp export, ppp unpack {path.name} takes this ZIP. No second export for it, no --force"
+    return ZipHeld(f"{path.name} is held by another process for more than {int(ZIP_WAIT)} seconds ({why}). The file is there "
+                   f"and complete: {step}.")
+
+
+def wait_for_zip(path: Path) -> None:
+    """Wait until a file can be read, a ZIP or the settings file of an import. Right after an export another process may
+    hold it for some seconds, a sync client or a scanner (SOL-20261115-WIN-01): ppp tries for ZIP_WAIT seconds before it
+    names the lock. Only a lock is waited for (Windows names it as a sharing violation): a missing right or a folder of
+    that name is raised at once, as before. A missing file is the caller's to name."""
+    deadline = time.monotonic() + ZIP_WAIT
+    while path.exists():
+        try:
+            with path.open("rb") as f:
+                f.read(1)
+            return
+        except PermissionError as ex:
+            if getattr(ex, "winerror", None) not in SHARING:
+                raise
+            if time.monotonic() >= deadline:
+                raise _held(path, ex.strerror or "access denied") from ex
+            time.sleep(1)
+
+
 def zip_manifest(path: Path) -> dict:
+    wait_for_zip(path)
     with zipfile.ZipFile(path) as z:
         name = next((n for n in z.namelist() if n.lower() == "solution.xml"), None)
         if not name:
@@ -145,6 +184,7 @@ def zip_manifest(path: Path) -> dict:
 
 
 def sha256(path: Path) -> str:
+    wait_for_zip(path)
     h = hashlib.sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -205,11 +245,24 @@ def unpack(zip_path: Path, target: Path) -> None:
     """Replace target with the content of the export; deleted components disappear.
     pac unpacks into a temporary folder first, so a failing pac leaves target as it was."""
     pac()
+    wait_for_zip(zip_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     temp = Path(tempfile.mkdtemp(prefix=f".{target.name}-", dir=target.parent))
     try:
         fresh = temp / target.name
-        run_pac("solution", "unpack", "--zipfile", str(zip_path), "--folder", str(fresh), "--packagetype", "Unmanaged")
+        deadline = time.monotonic() + ZIP_WAIT
+        while True:     # pac opens the ZIP itself: the lock may come back between the check above and its call
+            try:
+                run_pac("solution", "unpack", "--zipfile", str(zip_path), "--folder", str(fresh), "--packagetype", "Unmanaged")
+                break
+            except ToolError as ex:
+                if not (ZIP_HELD.search(str(ex)) and zip_path.name.lower() in str(ex).lower()):
+                    raise       # pac failed otherwise, or it names another file as held
+                if time.monotonic() >= deadline:
+                    raise _held(zip_path, "pac could not open it") from ex
+                if fresh.exists():
+                    remove_tree(fresh)
+                time.sleep(2)
         if target.exists():
             try:
                 remove_tree(target)

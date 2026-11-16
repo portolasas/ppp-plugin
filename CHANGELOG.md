@@ -2,6 +2,26 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.26.1 (2026-11-16)
+- Korrekturen nach der unabhängigen Prüfung von 0.26.0 – ppp runs: der Server filtert nach den Flows des Projekts, jede Kennung in Klein- und Großschreibung (eine leere Antwort wird ohne diesen Filter für höchstens 24 Stunden wiederholt), jede abgefragte Spalte ist als gefüllt verlangt, ein Fehlertext ohne JSON über mehrere Zeilen wird zusammengefügt oder als nicht lesbar benannt, statt den Aufruf für alle Flows scheitern zu lassen; eine Partition, die mit einem Buchstaben beginnt, gilt nicht als Fehlercode
+- Gehaltene Datei: gewartet wird nur bei einer Sperre (Windows: Sharing Violation), ein fehlendes Recht wird sofort gemeldet; ein gehaltenes Paket wird nicht zugunsten eines älteren übersprungen; die Meldung nennt ppp unpack nur für einen Export, nicht für ein Paket; pacs Entpacken wird nur wiederholt, wenn pac diese ZIP als gehalten nennt
+- ppp connect: die Standardumgebung wird auch unter einem Alias ohne Datei nicht still genommen; bei einer benannten Umgebung wird die Rolle verlangt, bevor ppp den Tenant nach den Solutions fragt
+- ppp import: die Warnung heißt no longer on after the import, weil sie auch einen Flow nennt, den der Tenant nicht mehr zeigt
+- wdl_sim: parseDateTime weist Monats- und Tagesnamen als nicht nachgebildet ab und liest ein zweistelliges Jahr wie .NET bis 2049
+- Skill-Texte: structure.md sagt, dass Terminate die letzte Aktion nach dem Schreiben des Protokolls ist und seine Meldung aus einem Filter über result('Try') kommt; ppp-diagnose, expressions.md und ppp-sessions gekürzt; ppp tidy --leftovers nennt in der Hilfe die leeren Ordner in changes/
+
+## 0.26.0 (2026-11-16)
+- ppp runs [<Flow>] [--hours N] [--failed] liest die Läufe der Flows des Projekts aus dem Tenant: Start (UTC), Status, Fehlercode und Fehlertext; nur lesend über pac env fetch (VERBUNDEN VB-21). Die Tabelle kennt den Lauf, nicht seine Aktionen; ppp-diagnose und ppp-package lesen die Läufe, bevor eine Karte danach fragt
+- ppp-power-automate structure.md: ein Catch, der den Flow beenden darf, endet mit Terminate (Failed) samt Name und Fehler der gescheiterten Aktion aus result('Try'); ppp runs liest diesen Text
+- ppp import: ein Flow, der nach dem Import an ist, ist keine Warnung mehr (Zeile On since this import); gewarnt wird nur, wenn der Import einen Flow ausgeschaltet hat
+- ppp connect ohne Namen schreibt nichts, wenn in der Standardumgebung keine Solution des Projekts liegt, und verlangt den Namen der Umgebung auf einer Karte
+- ppp check warnt bei einem Ordner in changes/ ohne Dateien, statt zu scheitern; ppp tidy --leftovers entfernt ihn
+- Eine ZIP, die ein anderer Prozess hält, wird 20 Sekunden lang erneut gelesen (unpack, Paketprüfung, SHA-256); danach nennt die Meldung den Schritt (SOL-20261115-WIN-01)
+- ppp setupflow schreibt Daten der Definition, die mit @ beginnen, als @@ in den Flow; expressions.md nennt die Regel (PA-20261115-WIN-01)
+- wdl_sim: Switch, convertTimeZone, startOfMonth, dayOfMonth, isInt, parseDateTime, mod und SharePoint-Schreibzugriffe mit nometadata-Body; result() nennt zu einer gescheiterten Aktion die Antwort des Connectors oder den Fehler des Ausdrucks; ein unmögliches Datum ist ein Fehler des Flows (PA-20261115-WIN-02)
+- ppp-power-automate teams-outlook.md: ListToDosByFolderV2 von Microsoft To Do liefert ein blankes Array, Seitenumbruch darauf scheitert, Vorgabe 10 Einträge (PA-20261115-WIN-03)
+- ppp-sessions: ppp sessions ist der erste Aufruf, ohne Trockenlauf davor
+
 ## 0.25.0 (2026-11-14)
 - Ebene über den Projekten (entwurf/HOME.md): ppp projects führt das Register der Projekte dieses Rechners, ppp catalog den Katalog bewährter Bausteine (proven in project.json), ppp settings --team --person, ppp team share und ppp projects --team den Team-Ordner; ppp-clarify fragt den Katalog ab
 - ppp new package nimmt die Nummer der geplanten ROADMAP-Zeile mit dem Namen des Pakets, sonst die nächste freie (GEN-20261110-MAC-01)

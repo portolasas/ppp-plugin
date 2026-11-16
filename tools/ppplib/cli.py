@@ -624,6 +624,11 @@ def cmd_members(a) -> int:
     return members.run(find_root(a.project), a.names)
 
 
+def cmd_runs(a) -> int:
+    from . import runs
+    return runs.run(find_root(a.project), a.flows, a.hours, a.failed, a.environment)
+
+
 def cmd_storage(a) -> int:
     root = find_root(a.project)
     lines = storage.switch(root, a.kind, a.remote or None) if a.kind or not a.exchange else []
@@ -949,6 +954,16 @@ def build_parser() -> argparse.ArgumentParser:
                    help="components of solution/<main>/ to add: a flow by its name, a variable by its schema name, a reference "
                         "by its logical name, regardless of case (default: list the members)")
 
+    c = command("runs", cmd_runs, "Connected projects: the runs of the project's flows as the tenant recorded them: start "
+                                  "(UTC), status, and code and error text of a failed run. It knows the run, not its "
+                                  "actions; a run shows up 3 to 5 minutes after its start. Reads only.", False)
+    c.add_argument("flows", nargs="*", default=[], metavar="FLOW",
+                   help="name of a flow or a part of it, regardless of case (default: every flow in solution/)")
+    c.add_argument("--hours", type=int, default=24, help="how far back (default 24, at most 672: the table keeps 28 days)")
+    c.add_argument("--failed", action="store_true", help="only runs that did not succeed")
+    c.add_argument("--environment", default="", metavar="TARGET",
+                   help="the environment of environments/<target>.json instead, a move target")
+
     c = command("canvas", cmd_canvas, "Check screen YAML before pasting: formulas, en-US, control versions, containers, delegation.", False)
     c.add_argument("path", nargs="?", default="", help="folder or .pa.yaml (default: components/power-apps/screens)")
     c.add_argument("--versions", default="", help="file with Type@Version entries (default: the project's generator/versionen.py, "
@@ -1131,8 +1146,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--keep", nargs="+", default=None, metavar="ZIP",
                    help="packages to archive (default: the newest of the transfer solution, else of the main solution)")
     c.add_argument("--leftovers", action="store_true",
-                   help="instead: remove local leftover folders outside git and the structure that hold no files "
-                        "(read-only ones too, links never followed); folders with files are only listed")
+                   help="instead: remove local leftover folders that hold no files, outside git and the structure and in "
+                        "changes/ (read-only ones too, links never followed); folders with files are only listed")
     c.add_argument("--dry-run", action="store_true", help="show the plan only")
 
     c = sub.add_parser("usage", help="Usage per session from the session logs of Copilot and Claude Code (for evaluation).",
@@ -1193,7 +1208,7 @@ def main(argv: list[str] | None = None) -> int:
             pass
     args = build_parser().parse_args(argv)
     try:
-        if args.func in (cmd_connect, cmd_export, cmd_import, cmd_tenant, cmd_members):
+        if args.func in (cmd_connect, cmd_export, cmd_import, cmd_tenant, cmd_members, cmd_runs):
             root = _project_or_none(getattr(args, "project", None))
             if root is not None:        # one call at a time against the tenant (projectlock)
                 from . import projectlock

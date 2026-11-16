@@ -1,8 +1,8 @@
 """Small simulator for Power Automate flows from a solution export (local only, no tenant).
 
 Central building block of ppp (origin: project ReiRue, extended in ASUM and Orga-Otto). Covers common action types and
-WDL functions and a SharePoint replica for "Send an HTTP request to SharePoint" (REST, odata=verbose or nometadata) with
-a schema check from the list definition (default `components/sharepoint/schema.json` of the project).
+WDL functions and a SharePoint replica for "Send an HTTP request to SharePoint" (REST, odata=verbose or nometadata, for
+the answer and for the body of a write) with a schema check from the list definition (default `components/sharepoint/schema.json` of the project).
 Project folder = environment variable PPP_PROJEKT (set by `ppp run`), otherwise the current folder. A missing function
 raises WdlFehler, a missing action type or connector AssertionError: add it here, not in a project copy.
 Export format: runAfter states in both spellings (new designer `SUCCEEDED`, older exports `Succeeded`, often mixed in one
@@ -11,7 +11,7 @@ Strict on purpose: function arguments are evaluated completely as in Logic Apps 
 `x['a']` on null and property access on text are errors; a reference to an action that has not run yet is an error
 (the designer would reject it, PA-20261012-MAC-01).
 Limits: parallel branches run one after the other; Scope/If/Foreach are Failed as soon as a direct child failed (Logic
-Apps evaluates more finely; a flow must not rely on either variant). Not simulated: Switch, child flows, and every
+Apps evaluates more finely; a flow must not rely on either variant). Not simulated: child flows, and every
 connector a test does not give a replica (Get items, Create item, AI Builder …). `Site` replicates list and field
 administration for setup flows.
 The built-in HTTP action calls `Lauf.http`, a function (methode, uri, kopf, body) -> (code, body) the test sets; other
@@ -19,7 +19,10 @@ connectors answer through `Lauf.connectoren[(api, operationId)]`, a function (pa
 "Send an email (V2)" is there already and collects its parameters in `Lauf.mails`.
 Assumed from the documentation, not confirmed in a tenant (PA-20261110-MAC-01): `Until` goes on after a failed
 iteration, and its last iteration decides its status; custom date formats of yyyy MM dd HH mm ss with literal
-characters; `sort()` in ordinal order; `convertToUtc` refuses a time with Z. Time zones come from the table ZEITZONEN,
+characters; `sort()` in ordinal order; `convertToUtc` refuses a time with Z; `Switch` takes the case that equals the
+value exactly, upper and lower case included; `result()` answers for a condition and a Switch as for a scope;
+`parseDateTime` reads a custom format of yyyy yy MM M dd d HH H mm ss only and answers without zone; the limits a Parse JSON schema may name beyond type and required (enum, minimum, maxItems)
+are not checked, because it is not documented which of them the platform enforces (PA-20261115-WIN-02). Time zones come from the table ZEITZONEN,
 so that the block needs no tzdata package (Python under Windows has none).
 
 The API (names, messages) stays German so that project generators and tests switch over by changing paths only (Ü-8).
@@ -28,6 +31,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import http
 import json
 import os
 import re
@@ -138,7 +142,10 @@ def zeit(s):
         raise WdlFehler(f"kein ISO-Zeitstempel: {s!r}")
     y, mo, d, h, mi, se = (int(m.group(k)) for k in range(1, 7))
     frac = int((m.group(7) or ".0")[1:].ljust(7, "0")[:7])
-    dt = datetime(y, mo, d, h, mi, se, tzinfo=timezone.utc)
+    try:
+        dt = datetime(y, mo, d, h, mi, se, tzinfo=timezone.utc)
+    except ValueError:      # 31 February: an error of the flow, not of the test
+        raise WdlFehler(f"kein gültiger Zeitpunkt: {s!r}") from None
     if m.group(8) and m.group(8) != "Z":
         sign = 1 if m.group(8)[0] == "+" else -1
         hh, mm = int(m.group(8)[1:3]), int(m.group(8)[4:6])
@@ -249,6 +256,49 @@ def _add_zeit(name, einheit):
         return _format(_moment(ts) + timedelta(**{einheit: num(n, name)}), fmt, True)
 
     return f
+
+
+PARSE_TEILE = {"yyyy": "%Y", "yy": "%y", "MM": "%m", "M": "%m", "dd": "%d", "d": "%d", "HH": "%H", "H": "%H", "mm": "%M",
+               "ss": "%S", "T": "T", "Z": "Z"}
+
+
+def _parse_date_time(kx, text, locale=None, fmt=None):
+    """parseDateTime with a custom format: the moment without zone, as the documentation shows it."""
+    if not isinstance(text, str):
+        raise WdlFehler(f"parseDateTime() erwartet Text, gefunden {text!r}")
+    if not fmt:
+        raise AssertionError("parseDateTime ohne Format nicht nachgebildet (das Format als drittes Argument nennen)")
+    py = ""
+    for teil in re.finditer(r"([A-Za-z])\1*|[^A-Za-z]", fmt):  # a run of one letter is one part: MMM is not MM and M
+        wort = teil.group()
+        if wort[0].isalpha() and wort not in PARSE_TEILE:
+            raise AssertionError(f"Datumsformat {fmt!r} nicht nachgebildet ({wort})")
+        py += PARSE_TEILE.get(wort, wort.replace("%", "%%"))
+    try:
+        dt = datetime.strptime(text, py)
+    except ValueError:
+        raise WdlFehler(f"parseDateTime(): {text!r} passt nicht zum Format {fmt!r}") from None
+    if "%y" in py and dt.year >= 2050:      # .NET reads a year of two digits up to 2049, Python up to 2068
+        dt = dt.replace(year=dt.year - 100)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.0000000")
+
+
+def _convert_time_zone(kx, ts, quelle, ziel, fmt=None):
+    utc = ts if quelle == "UTC" else _convert_to_utc(kx, ts, quelle)
+    return _convert_from_utc(kx, utc, ziel, fmt)
+
+
+def _start_of_month(kx, ts, fmt=None):
+    return _format(_moment(ts).replace(day=1, hour=0, minute=0, second=0, microsecond=0), fmt, ts.endswith("Z"))
+
+
+def _mod(kx, a, b):
+    """The remainder with the sign of the dividend, as .NET computes it."""
+    a, b = num(a, "mod"), num(b, "mod")
+    if b == 0:
+        raise WdlFehler("mod(): Division durch 0")
+    rest = abs(a) % abs(b)
+    return -rest if a < 0 else rest
 
 
 def _is_float(kx, s, locale=None):
@@ -646,6 +696,12 @@ FUNKTIONEN = {
     "convertToUtc": _convert_to_utc,
     "formatDateTime": lambda kx, ts, fmt=None, locale=None: _format(_moment(ts), fmt, ts.endswith("Z")),
     "dayOfWeek": lambda kx, ts: (_moment(ts).weekday() + 1) % 7,
+    "dayOfMonth": lambda kx, ts: _moment(ts).day,
+    "startOfMonth": _start_of_month,
+    "convertTimeZone": _convert_time_zone,
+    "parseDateTime": _parse_date_time,
+    "mod": _mod,
+    "isInt": lambda kx, s: isinstance(s, str) and re.fullmatch(r"\s*[+-]?\d+\s*", s) is not None,
     "isFloat": _is_float,
     "sort": _sort,
     "workflow": lambda kx: {"run": {"name": kx.sim.lauf}},
@@ -905,7 +961,8 @@ class SharePoint:
             return 200, {"d": {"results": werte_}} if verbose else {"value": werte_}
         if methode != "POST":
             return 400, {"error": "Methode"}
-        if str(kopf.get("content-type", "")).replace(" ", "").lower() != "application/json;odata=verbose":
+        inhalt = str(kopf.get("content-type", "")).replace(" ", "").lower()
+        if inhalt not in ("application/json;odata=verbose", "application/json;odata=nometadata"):
             return 400, {"error": "Content-Type fehlt"}
         try:
             b = json.loads(body) if isinstance(body, str) else None
@@ -913,6 +970,10 @@ class SharePoint:
             return 400, {"error": "Invalid JSON"}
         if not isinstance(b, dict):
             return 400, {"error": "Body muss JSON-Text sein"}
+        if inhalt.endswith("nometadata"):   # a body without __metadata: the list gives the type
+            if "__metadata" in b:
+                return 400, {"error": "__metadata in einem Body mit odata=nometadata"}
+            b = {"__metadata": {"type": self.schema[liste]["typ"]}, **b}
         fehler = self._pruefe(liste, b)
         if fehler:
             return fehler[0], {"error": fehler[1]}
@@ -1086,8 +1147,24 @@ class Lauf:
         return out
 
     def result(self, name):
+        """The direct children of a scope as result() names them: name and status, and for a failed one what failed, the
+        answer of a connector (code, outputs) or the error of an expression (error). The platform adds inputs, times and
+        tracking IDs; a Catch that logs string(result('Try')) finds the error text in both."""
         self.assert_visible(name)
-        return [{"name": n, "status": s} for n, s in self.scopes.get(name, [])]
+        rows = []
+        for n, s in self.scopes.get(name, []):
+            row, fehler = {"name": n, "status": s}, self.fehler.get(n)
+            if isinstance(fehler, tuple):
+                code, body = fehler
+                try:
+                    row["code"] = http.HTTPStatus(code).phrase.replace(" ", "")
+                except ValueError:
+                    row["code"] = str(code)
+                row["outputs"] = {"statusCode": code, "body": body}
+            elif fehler is not None:
+                row["error"] = {"message": str(fehler)}
+            rows.append(row)
+        return rows
 
     def assert_visible(self, name):
         """Only actions that have run (or were skipped) can be referenced (origin: Orga-Otto)."""
@@ -1242,6 +1319,18 @@ class Lauf:
                     self.status[name] = "Skipped"
                     self._skip_children(child)
                 res = self.ebene(zweig, kx)
+                st = "Failed" if "Failed" in res.values() else "Succeeded"
+                self.scopes[n] = list(res.items())
+            elif typ == "Switch":
+                wert = werte(a["expression"], kx)
+                zweige = list((a.get("cases") or {}).values())
+                treffer = next((c for c in zweige if gleich(c.get("case"), wert)), None) or a.get("default") or {}
+                for c in zweige + [a.get("default") or {}]:
+                    if c is not treffer:    # a case not taken is Skipped, like the branch of a condition
+                        for name, child in (c.get("actions") or {}).items():
+                            self.status[name] = "Skipped"
+                            self._skip_children(child)
+                res = self.ebene(treffer.get("actions") or {}, kx)
                 st = "Failed" if "Failed" in res.values() else "Succeeded"
                 self.scopes[n] = list(res.items())
             elif typ == "Scope":

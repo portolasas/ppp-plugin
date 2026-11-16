@@ -16,7 +16,7 @@ import zipfile
 from pathlib import Path
 
 from .project import ToolError, load_config, package_solution
-from .solution import zip_manifest
+from .solution import ZipHeld, zip_manifest
 
 UNTOUCHED = ("archive", "tenant")
 PACKAGE = re.compile(r"^(?P<stem>.+)_IMPORTABLE\.zip$", re.I)
@@ -70,6 +70,8 @@ def tidy(root: Path, keep: list[str] | None = None, dry_run: bool = False) -> li
             continue
         try:
             info = zip_manifest(p)
+        except ZipHeld:
+            raise       # a held ZIP is no foreign file: the same command again once it is free
         except (ToolError, zipfile.BadZipFile, OSError):
             other.append(p)
             continue

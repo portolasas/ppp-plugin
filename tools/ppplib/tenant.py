@@ -330,10 +330,12 @@ def query(entity: str, columns: list[str], *conditions: str, more: str = "") -> 
             + ("<filter>" + "".join(conditions) + "</filter>" if conditions else "") + more + "</entity></fetch>")
 
 
-def fetch(url: str, xml: str) -> list[str]:
+def fetch(url: str, xml: str, key_first: bool = False) -> list[str]:
     """The rows of a query: pac appends the key of the row, so a row with an ID is a row. A value over several lines
     (JSON, a text with line breaks: pac test round 3, F2) goes on in lines that begin with a blank, "}" or "]"; they
-    belong to the row before, joined by a line break, so its first line is not lost (review 14.11.)."""
+    belong to the row before, joined by a line break, so its first line is not lost (review 14.11.). key_first: the
+    table puts the key of the row first (flowrun, round 3, F2); then every line that does not begin with an ID goes on
+    the row before, whatever it begins with, and a plain text over several lines stays whole (review 16.11.)."""
     handle, name = tempfile.mkstemp(prefix="ppp-fetch-", suffix=".xml")
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as f:
@@ -345,7 +347,12 @@ def fetch(url: str, xml: str) -> list[str]:
     for line in out.splitlines():
         if line.startswith("Connected ") or not line.strip():
             continue
-        if rows and re.match(r"[\s}\]]", line):
+        if key_first:
+            if GUID.match(line):
+                rows.append([line.rstrip()])
+            elif rows:      # before the first row stands the head
+                rows[-1].append(line.rstrip())
+        elif rows and re.match(r"[\s}\]]", line):
             rows[-1].append(line.rstrip())
         else:
             rows.append([line.rstrip()])
@@ -515,6 +522,95 @@ def import_log(url: str, name: str, hours: int = 12, exclude: list[str] | None =
     texts = re.findall(r"errortext=(?:\"|&quot;)(.*?)(?:\"|&quot;)", text)
     return {"job": job, "success": count("success"), "warning": count("warning"), "failure": count("failure"),
             "texts": sorted({t.strip()[:300] for t in texts if t.strip()})[:8]}
+
+
+# ------------------------------------------------------------------ flow runs
+RUN_TIME = re.compile(r"\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}(?: [AP]M)?")
+# what stands before the error code of a row: the key of the run, then the version number and the partition the elastic
+# table adds (pac test round 3, F2); either of the two may be missing. The partition is a long token with a digit in it,
+# an error code a word of letters
+RUN_KEY = re.compile(r"\s*" + GUID.pattern + r"\s+(?:\d{6,}\s+)?(?:(?=[0-9A-Za-z]*\d)[0-9A-Za-z]{20,}\s+)?")
+RUN_HOURS = 28 * 24     # the table keeps a run 28 days unless the environment says otherwise
+RUN_PROBE = 24          # hours the repeat without the flows looks back: every run of the environment comes with it
+RUN_UNREADABLE = "error text not readable (pac broke it over several lines); the run history shows it"
+
+
+def _run_start(text: str) -> float | None:
+    for form in ("%m/%d/%Y %I:%M %p", "%m/%d/%Y %H:%M"):
+        try:
+            return time.mktime(time.strptime(text, form))
+        except ValueError:
+            pass
+    return None
+
+
+def flow_runs(url: str, ids: list[str], hours: int = 24) -> list[dict]:
+    """The runs of these flows that the table flowrun got within the hours, newest first: per run its id, flow (the ID
+    in lower case), start (as the table prints it: UTC, to the minute), status, and code and error of a failed run
+    (None: the run names none). Two queries, each with its columns named and every column asked for as filled (pac test
+    round 1, V7; round 3, F2): the runs, then the failures with errorcode and errormessage. The server filters by the
+    time and by the flows, each ID in lower and in upper case. That this filter finds the rows is not shown by the pac
+    test: an empty answer is asked once more without the flows for RUN_PROBE hours at most, and only when that finds a
+    run of these flows are all the hours read without the filter. The flow is matched here at its ID in every case,
+    wherever it stands in the row, the failure at the ID of its run. The table knows the run only, never its actions: the error
+    text is the one the run ended with, JSON with code and message after a Terminate. A run stands there 3 to 5 minutes
+    after its start (F2). A row of one of the flows that is not two IDs, a time and a status raises SYNTAX; a failure
+    whose text cannot be read keeps its run, with RUN_UNREADABLE as the text (review 16.11.)."""
+    wanted = {i.lower() for i in ids}
+    if not wanted:
+        return []
+    if not 1 <= hours <= RUN_HOURS:
+        raise ToolError(f"flow runs are read for 1 to {RUN_HOURS} hours back, not {hours}.")
+
+    def ask(columns: list[str], by_flow: bool, back: int = hours, key_first: bool = False) -> list[str]:
+        conditions = [filled(c) for c in columns] + [within_hours("createdon", back)]
+        if by_flow:
+            conditions.append(among("workflowid", dict.fromkeys(v for i in sorted(wanted) for v in (i, i.upper()))))
+        return fetch(url, query("flowrun", columns, *conditions), key_first)
+
+    columns, by_flow = ["status", "starttime", "workflowid"], True
+    rows = ask(columns, by_flow)
+    if not rows:
+        probe = ask(columns, False, min(hours, RUN_PROBE))
+        if any(g.lower() in wanted for row in probe for g in GUID.findall(row)):    # the filter does not find them here
+            by_flow, rows = False, probe if hours <= RUN_PROBE else ask(columns, False)
+    runs: dict[str, dict] = {}
+    key_first = True    # every row of a flow of ours began with the key of its run: the form of F2
+    for row in rows:
+        found = [g.lower() for g in GUID.findall(row)]
+        flow = next((g for g in found if g in wanted), None)
+        if flow is None:
+            continue    # the run of another flow
+        started = RUN_TIME.search(row)
+        others = [g for g in found if g != flow]
+        words = [w for w in GUID.sub(" ", RUN_TIME.sub(" ", row)).split() if w.isalpha()]
+        if not started or len(others) != 1 or len(words) != 1:
+            raise _unreadable("a flow run", row)
+        runs[others[0]] = {"id": others[0], "flow": flow, "start": started.group(), "status": words[0], "code": None, "error": None}
+        key_first = key_first and row.lower().startswith(others[0])
+    if runs:
+        for row in ask(["status", "errorcode", "errormessage", "starttime", "workflowid"], by_flow, key_first=key_first):
+            run = next((runs[g.lower()] for g in GUID.findall(row) if g.lower() in runs), None)
+            if run is None:
+                continue    # the failure of another flow
+            times, key = list(RUN_TIME.finditer(row)), RUN_KEY.match(row)
+            if not times:   # the part of a text pac broke over several lines: the run stays, its text is not guessed
+                run["error"] = RUN_UNREADABLE
+                continue
+            code, _, text = row[key.end() if key else 0:times[-1].start()].strip().partition(" ")
+            text = text.strip()
+            try:        # after a Terminate: {"code": …, "message": …}
+                data = json.loads(text)
+                if isinstance(data, dict) and (data.get("code") or data.get("message")):
+                    text = ": ".join(str(data[k]) for k in ("code", "message") if data.get(k))
+            except ValueError:
+                pass
+            run["code"], run["error"] = code or None, " ".join(text.split()) or None
+    found = list(runs.values())
+    starts = [_run_start(r["start"]) for r in found]
+    if None in starts:      # a date in a form this reader does not order: the order of the table stays
+        return found
+    return [r for _, r in sorted(zip(starts, found), key=lambda pair: pair[0], reverse=True)]
 
 
 # ------------------------------------------------------------------ members of a solution

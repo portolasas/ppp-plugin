@@ -28,6 +28,16 @@ def after(name=None, states=None) -> dict:
     return {name: states or ["SUCCEEDED"]} if name else {}
 
 
+def literal(value):
+    """Data as it goes into an action: a string that begins with @ would be read as an expression there, so it is written
+    @@… (PA-20261115-WIN-01). The definition file keeps its values: the escape belongs to the flow."""
+    if isinstance(value, dict):
+        return {key: literal(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [literal(item) for item in value]
+    return "@" + value if isinstance(value, str) and value.startswith("@") else value
+
+
 def compose(value, prev=None) -> dict:
     return {"type": "Compose", "inputs": value, "runAfter": after(prev)}
 
@@ -212,7 +222,7 @@ def build(definition: dict, prefix: str, http_template: dict, response_template:
     result_text = "join(variables('setupErgebnis'),'; ')"
 
     a = {}
-    a["Definition"] = compose(definition)
+    a["Definition"] = compose(literal(definition))
     a["setupFehler"] = var("setupFehler", "array", [], "Definition")
     a["setupErgebnis"] = var("setupErgebnis", "array", [], "setupFehler")
     a["setupLaufItemId"] = var("setupLaufItemId", "integer", 0, "setupErgebnis")

@@ -129,7 +129,17 @@ def connect(root: Path, name: str | None = None, role: str | None = None, in_use
     known_file = root / "environments" / f"{alias}.json" if alias else None
     known = json.loads(known_file.read_text(encoding="utf-8-sig")) if known_file and known_file.is_file() else {}
     found = tenant.find_environment(name or known.get("name") or DEFAULT_ENVIRONMENT)
-    if name or not alias:
+    by_default = not name and not known.get("name")     # the default environment, taken without a word of the user
+    online = None
+    if by_default:      # before the role: its message names this environment as the example to call
+        online = tenant.solutions(found["url"])
+        mine = [str(s.get("uniqueName")) for s in config.get("solutions") or [] if s.get("uniqueName")]
+        if mine and not any(n.lower() in online for n in mine):
+            raise ToolError(f"None of this project's solutions ({', '.join(mine)}) is in {found['name']}, the default "
+                            "environment: nothing written. Ask on a card for the display name of the environment the project "
+                            "works in (top right in make.powerapps.com), then ppp connect \"<name>\" --role <role>. When the "
+                            f"solutions are still to be created in {found['name']}, name it the same way.")
+    if name or not alias or by_default:
         alias = structure.slug(found["name"])
     file = root / "environments" / f"{alias}.json"
     old = json.loads(file.read_text(encoding="utf-8-sig")) if file.is_file() else {}
@@ -140,6 +150,8 @@ def connect(root: Path, name: str | None = None, role: str | None = None, in_use
                         f"{ROLES_EXPLAINED}. Example: ppp connect \"{found['name']}\" --role development.")
     if role not in structure.ENVIRONMENT_ROLES:
         raise ToolError(f"role must be one of {', '.join(structure.ENVIRONMENT_ROLES)}")
+    if online is None:  # a named environment or one the project is connected to: the role is asked before the tenant
+        online = tenant.solutions(found["url"])
     data = {"name": found["name"], "environmentUrl": found["url"], "role": role,
             "inUse": bool(old.get("inUse", False)) if in_use is None else in_use,
             **{k: v for k, v in old.items() if k not in ("name", "environmentUrl", "role", "inUse")}}
@@ -158,7 +170,6 @@ def connect(root: Path, name: str | None = None, role: str | None = None, in_use
     lines = [f"Connected to {found['name']}: environments/{alias}.json with its address, role {role}, "
              + ("in productive use" if data["inUse"] else "not in productive use") + f"; card before each import: {_card(env)}.",
              importlog.usual_line(root, alias)]
-    online = tenant.solutions(found["url"])
     for s in config.get("solutions") or []:
         there = online.get(str(s.get("uniqueName", "")).lower())
         lines.append(f"  {s.get('uniqueName')} ({s.get('role')}): " + (f"online {there['version']}" + (", managed" if there["managed"] else "")
@@ -252,6 +263,8 @@ def _newest_package(root: Path, name: str) -> Path:
     for path in sorted((root / "exchange").glob("*_IMPORTABLE.zip")):
         try:
             info = solution.zip_manifest(path)
+        except solution.ZipHeld:
+            raise       # a held package is not skipped: the next one would be an older version
         except (ToolError, zipfile.BadZipFile, OSError):
             continue
         if info["uniqueName"].lower() == name.lower():
@@ -496,12 +509,16 @@ def report_imported(root: Path, env: dict, entry: dict, parts: dict, log: dict |
     if kind != "create":        # an empty first solution has no flows and no references
         after = tenant.flows(env["url"], list(parts["flows"]))
         before = entry.get("flows_before") or {}
-        switched = sorted(parts["flows"][i] for i, state in after.items() if before.get(i) not in (None, state))
+        changed = {parts["flows"][i]: state for i, state in after.items() if before.get(i) not in (None, state)}
+        now_on = sorted(n for n, state in changed.items() if state == "on")
+        switched = sorted(n for n, state in changed.items() if state != "on")
         off = sorted(parts["flows"][i] for i, state in after.items() if state != "on")
         print(f"Flows: {sum(1 for s in after.values() if s == 'on')} on, {len(off)} not on" + (": " + ", ".join(off) if off else ""))
+        if now_on:      # a flow that is on is never a deviation (decided 2026-11-16): a line, no warning, no card
+            print("On since this import, which is fine: " + ", ".join(now_on))
         if switched:
             warnings += 1
-            print("WARNING the import changed the switch of: " + ", ".join(switched))
+            print("WARNING no longer on after the import: " + ", ".join(switched))
         unbound = sorted(n for n, r in tenant.connection_references(env["url"], parts["refs"]).items() if not r["connection"])
         if unbound:
             warnings += 1

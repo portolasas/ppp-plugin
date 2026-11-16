@@ -1,10 +1,13 @@
 # Connected project: when something does not run smoothly
 
-The ordinary way: [connected.md](connected.md). Here: refusals, drift, a failed import, pac that does not get through, a restore.
+The ordinary way: [connected.md](connected.md). Here: refusals, a ZIP that is held, drift, a failed import, pac that does not get through, a restore.
 
 ## Refusals
 - `ppp export` refuses uncommitted changes in `solution/<Name>/`, `--force` too: commit them (the version `ppp pack` raised too). It refuses committed work the tenant lacks (commits since the last export, a packed, unimported version). `--force` replaces that committed work (it stays in git) only after a decision card.
 - `ppp import` refuses: uncommitted changes in `solution/<Name>/`; a package packed before the last export; a version whose import failed, repacked too (`ppp pack --version <next>`).
+
+## A ZIP that is held
+Right after an export another process may hold the ZIP for some seconds (a sync client, a scanner); ppp retries for 20 seconds [B] (SOL-20261115-WIN-01). `… is held by another process` after that: the ZIP is there and complete. Once it is free, run the same command again; after `ppp export`, `ppp unpack exchange/<zip>` takes it. No second export for it, no `--force`.
 
 ## Drift
 `DRIFT:` means the tenant differs from the base; nothing was imported.
