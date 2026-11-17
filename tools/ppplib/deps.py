@@ -8,12 +8,14 @@ not install: the report names where they come from. Nothing here signs in or cha
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 PLUGIN = Path(__file__).resolve().parent.parent.parent
@@ -149,6 +151,9 @@ def parts() -> list[Part]:
                           f"{recorded} (from {agent.PYTHON_FILE})" if recorded else
                           f"{on_path} on PATH" if on_path else
                           "none recorded and none on PATH: run ppp setup once with this Python"))
+    if RUNTIME_SETTINGS.parent.is_dir():  # the Copilot runtime of VS Code is there (not with Claude Code alone)
+        found.append(runtime_part())
+    found += vscode_parts()
     git = shutil.which("git")
     found.append(Part("git", "every project", bool(git), git or "install Git for Windows or the git of your system", True))
     try:
@@ -169,6 +174,173 @@ def parts() -> list[Part]:
     return found
 
 
+RUNTIME_SETTINGS = Path.home() / ".copilot" / "settings.json"
+MARKETPLACE_REPO = "portolasas/ppp-plugin"
+FORMER_REPOS = {"portolasas/bi-design"}  # replaced by bi-design in this marketplace (0.27.0): its copy would show twice
+# The Copilot runtime, which runs the Agents view, takes the model of a new session from its own settings; the Agents
+# view keeps no model state of a VS Code profile (17.11.: an imported profile left the thinking level at medium, these
+# keys gave GPT-6.1 Sol, high, 272K after a restart of VS Code). contextTier default is the small context of 272K.
+RUNTIME_WANTED = {"model": "gpt-6.1-sol", "effortLevel": "high", "contextTier": "default"}
+
+
+def _read_runtime(path: Path) -> dict:
+    if not path.is_file():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8-sig"))
+    if not isinstance(data, dict):
+        raise ValueError("not a JSON object")
+    return data
+
+
+def _markets(data: dict) -> dict:
+    markets = data.get("extraKnownMarketplaces")
+    return markets if isinstance(markets, dict) else {}
+
+
+def _repos(data: dict) -> dict[str, str]:
+    out = {}
+    for name, entry in _markets(data).items():
+        source = entry.get("source") if isinstance(entry, dict) else None
+        if isinstance(source, dict) and source.get("repo"):
+            out[name] = source["repo"]
+    return out
+
+
+def _in_use(data: dict, name: str, path: Path) -> bool:
+    """Whether a plugin of the marketplace name is still enabled or installed (its copy would stay behind)."""
+    enabled = data.get("enabledPlugins") if isinstance(data.get("enabledPlugins"), dict) else {}
+    return any(k.endswith(f"@{name}") for k in enabled) or (path.parent / "installed-plugins" / name).is_dir()
+
+
+NAME = "Model of the Agents view"
+SERVES = "GPT-6.1 Sol, high, 272K in new sessions"
+
+
+def runtime_part(path: Path | None = None) -> Part:
+    """ok when model, thinking level and context are set (the user may have chosen others, but never a Luna, which
+    misses the core rules), the marketplace is known and no former marketplace of bi-design is left."""
+    path = path or RUNTIME_SETTINGS
+    try:
+        data = _read_runtime(path)
+    except ValueError as e:  # json.JSONDecodeError is a ValueError
+        return Part(NAME, SERVES, False, f"{path} is no plain JSON ({e}; comments are not allowed there): fix it by "
+                                         "hand, then ppp setup --vscode")
+    wrong = [f"{k} not set" for k in RUNTIME_WANTED if not data.get(k)]
+    if "luna" in str(data.get("model", "")).lower():
+        wrong.append(f"model {data['model']} misses the core rules")
+    if MARKETPLACE_REPO not in _repos(data).values():
+        wrong.append(f"marketplace {MARKETPLACE_REPO} missing")
+    for name, repo in _repos(data).items():
+        if repo in FORMER_REPOS:
+            wrong.append(f"former marketplace {repo}" + (": uninstall its plugins first (Customizations)"
+                                                         if _in_use(data, name, path) else ""))
+    if wrong:
+        return Part(NAME, SERVES, False, ", ".join(wrong) + " (ppp setup --vscode)")
+    return Part(NAME, SERVES, True, ", ".join(f"{k} {data[k]}" for k in RUNTIME_WANTED))
+
+
+def write_runtime(path: Path | None = None) -> list[str]:
+    """Write model, thinking level, context and the marketplace into the settings of the Copilot runtime; back up the
+    file first and keep every other key; remove a former marketplace of bi-design once none of its plugins is enabled
+    or installed. Raises ValueError for a file that is no plain JSON object; then nothing is written."""
+    path = path or RUNTIME_SETTINGS
+    data = _read_runtime(path)
+    if "extraKnownMarketplaces" in data and not isinstance(data["extraKnownMarketplaces"], dict):
+        raise ValueError("extraKnownMarketplaces is not an object")
+    lines = []
+    for k, v in RUNTIME_WANTED.items():  # only what is missing, or a Luna: a model the user chose stays (review 17.11.)
+        if not data.get(k) or (k == "model" and "luna" in str(data[k]).lower()):
+            lines.append(f"Set {k}: {v}" + (f" (was {data[k]!r})" if k in data else ""))
+            data[k] = v
+    markets = data.setdefault("extraKnownMarketplaces", {})
+    for name, repo in list(_repos(data).items()):
+        if repo in FORMER_REPOS:
+            if _in_use(data, name, path):
+                lines.append(f"Kept the former marketplace {name} ({repo}): uninstall its plugins first "
+                             "(Customizations), then run ppp setup --vscode again")
+            else:
+                del markets[name]
+                lines.append(f"Removed the former marketplace {name} ({repo}): bi-design comes from {MARKETPLACE_REPO}")
+    if MARKETPLACE_REPO not in _repos(data).values():
+        name = "ppp" if "ppp" not in markets else "ppp-plugin"  # never replace an entry of another source
+        markets[name] = {"source": {"source": "github", "repo": MARKETPLACE_REPO}}
+        lines.append(f"Added the marketplace {name} ({MARKETPLACE_REPO})")
+    if not any(not l.startswith("Kept") for l in lines):
+        return lines + [f"{path} is already as ppp needs it."]
+    from .vscode import write_json
+    backup = write_json(path, data, indent=2)
+    if backup:
+        lines.insert(0, f"Backup: {backup}")
+    lines.append(f"Written {path}.")
+    return lines
+
+
+def vscode_parts(run=subprocess.run) -> list[Part]:
+    """The extensions and settings of ppp in the Default profile of VS Code, when VS Code is on this computer."""
+    from . import vscode
+    code = vscode.code_command()
+    settings_file = vscode.user_settings()
+    if not code and not settings_file.parent.is_dir():
+        return []
+    out = []
+    missing = vscode.missing_extensions(code, run)
+    if missing is None:
+        out.append(Part("VS Code extensions", "pac, Python, PowerShell in VS Code", False,
+                        "the command line code of VS Code was not found: install the extensions from the profile "
+                        "setup/ppp.code-profile or by hand"))
+    else:
+        out.append(Part("VS Code extensions", "pac, Python, PowerShell in VS Code", not missing,
+                        ", ".join(missing) + " missing (ppp setup --vscode)" if missing else "all there"))
+    try:
+        absent = vscode.missing_settings(vscode.read_settings(settings_file))
+        out.append(Part("VS Code settings", "git, diffs and the model of the chat", not absent,
+                        ", ".join(absent) + " not set (ppp setup --vscode)" if absent else str(settings_file)))
+    except vscode.CommentedJSON:
+        out.append(Part("VS Code settings", "git, diffs and the model of the chat", False,
+                        f"{settings_file} holds comments, which ppp would lose: add by hand {vscode.missing_as_json()}"))
+    except ValueError as e:
+        out.append(Part("VS Code settings", "git, diffs and the model of the chat", False,
+                        f"{settings_file} is no valid JSON ({e}): fix it, then ppp setup --vscode"))
+    except OSError as e:
+        out.append(Part("VS Code settings", "git, diffs and the model of the chat", False, f"{settings_file}: {e}"))
+    return out
+
+
+def setup_vscode(run=subprocess.run) -> tuple[list[str], bool]:
+    """ppp setup --vscode: the settings of the Copilot runtime, the settings and the extensions of the Default profile.
+    Each part on its own: one that cannot be done is reported, the others still run."""
+    from . import vscode
+    lines, ok = [], True
+    for label, step in (("Agents view", write_runtime), ("VS Code settings", vscode.write_settings)):
+        try:
+            lines += step()
+        except vscode.CommentedJSON:
+            lines.append(f"{label}: {vscode.user_settings()} holds comments, which ppp would lose; nothing written. "
+                         f"Add these settings by hand: {vscode.missing_as_json()}")
+            ok = False
+        except ValueError as e:
+            lines.append(f"{label}: no valid JSON ({e}); nothing written. Fix the file, then ppp setup --vscode again.")
+            ok = False
+        except OSError as e:  # locked, read-only, an antivirus: the other parts still run
+            lines.append(f"{label}: could not write ({e}); nothing changed. Close VS Code, then ppp setup --vscode again.")
+            ok = False
+    code = vscode.code_command()
+    missing = vscode.missing_extensions(code, run)
+    if missing is None:
+        lines.append("VS Code extensions: the command line code of VS Code was not found; install them from the "
+                     "profile setup/ppp.code-profile or by hand.")
+        ok = False
+    elif missing:
+        done, fine = vscode.install_extensions(code, missing, run)
+        lines += done
+        ok = ok and fine
+    else:
+        lines.append("VS Code extensions: all there.")
+    lines.append("Close all windows of VS Code and open it again: new sessions of the Agents view then start with "
+                 "GPT-6.1 Sol, high, 272K.")
+    return lines, ok
+
+
 def report(found: list[Part]) -> list[str]:
     lines = []
     for p in found:
@@ -180,6 +352,7 @@ def report(found: list[Part]) -> list[str]:
     required = [p.name for p in found if p.required and not p.ok]
     installable = [p.name for p in found if not p.ok and (p.package or p.ffmpeg)]
     other = [p.name for p in found if not p.ok and not p.required and not (p.package or p.ffmpeg)]
+    vscode = [p.name for p in found if not p.ok and "ppp setup --vscode" in p.detail]
     if required:
         lines.append(f"RESULT: incomplete, required: {', '.join(required)}")
     elif installable or other:
@@ -188,6 +361,8 @@ def report(found: list[Part]) -> list[str]:
         lines.append("RESULT: complete")
     if installable:
         lines.append(f"  ppp setup --install installs: {', '.join(installable)}")
+    if vscode:
+        lines.append(f"  ppp setup --vscode sets: {', '.join(vscode)}")
     return lines
 
 

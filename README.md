@@ -86,12 +86,19 @@ ppp itself is called with `python -I`; `bippt` and `bideneb` without `-I`, becau
 ## Quick start
 
 ### 1. Install
-**VS Code.** No JSON editing and no install script. New to VS Code? Download [`setup/ppp.code-profile`](https://raw.githubusercontent.com/portolasas/ppp-plugin/main/setup/ppp.code-profile) (right-click › "Save link as...", keep the extension `.code-profile`) and import it first (Command Palette › "Profiles: Import Profile..." › "Select File...", then "Create" and "Use for New Windows"): it installs the extensions Power Platform Tools and Python, and every new window opens in the profile ppp. Then the fastest way is the link `vscode://chat-plugin/install?source=portolasas/ppp-plugin&plugin=ppp` (paste it into the address bar of your browser and confirm in VS Code); or by hand:
-1. Add the marketplace: open the Settings, search for `chat.plugins.marketplaces`, choose "Add Item" and enter `portolasas/ppp-plugin`. Or in the Agents view: Customizations › Browse › Configure Marketplaces › Add Marketplace.
-2. Install **ppp** from the marketplace (Customizations › Browse, or the Extensions view under Agent Plugins) and confirm the trust prompt. Install **bi-design** and **bi-deneb** the same way if you want them.
-3. Run "Developer: Reload Window" and choose the agent **ppp** once in the agent picker; it stays chosen. With the optional plugins the picker also shows `bi-ppt` and `bi-deneb`; in a ppp project you stay with `ppp`, which loads their skills itself.
+**VS Code.** Four steps, no JSON editing. Python 3.10 or newer and git must be on the computer (see Requirements).
+1. **Install VS Code** and sign in to GitHub Copilot (account icon at the bottom left).
+2. **Install ppp and add the marketplace.** Paste this link into the address bar of your browser, let it open VS Code and confirm there:
+   ```
+   vscode://chat-plugin/install?source=portolasas/ppp-plugin&plugin=ppp
+   ```
+   It installs ppp and adds the marketplace `portolasas/ppp-plugin`. The Agents view › Customizations › Browse then shows every plugin of this marketplace: install **bi-design** and **bi-deneb** there if you want them. Plugins added to the marketplace later show up there too. The marketplace alone, without installing anything: `vscode://chat-plugin/add-marketplace?ref=portolasas/ppp-plugin`.
+3. Run "Developer: Reload Window" and choose the agent **ppp** once in the agent picker of the Agents view; it stays chosen. With the optional plugins the picker also shows `bi-ppt` and `bi-deneb`; in a ppp project you stay with `ppp`, which loads their skills itself.
+4. **Say "check ppp".** The skill `ppp-setup` checks what ppp needs and asks on one card. It installs the missing Python packages (Playwright with its ffmpeg, python-docx, the packages of bi-design) and sets up VS Code (`ppp setup --vscode`): GPT-6.1 Sol with thinking level high and the context of 272K for new sessions of the Agents view, the extensions Power Platform Tools (with `pac`), Python with Python Environments, Pylance and Python Debugger and PowerShell, and a few settings for git, diffs and the model of the chat. Each file is backed up first; values you chose yourself stay. Close every window of VS Code and open it again.
 
-If ppp does not appear, check that agent plugins are on (`chat.plugins.enabled`).
+**Optional: the profile for a tidy model list.** On a fresh computer the profile [`setup/ppp.code-profile`](https://raw.githubusercontent.com/portolasas/ppp-plugin/main/setup/ppp.code-profile) (right-click › "Save link as...", keep the extension `.code-profile`; Command Palette › "Profiles: Import Profile..." › "Select File...", keep everything ticked, "Use for New Windows", "Create") also pins GPT-6.1 Sol and Claude Opus 5.5 and hides every model except GPT-6.1 Sol, Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5 and GPT-6 Astra. Import it before you open the Agents view for the first time.
+
+By hand instead of the links: open the Settings, search for `chat.plugins.marketplaces`, choose "Add Item" and enter `portolasas/ppp-plugin` (or Agents view: Customizations › Browse › Configure Marketplaces › Add Marketplace); install the plugins from Customizations › Browse and confirm the trust prompt. If ppp does not appear, check that agent plugins are on (`chat.plugins.enabled`; a policy of your company may switch them off).
 
 **Claude Code.** Once per computer:
 ```

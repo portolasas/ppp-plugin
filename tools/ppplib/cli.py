@@ -489,6 +489,12 @@ def cmd_init(a) -> int:
 
 def cmd_setup(a) -> int:
     from . import agent, deps
+    if a.vscode:
+        lines, ok = deps.setup_vscode()
+        print("\n".join(lines), flush=True)
+        found = deps.parts()
+        print("\n".join(["", "ppp on this computer:", *deps.report(found)]))
+        return 0 if ok and not any(p.required and not p.ok for p in found) else 1
     if a.install:
         lines, ok = deps.install(deps.parts())
         print("\n".join(lines), flush=True)
@@ -1116,6 +1122,12 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--install", action="store_true",
                       help="install the missing Python packages with pip (with --user outside a virtual environment) and "
                            "the ffmpeg of Playwright, then check again; programs such as git, pac, Edge and Word not")
+    mode.add_argument("--vscode", action="store_true",
+                      help="set up VS Code for ppp without a profile import: GPT-6.1 Sol, thinking level high, the "
+                           "context of 272K and the marketplace in the settings of the Copilot runtime "
+                           "(~/.copilot/settings.json), which new sessions of the Agents view take; the settings of ppp "
+                           "in settings.json of the Default profile (only those not set yet); the extensions of ppp with "
+                           "code --install-extension. Backs each file up first and keeps every other key")
     c.set_defaults(func=cmd_setup)
     c = sub.add_parser("settings", help="Show or save the personal settings (~/.ppp/settings.json).",
                        description="Show or save the personal settings in ~/.ppp/settings.json: language of chat and cards, "

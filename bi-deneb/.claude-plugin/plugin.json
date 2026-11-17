@@ -1,6 +1,6 @@
 {
   "name": "bi-deneb",
-  "version": "0.27.6",
+  "version": "0.27.7",
   "description": "bi-deneb: Deneb visuals for Power BI in the brand design - skill and agent bi-deneb build a custom visual (Vega-Lite or Vega) from a brief with the generator bideneb, render it locally, check fields, Deneb rules, brand colours and legibility, and embed it into a Power BI project.",
   "author": {
     "name": "Pascal Naumann"

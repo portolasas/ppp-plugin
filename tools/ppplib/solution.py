@@ -28,10 +28,13 @@ def pac_candidates(home: Path, appdata: str | None) -> list[Path]:
     exe = "pac.exe" if sys.platform == "win32" else "pac"
     storages = []
     for app in ("Code", "Code - Insiders"):
-        if appdata:
-            storages.append(Path(appdata) / app / "User" / "globalStorage")
-        storages += [home / "Library" / "Application Support" / app / "User" / "globalStorage",
-                     home / ".config" / app / "User" / "globalStorage"]
+        users = ([Path(appdata) / app / "User"] if appdata else []) + [
+            home / "Library" / "Application Support" / app / "User", home / ".config" / app / "User"]
+        for user in users:
+            # the Default profile, then every other profile: an extension keeps its storage per profile, so pac of
+            # Power Platform Tools lies in profiles/<id>/globalStorage when it came with the profile ppp (review 17.11.)
+            storages.append(user / "globalStorage")
+            storages += sorted((user / "profiles").glob("*/globalStorage")) if (user / "profiles").is_dir() else []
     found = [s / PAC_EXTENSION / "pac" / sub for s in storages for sub in (Path("tools") / exe, Path(exe))]
     return found + [home / ".dotnet" / "tools" / exe]
 

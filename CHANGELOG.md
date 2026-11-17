@@ -2,6 +2,13 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.27.7 (2026-11-17)
+- Einrichtung für neue Nutzer (PLUGIN PL-28): ppp setup --vscode setzt GPT-6.1 Sol mit Denkstufe High und 272K für neue Sitzungen der Agents-Ansicht in ~/.copilot/settings.json (mit Sicherung) und trägt den Marktplatz ein; ppp setup --check meldet es, Skill ppp-setup fragt dafür
+- Profil setup/ppp.code-profile: Einstellungen für git und Vergleiche, PowerShell, angeheftete und ausgeblendete Modelle (sichtbar: GPT-6.1 Sol, Claude Opus 5.5, Sonnet 5.5, Haiku 5.5, GPT-6 Astra)
+- ppp setup --vscode richtet VS Code ohne Profil-Import ein: die Erweiterungen von ppp mit code --install-extension und die fehlenden Einstellungen im Standardprofil, dessen Einstellungen und Erweiterungen die Agents-Ansicht nutzt (Sicherung, eigene Werte bleiben); ppp setup --check meldet beides
+- README: Einrichtung in vier Schritten (Link für ppp, Agent wählen, „prüfe ppp“); der Installationslink trägt den Marktplatz ein, danach zeigt Customizations › Browse alle Plugins; das Profil ist wahlweise für eine aufgeräumte Modellliste
+- pac wird auch im Speicher der Erweiterung Power Platform Tools je Profil gefunden (profiles/<id>/globalStorage)
+
 ## 0.27.6 (2026-11-17)
 - Hooks von VS Code unter Windows (PLUGIN PL-27): windows und powershell tragen dieselbe Zeile für Windows PowerShell 5.1, in der das Copilot-Runtime der Agents-Ansicht die Hooks startet; die Form mit && aus 0.27.2 bis 0.27.5 war dort ein Parserfehler, und der PreToolUse-Hook sperrte jeden Werkzeugaufruf
 - ppp setup --check prüft, was ppp auf dem Rechner braucht (Python, git, pac, Playwright mit Edge und ffmpeg, python-docx, Word, die Pakete von bi-design); ppp setup --install installiert die fehlenden Python-Pakete und ffmpeg von Playwright (PLUGIN PL-29)
