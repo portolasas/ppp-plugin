@@ -839,7 +839,7 @@ def main(options: dict) -> int:
                 options["profile"], channel=options["channel"], headless=options["headless"], viewport=first,
                 **({"record_video_dir": str(raw_video), "record_video_size": first} if video else {}))
         except PlaywrightError as ex:
-            hint = f' Recording needs ffmpeg: "{sys.executable}" -m playwright install ffmpeg, after the user agreed.' if "ffmpeg" in str(ex) else ""
+            hint = ' Recording needs the ffmpeg of Playwright: ppp setup --install (skill ppp-setup), after the user agreed.' if "ffmpeg" in str(ex) else ""
             print(f"ERROR: the browser did not start: {str(ex).splitlines()[0]}{hint} Is a window of this profile still open?", file=sys.stderr)
             return 2
         if video and walk.get("mask"):

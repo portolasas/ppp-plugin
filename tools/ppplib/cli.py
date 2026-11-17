@@ -173,6 +173,7 @@ def cmd_pack(a) -> int:
 TOOLS = Path(__file__).resolve().parent.parent
 BLOCKS = TOOLS / "blocks"
 PACKAGES = {"yaml": "PyYAML", "docx": "python-docx"}  # module name -> PyPI package, where they differ
+OWN_MODULES = {"playwright", "docx", "pptx", "pymupdf", "fitz", "PIL", "openpyxl"}  # installed by ppp setup --install
 
 
 def _project_or_none(project: Path | None) -> Path | None:
@@ -273,9 +274,13 @@ def _child(script: Path, args: list[str], root: Path, importable: Path) -> int:
     if proc.returncode and missing:
         name = missing.group(1)
         package = PACKAGES.get(name, name)
-        print(f"ppp: the script needs the module {name}. If it is a package from PyPI ({package}), install it after "
-              f"the user agreed: \"{sys.executable}\" -m pip install --user {package}. "
-              "No virtual environment: group policies often block it.", file=sys.stderr)
+        if name in OWN_MODULES:  # a package of ppp itself: the setup installs it with the others it misses
+            print(f"ppp: the module {name} is missing. Install it after the user agreed with ppp setup --install "
+                  "(skill ppp-setup), which installs all packages ppp misses on this computer.", file=sys.stderr)
+        else:
+            print(f"ppp: the script needs the module {name}. If it is a package from PyPI ({package}), install it after "
+                  f"the user agreed: \"{sys.executable}\" -m pip install --user {package}. "
+                  "No virtual environment: group policies often block it.", file=sys.stderr)
     return proc.returncode
 
 
@@ -483,9 +488,19 @@ def cmd_init(a) -> int:
 
 
 def cmd_setup(a) -> int:
-    from . import agent
-    print("\n".join(agent.setup()))
-    return 0
+    from . import agent, deps
+    if a.install:
+        lines, ok = deps.install(deps.parts())
+        print("\n".join(lines), flush=True)
+        found = deps.parts()
+        print("\n".join(["", "ppp on this computer:", *deps.report(found)]))
+        return 0 if ok and not any(p.required and not p.ok for p in found) else 1
+    if not a.check:
+        print("\n".join(agent.setup()))
+        print()
+    found = deps.parts()
+    print("\n".join(["ppp on this computer:", *deps.report(found)]))
+    return 1 if any(p.required and not p.ok for p in found) else 0
 
 
 def cmd_settings(a) -> int:
@@ -1089,10 +1104,18 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("target", help="new or empty folder for the restored project")
     c.set_defaults(func=cmd_restore)
 
-    c = sub.add_parser("setup", help="Remove an old agent copy (~/.copilot/agents/ppp.agent.md) and show the installation entries.",
+    c = sub.add_parser("setup", help="Set up ppp on this computer and check what it needs (--check), or install the missing Python packages (--install).",
                        description="Remove the agent copy of ppp before 0.2.0 (~/.copilot/agents/ppp.agent.md), which hides "
-                                   "the agent of the plugin, keep the tool call in ~/.ppp/tool-call.txt and show the "
-                                   "installation entries for VS Code and Claude Code.", epilog=EPILOG)
+                                   "the agent of the plugin, keep the Python and the tool call in ~/.ppp, show the "
+                                   "installation entries for VS Code and Claude Code, and check what ppp needs on this "
+                                   "computer: Python, git, pac, and for single commands Playwright with Edge and ffmpeg "
+                                   "(ppp walk), python-docx and Word (ppp guide) and the packages of bi-design. Exit code 1 "
+                                   "when Python or git is missing.", epilog=EPILOG)
+    mode = c.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true", help="only check, change nothing")
+    mode.add_argument("--install", action="store_true",
+                      help="install the missing Python packages with pip (with --user outside a virtual environment) and "
+                           "the ffmpeg of Playwright, then check again; programs such as git, pac, Edge and Word not")
     c.set_defaults(func=cmd_setup)
     c = sub.add_parser("settings", help="Show or save the personal settings (~/.ppp/settings.json).",
                        description="Show or save the personal settings in ~/.ppp/settings.json: language of chat and cards, "

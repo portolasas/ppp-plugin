@@ -2,6 +2,13 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.27.6 (2026-11-17)
+- Hooks von VS Code unter Windows (PLUGIN PL-27): windows und powershell tragen dieselbe Zeile für Windows PowerShell 5.1, in der das Copilot-Runtime der Agents-Ansicht die Hooks startet; die Form mit && aus 0.27.2 bis 0.27.5 war dort ein Parserfehler, und der PreToolUse-Hook sperrte jeden Werkzeugaufruf
+- ppp setup --check prüft, was ppp auf dem Rechner braucht (Python, git, pac, Playwright mit Edge und ffmpeg, python-docx, Word, die Pakete von bi-design); ppp setup --install installiert die fehlenden Python-Pakete und ffmpeg von Playwright (PLUGIN PL-29)
+- Neuer Skill ppp-setup: prüft auf Zuruf („prüfe ppp“), auf einem neuen Rechner oder bei einem fehlenden Paket, fragt auf einer Karte und installiert
+- ppp_hook.py liest die Eingabe der Hooks als UTF-8: ein Projektpfad mit Umlaut traf unter Windows kein Projekt, die Hooks taten still nichts
+- Profil setup/ppp.code-profile (PLUGIN PL-28): installiert auch Python Environments, Pylance und Python Debugger, die der Import nicht nachzog
+
 ## 0.27.5 (2026-11-17)
 - Einrichtung für neue Nutzer (PLUGIN PL-28): Profil setup/ppp.code-profile mit den Erweiterungen Power Platform Tools und Python, mit „Use for New Windows“ das Profil jedes neuen Fensters; README und Doku nennen den Installationslink vscode://chat-plugin/install?source=portolasas/ppp-plugin&plugin=ppp
 

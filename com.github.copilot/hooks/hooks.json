@@ -5,8 +5,8 @@
       {
         "type": "command",
         "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" SessionStart copilot || true",
-        "windows": "cd /d %PLUGIN_ROOT%\\hooks&& .\\ppp_hook.cmd SessionStart copilot",
-        "powershell": "$r = if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { '${PLUGIN_ROOT}' }; & \"$r/hooks/ppp_hook.cmd\" SessionStart copilot; exit 0",
+        "windows": "$r = @($env:PLUGIN_ROOT, $env:COPILOT_PLUGIN_ROOT, '${PLUGIN_ROOT}') | Where-Object { $_ -and (Split-Path $_ -IsAbsolute) -and (Test-Path -LiteralPath (Join-Path $_ 'hooks/ppp_hook.cmd')) } | Select-Object -First 1; if ($r) { & (Join-Path $r 'hooks/ppp_hook.cmd') SessionStart copilot }; exit 0",
+        "powershell": "$r = @($env:PLUGIN_ROOT, $env:COPILOT_PLUGIN_ROOT, '${PLUGIN_ROOT}') | Where-Object { $_ -and (Split-Path $_ -IsAbsolute) -and (Test-Path -LiteralPath (Join-Path $_ 'hooks/ppp_hook.cmd')) } | Select-Object -First 1; if ($r) { & (Join-Path $r 'hooks/ppp_hook.cmd') SessionStart copilot }; exit 0",
         "timeout": 15
       }
     ],
@@ -14,8 +14,8 @@
       {
         "type": "command",
         "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" Stop copilot || true",
-        "windows": "cd /d %PLUGIN_ROOT%\\hooks&& .\\ppp_hook.cmd Stop copilot",
-        "powershell": "$r = if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { '${PLUGIN_ROOT}' }; & \"$r/hooks/ppp_hook.cmd\" Stop copilot; exit 0",
+        "windows": "$r = @($env:PLUGIN_ROOT, $env:COPILOT_PLUGIN_ROOT, '${PLUGIN_ROOT}') | Where-Object { $_ -and (Split-Path $_ -IsAbsolute) -and (Test-Path -LiteralPath (Join-Path $_ 'hooks/ppp_hook.cmd')) } | Select-Object -First 1; if ($r) { & (Join-Path $r 'hooks/ppp_hook.cmd') Stop copilot }; exit 0",
+        "powershell": "$r = @($env:PLUGIN_ROOT, $env:COPILOT_PLUGIN_ROOT, '${PLUGIN_ROOT}') | Where-Object { $_ -and (Split-Path $_ -IsAbsolute) -and (Test-Path -LiteralPath (Join-Path $_ 'hooks/ppp_hook.cmd')) } | Select-Object -First 1; if ($r) { & (Join-Path $r 'hooks/ppp_hook.cmd') Stop copilot }; exit 0",
         "timeout": 15
       }
     ],
@@ -23,8 +23,8 @@
       {
         "type": "command",
         "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact copilot || true",
-        "windows": "cd /d %PLUGIN_ROOT%\\hooks&& .\\ppp_hook.cmd PreCompact copilot",
-        "powershell": "$r = if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { '${PLUGIN_ROOT}' }; & \"$r/hooks/ppp_hook.cmd\" PreCompact copilot; exit 0",
+        "windows": "$r = @($env:PLUGIN_ROOT, $env:COPILOT_PLUGIN_ROOT, '${PLUGIN_ROOT}') | Where-Object { $_ -and (Split-Path $_ -IsAbsolute) -and (Test-Path -LiteralPath (Join-Path $_ 'hooks/ppp_hook.cmd')) } | Select-Object -First 1; if ($r) { & (Join-Path $r 'hooks/ppp_hook.cmd') PreCompact copilot }; exit 0",
+        "powershell": "$r = @($env:PLUGIN_ROOT, $env:COPILOT_PLUGIN_ROOT, '${PLUGIN_ROOT}') | Where-Object { $_ -and (Split-Path $_ -IsAbsolute) -and (Test-Path -LiteralPath (Join-Path $_ 'hooks/ppp_hook.cmd')) } | Select-Object -First 1; if ($r) { & (Join-Path $r 'hooks/ppp_hook.cmd') PreCompact copilot }; exit 0",
         "timeout": 15
       }
     ],
@@ -32,8 +32,8 @@
       {
         "type": "command",
         "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreToolUse copilot || true",
-        "windows": "cd /d %PLUGIN_ROOT%\\hooks&& .\\ppp_hook.cmd PreToolUse copilot",
-        "powershell": "$r = if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { '${PLUGIN_ROOT}' }; & \"$r/hooks/ppp_hook.cmd\" PreToolUse copilot; exit 0",
+        "windows": "$r = @($env:PLUGIN_ROOT, $env:COPILOT_PLUGIN_ROOT, '${PLUGIN_ROOT}') | Where-Object { $_ -and (Split-Path $_ -IsAbsolute) -and (Test-Path -LiteralPath (Join-Path $_ 'hooks/ppp_hook.cmd')) } | Select-Object -First 1; if ($r) { & (Join-Path $r 'hooks/ppp_hook.cmd') PreToolUse copilot }; exit 0",
+        "powershell": "$r = @($env:PLUGIN_ROOT, $env:COPILOT_PLUGIN_ROOT, '${PLUGIN_ROOT}') | Where-Object { $_ -and (Split-Path $_ -IsAbsolute) -and (Test-Path -LiteralPath (Join-Path $_ 'hooks/ppp_hook.cmd')) } | Select-Object -First 1; if ($r) { & (Join-Path $r 'hooks/ppp_hook.cmd') PreToolUse copilot }; exit 0",
         "timeout": 15
       }
     ]

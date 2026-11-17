@@ -212,7 +212,9 @@ def main() -> int:
     event = sys.argv[1] if len(sys.argv) > 1 else ""
     tool = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] in TOOLS else "claude"
     try:
-        raw = sys.stdin.read() if not sys.stdin.isatty() else ""
+        # the hook input comes as UTF-8; sys.stdin would decode it in the code page of Windows (cp1252), and a project
+        # path with an umlaut would then match no project (review 17.11.)
+        raw = sys.stdin.buffer.read().decode("utf-8-sig", "replace") if not sys.stdin.isatty() else ""
         data = json.loads(raw) if raw.strip() else {}
         root = project_root(data.get("cwd") or "")
         if root is None:
