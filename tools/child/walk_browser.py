@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import shutil
 import sys
 import time
@@ -15,7 +16,8 @@ from playwright.sync_api import sync_playwright
 from ppplib import walk as W
 from ppplib.report import Report
 
-QUIET = 2.5  # seconds without a change before a state counts as settled
+# seconds without a change before a state counts as settled; the tests set less for their static stand-in page
+QUIET = float(os.environ.get("PPP_WALK_QUIET") or 2.5)
 SIGN_IN = ("login.microsoftonline.com", "login.microsoft.com", "login.live.com", "login.windows.net")
 
 SCAN = """() => {

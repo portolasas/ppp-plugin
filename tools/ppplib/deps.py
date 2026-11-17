@@ -160,7 +160,9 @@ def parts() -> list[Part]:
         pac = solution.pac()
         found.append(Part("pac", "ppp unpack, ppp pack", True, pac))
     except ToolError:
-        found.append(Part("pac", "ppp unpack, ppp pack", False, "install the VS Code extension Power Platform Tools"))
+        found.append(Part("pac", "ppp unpack, ppp pack", False,
+                          "comes with the VS Code extension Power Platform Tools: enable it under Agents view > "
+                          "Customizations > Extensions and sign in when it asks"))
     found.append(Part("playwright", "ppp walk", "playwright" not in missing, "", package="playwright"))
     e = edge()
     found.append(Part("Microsoft Edge", "ppp walk", bool(e), str(e) if e else "install Microsoft Edge"))
@@ -336,8 +338,12 @@ def setup_vscode(run=subprocess.run) -> tuple[list[str], bool]:
         ok = ok and fine
     else:
         lines.append("VS Code extensions: all there.")
-    lines.append("Close all windows of VS Code and open it again: new sessions of the Agents view then start with "
-                 "GPT-6.1 Sol, high, 272K.")
+    lines += ["Close all windows of VS Code and open it again: new sessions of the Agents view then start with "
+              "GPT-6.1 Sol, high, 272K.",
+              "Then, in the Agents view: Customizations > Extensions, enable each extension of ppp for the Agents view "
+              "(an installed extension stays off there until enabled; pac comes with Power Platform Tools); sign in "
+              "with the Microsoft work account when Power Platform Tools asks (pac needs it for environments and "
+              "solutions); then start a new chat and say \"check ppp\" there (ppp setup --check)."]
     return lines, ok
 
 

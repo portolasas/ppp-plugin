@@ -2,6 +2,10 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.27.8 (2026-11-17)
+- ppp walk: die Ruhezeit, nach der eine Seite als fertig gilt, lässt sich mit PPP_WALK_QUIET einstellen (sonst 2,5 s); die Tests nutzen 0,5 s
+- Skill ppp-setup und ppp setup --vscode führen nach der ersten Einrichtung weiter: Erweiterungen in der Agents-Ansicht unter Customizations › Extensions aktivieren, bei Power Platform Tools mit dem Microsoft-Konto anmelden (sonst findet pac keine Umgebungen), die Prüfung in einem neuen Chat wiederholen (PLUGIN PL-28)
+
 ## 0.27.7 (2026-11-17)
 - Einrichtung für neue Nutzer (PLUGIN PL-28): ppp setup --vscode setzt GPT-6.1 Sol mit Denkstufe High und 272K für neue Sitzungen der Agents-Ansicht in ~/.copilot/settings.json (mit Sicherung) und trägt den Marktplatz ein; ppp setup --check meldet es, Skill ppp-setup fragt dafür
 - Profil setup/ppp.code-profile: Einstellungen für git und Vergleiche, PowerShell, angeheftete und ausgeblendete Modelle (sichtbar: GPT-6.1 Sol, Claude Opus 5.5, Sonnet 5.5, Haiku 5.5, GPT-6 Astra)
