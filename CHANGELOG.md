@@ -2,6 +2,9 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.27.3 (2026-11-17)
+- Hooks von VS Code unter Windows (PLUGIN PL-27): der Starter hooks/ppp_hook.cmd findet unter C:\BITrusted auch eine Umgebung in <Ordner>\<Name> ohne envs, wie mamba create -p sie anlegt, nie aber im Paket-Cache pkgs von conda
+
 ## 0.27.2 (2026-11-17)
 - Hooks von VS Code unter Windows (PLUGIN PL-27, nach dem Installationsfehler beim ersten Kollegen: Python aus Mamba außerhalb des PATH, jeder Werkzeugaufruf abgewiesen): sie starten über den neuen Starter hooks/ppp_hook.cmd, der das Python sucht (PPP_PYTHON, ~/.ppp/python.txt, python.exe im PATH ohne den Store-Platzhalter, eine aktivierte conda- oder mamba-Umgebung, C:\BITrusted, die üblichen Ordner von conda, mamba und miniforge, py) und immer mit 0 endet; ein PreToolUse-Hook, der scheitert, sperrt im Copilot-Runtime jeden Werkzeugaufruf. Das Feld windows kommt ohne Anführungszeichen und ohne ${PLUGIN_ROOT} aus (Node maskierte sie für cmd.exe, der Agent Host startete die Hooks unter Windows nie), dazu ein Feld powershell für das Copilot-Runtime; nie aus dem Arbeitsbereich
 - ppp setup schreibt das Python, in dem es läuft, nach ~/.ppp/python.txt; der Werkzeugaufruf nennt ein Python außerhalb des PATH mit Pfad, für PowerShell oder bash zitiert

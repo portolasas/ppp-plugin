@@ -3,7 +3,8 @@ rem Starts ppp_hook.py for the hooks of VS Code on Windows (PLUGIN PL-12, PL-27)
 rem The Python: PPP_PYTHON; else the first line of python.txt in the folder of ppp (PPP_HOME, else %USERPROFILE%\.ppp),
 rem written by "ppp setup"; else python.exe on PATH unless it is the Store stub in WindowsApps; else python.exe of an
 rem active conda or mamba environment; else C:\BITrusted, where environments go that may not go into Program Files
-rem (python.exe in it, in a folder of it, or in <folder>\envs\<name>; the first one found, PPP_TRUSTED_DIR for tests);
+rem (python.exe in it, in a folder of it, in <folder>\envs\<name>, or in <folder>\<name>; the first one found, in this
+rem order and alphabetically, never the package cache pkgs; PPP_TRUSTED_DIR for tests);
 rem else a usual conda, mamba or miniforge folder; else the launcher py.exe on PATH.
 rem Never the current folder (the workspace): a python.bat there would run on every tool call.
 rem Never blocks: without a Python, or when Python fails, it ends with 0. A PreToolUse hook that fails makes the agent
@@ -19,7 +20,8 @@ if not defined PPP_PY if exist "%PPP_DIR%\python.txt" for /f "usebackq eol=| del
 if not defined PPP_PY for /f "delims=" %%P in ('where $PATH:python.exe 2^>nul ^| findstr /v /i /l /c:"WindowsApps"') do if not defined PPP_PY set "PPP_PY=%%P"
 if not defined PPP_PY for %%R in ("%CONDA_PREFIX%" "%MAMBA_ROOT_PREFIX%" "%PPP_TRUSTED_DIR%") do if not defined PPP_PY if not "%%~R"=="" if exist "%%~R\python.exe" set "PPP_PY=%%~R\python.exe"
 if not defined PPP_PY if exist "%PPP_TRUSTED_DIR%\" for /d %%A in ("%PPP_TRUSTED_DIR%\*") do if not defined PPP_PY if exist "%%~A\python.exe" set "PPP_PY=%%~A\python.exe"
-if not defined PPP_PY if exist "%PPP_TRUSTED_DIR%\" for /d %%A in ("%PPP_TRUSTED_DIR%\*") do for /d %%E in ("%%~A\envs\*") do if not defined PPP_PY if exist "%%~E\python.exe" set "PPP_PY=%%~E\python.exe"
+if not defined PPP_PY if exist "%PPP_TRUSTED_DIR%\" for /d %%A in ("%PPP_TRUSTED_DIR%\*") do if not defined PPP_PY for /d %%E in ("%%~A\envs\*") do if not defined PPP_PY if exist "%%~E\python.exe" set "PPP_PY=%%~E\python.exe"
+if not defined PPP_PY if exist "%PPP_TRUSTED_DIR%\" for /d %%A in ("%PPP_TRUSTED_DIR%\*") do if not defined PPP_PY if /i not "%%~nxA"=="pkgs" for /d %%E in ("%%~A\*") do if not defined PPP_PY if exist "%%~E\python.exe" set "PPP_PY=%%~E\python.exe"
 if not defined PPP_PY for %%R in ("%USERPROFILE%\miniforge3" "%USERPROFILE%\mambaforge" "%USERPROFILE%\micromamba" "%USERPROFILE%\miniconda3" "%USERPROFILE%\anaconda3" "%LOCALAPPDATA%\miniforge3" "%LOCALAPPDATA%\mambaforge" "%LOCALAPPDATA%\miniconda3" "%LOCALAPPDATA%\anaconda3" "%ProgramData%\miniforge3" "%ProgramData%\mambaforge" "%ProgramData%\miniconda3" "%ProgramData%\anaconda3") do if not defined PPP_PY if exist "%%~R\python.exe" set "PPP_PY=%%~R\python.exe"
 if defined PPP_PY (
   "%PPP_PY%" -I "%~dp0ppp_hook.py" %*
