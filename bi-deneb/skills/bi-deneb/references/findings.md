@@ -39,13 +39,13 @@ a zero, an empty value): decide whether the real data can get there, and say so.
 ## B – brand
 | Code | Meaning | Fix |
 |---|---|---|
-| B1 | a colour that is not a token: a hex value, a CSS name, `hsl()`, or one drawn by a default of Vega | the token the finding names; a colour with a business meaning: ask the user and keep the answer in the brief, `"colours": {"#1FBB3E": "Mahlen, Farbe des Berichts"}`: the finding becomes one NOTE. Defaults of Vega: set them in the config |
+| B1 | ERROR: a colour that is not a token: a hex value, a CSS name, `hsl()`, or one drawn by a default of Vega; it stops `embed` | the token the finding names; a colour with a business meaning: a token the user chooses (SKILL.md › Brand); outside the brand only on the user's explicit word, kept in the brief, `"colours": {"#1FBB3E": "Mahlen (Nutzer, Datum)"}`: the finding becomes one NOTE. Defaults of Vega: set them in the config |
 | B2 | another font | `config.font` of the brand |
 | B3 | a font size off the brand scale | sizes of the scale in the config; below the smallest size is a WARNING |
 | B4 | corner radius above the brand limit | 0 to the limit |
 | B5 | gradient or shadow | flat colour |
-| B6 | text in a colour the brand forbids for text | the text or secondary text colour; on a fill the text colour of that fill |
-| B7 | thin line or small marker in a colour too weak on light | a colour of the `line` palette |
+| B6 | text on the page in a colour the brand forbids for text on this surface (text on a fill: P7) | the text or secondary text colour of the surface |
+| B7 | thin line or small marker in a colour too weak on the surface (light or dark) | a colour of the `line` palette |
 | B8 | a large area in a signal colour | status fill colours; signal colours for dots with a label |
 
 ## P – picture (read from the render)
@@ -77,6 +77,7 @@ a zero, an empty value): decide whether the real data can get there, and say so.
 | R8 | the visual is very small on the page | resize in Desktop or `--position` |
 | R9 | the visual lies over other visuals of the page | the user moves it in Desktop, or `bideneb embed --position x,y,width,height`, or a new page |
 | R10 | a visual of the page belongs to a group that is not on the page, or `visualInteractions` name a visual that is not there | remove `parentGroupName` (or copy the whole group); rename or remove the interaction. Desktop drops such a visual when it saves: slicers copied from another page vanished this way |
+| R11 | the visual does not sit on its page: ERROR drawn for the other surface (brief `background` against the page); WARNING its box, or a `background` of the specification or config, of the other surface | remove `background` from the brief, `bideneb build`, `bideneb embed` (it writes the page colour as the box); remove `background` from the specification |
 
 ## L – the live test (`bideneb live`, in a browser with Deneb's Vega)
 | Code | Meaning | Fix |

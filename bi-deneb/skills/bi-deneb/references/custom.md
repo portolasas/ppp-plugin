@@ -10,9 +10,7 @@ generator cannot guess (status words, start before end, a certain key) go into `
 `{"typical": [...], "stress": [...], "few": [...], "empty": []}`: invented rows with the dataset keys, dates as
 `2026-11-02T06:00:00`.
 
-Before embedding: `bideneb live <name>` runs the specification in Deneb's Vega (6.4.0) in a browser, with data
-changes as slicers make them and with the states a click reaches (taken from signals with handlers; more in the brief
-under `"live": {"states": [...]}`). Read `#result`; codes L0 to L4 in [findings.md](findings.md). [L]
+Before embedding: `bideneb live <name>` (SKILL.md, step 6; codes L0 to L4 in [findings.md](findings.md)). [L]
 
 ## Vega-Lite or Vega
 Vega-Lite for one chart with axes and layers. Vega when the layout is yours: several header rows, bands in the
@@ -47,6 +45,8 @@ background, scrolling, buttons, signals for interaction, the advanced cross-filt
 ## Colour
 - Write the hex values of the brand tokens (`bideneb brand`): fill of data `focus`, the rest of a comparison
   `context`, good and bad `good`/`bad` with their text colours, series `category`, lines and small markers `line`.
+- The page decides the surface: on Dark Green the tokens of `bideneb brand --background #08312A`. A background of the
+  specification is the page colour or none; the box of the visual carries the page colour (R11). A phase keeps its token in every visual.
 - Text on a fill: the brand's text colour for that fill; the render checks the contrast (finding P7). Accent
   Green is a fill, never text or a thin line on white.
 - `pbiColor(…)` and the schemes `pbiColorNominal`, `pbiColorOrdinal`, `pbiColorLinear`, `pbiColorDivergent` follow the

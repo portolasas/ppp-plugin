@@ -4,6 +4,11 @@ Seit 0.27.0 ist bi-design ein Plugin im Marktplatz von ppp, wird mit ppp veröff
 diese Datei nennt die Versionen, die bi-design ändern. Die Abschnitte 2.x und älter stammen aus dem früheren eigenen
 Repo `portolasas/bi-design`.
 
+## 0.27.4 – 2026-11-17
+- `reference/plattformen.md` › Power BI: ein Bericht hat eine Fläche auf jeder Seite und in jedem Visual, weiß
+  (Vorgabe) oder Dunkelgrün; auf Dunkelgrün die Diagrammfarben mit mindestens 4,4:1; Farben mit Bedeutung sind
+  Markenfarben, zuerst aus der Diagramm-Reihenfolge, auch in einer Farb-Kennzahl (aus Seqonis, 17.11.).
+
 ## 0.27.0 – 2026-11-16
 - **Umzug in den Marktplatz von ppp:** bi-design ist ein wählbares Plugin neben ppp und bi-deneb (`bi-design@ppp`)
   und folgt auf 2.13.0 des früheren Repos. Inhaltlich unverändert. Wer bi-design aus `portolasas/bi-design`

@@ -3,7 +3,8 @@ compactly, and check both before the user opens them in Power BI Desktop. Standa
 
 Findings: M1 indent, M2 unquoted name, M3 relationship column, M4 time function; R1 JSON, R2 BOM, R3 $schema, R4 name,
 R5 pageBinding, R6 filter name, R7 field reference, R8 page order, R9 legacy format, R10 no custom theme, R11 Deneb
-visuals, R12 group or interaction that is not on the page; G1 data files and git; P1 path length.
+visuals, R12 group or interaction that is not on the page, R13 pages of one report on a light and on a dark background,
+R14 the box of a visual against its page, R15 text against its background; G1 data files and git; P1 path length.
 """
 from __future__ import annotations
 
@@ -13,12 +14,14 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import gitutil
+from . import gitutil, surface
 from .project import ToolError
 from .report import Report
 
 NAME = re.compile(r"^[\w-]+$")
 DENEB = "deneb"   # visualType of the AppSource visual Deneb begins with it (deneb7E15AEF80B9E4D4F8E12924291ECE89A)
+# visuals the base themes of Desktop draw without a box (CY23SU11: background show false)
+BOXLESS = {"group", "basicShape", "shape", "image", "actionButton", "pageNavigator", "bookmarkNavigator"}
 AUTO_DATE = re.compile(r"^(LocalDateTable_|DateTableTemplate_)", re.I)
 SOURCES = re.compile(r"\b(SharePoint\.\w+|Sql\.Databases?|Excel\.Workbook|Excel\.CurrentWorkbook|Csv\.Document|"
                      r"Json\.Document|Xml\.Tables|Web\.Contents|OData\.Feed|File\.Contents|Folder\.Files|Folder\.Contents|"
@@ -95,6 +98,7 @@ class ReportDef:
     extension: dict = field(default_factory=dict)    # casefold entity -> {casefold measure}
     findings: list = field(default_factory=list)
     theme: str | None = None                         # name of the custom theme, '' for none; None: report.json not read
+    backgrounds: list = field(default_factory=list)  # (page display name, colour the page shows)
 
 
 # ------------------------------------------------------------------ helpers
@@ -431,6 +435,7 @@ def _pbir(rep: ReportDef, definition: Path, base: Path) -> None:
     folders = sorted((p for p in pages_dir.iterdir() if p.is_dir()), key=lambda p: (order.index(p.name) if p.name in order
                                                                                      else len(order), p.name)) \
         if pages_dir.is_dir() else []
+    theme = surface.Theme(rep.path)
     bindings: dict = {}
     for folder in folders:
         _name_check(folder, rep)
@@ -446,6 +451,9 @@ def _pbir(rep: ReportDef, definition: Path, base: Path) -> None:
             bindings.setdefault(binding, []).append(folder.name)
         page = Page(folder.name, data.get("displayName", ""), data.get("visibility") == "HiddenInViewMode", [],
                     _filters(data.get("filterConfig"), where, rep.findings), where)
+        page_color = surface.page_background(data, theme)
+        if str((data.get("pageBinding") or {}).get("type", "")).casefold() != "tooltip":
+            rep.backgrounds.append((page.display or page.name, page_color))
         parents = []                                   # (visual, parentGroupName, where)
         for vf in sorted((folder / "visuals").iterdir()) if (folder / "visuals").is_dir() else []:
             if not vf.is_dir():
@@ -464,6 +472,7 @@ def _pbir(rep: ReportDef, definition: Path, base: Path) -> None:
             kind = visual.get("visualType") or ("group" if "visualGroup" in vdata else "?")
             found = refs(visual.get("query")) + _filters(vdata.get("filterConfig"), vwhere, rep.findings)
             page.visuals.append(Visual(vf.name, kind, _title(visual.get("visualContainerObjects")), _unique(found), vwhere))
+            _background(rep, vdata, kind, page_color, theme, vwhere)
         names = {v.name for v in page.visuals}
         for name, group, vwhere in parents:
             if group not in names:
@@ -490,6 +499,29 @@ def _pbir(rep: ReportDef, definition: Path, base: Path) -> None:
         rep.bookmarks.append((name, _unique(refs(data)), where))
     if (bm / "bookmarks.json").is_file():
         load(bm / "bookmarks.json")
+
+
+def _background(rep: ReportDef, vdata: dict, kind: str, page_color: str, theme, vwhere: str) -> None:
+    """R14 a box of the other kind than its page (a white visual on a dark green page), R15 text that does not stand
+    on its background (its own fill, else the box). Without its own background a visual shows the box of the theme;
+    the base themes of Desktop draw it white and opaque except for BOXLESS (a Deneb visual on a dark page: Seqonis
+    17.11.)."""
+    if kind in ("group", "?") or vdata.get("isHidden"):
+        return
+    color, _ = surface.box(vdata, page_color, theme, default_shown=kind not in BOXLESS)
+    if surface.kind(color) != surface.kind(page_color):
+        rep.findings.append(("WARN", f"R14 {vwhere}: a {surface.kind(color)} box ({color}) on a {surface.kind(page_color)} "
+                                     f"page ({page_color}); give the visual the background of the page or switch its "
+                                     "background off, and its text the text colour of that background (skill "
+                                     "ppp-power-bi, references/design.md)"))
+    low = [(where, c, own or color) for where, c, own in surface.text_colors(vdata, theme)
+           if surface.contrast(c, own or color) < 3]
+    if low:
+        rep.findings.append(("WARN", f"R15 {vwhere}: text does not stand on its background: "
+                                     + ", ".join(f"{w} {c} on {b} ({surface.contrast(c, b):.1f}:1)" for w, c, b in low[:3])
+                                     + (" …" if len(low) > 3 else "")
+                                     + "; text on a light background is Dark Green #08312A, on a dark one White #FFFFFF "
+                                       "(skill ppp-power-bi, references/design.md)"))
 
 
 def _name_check(folder: Path, rep: ReportDef) -> None:
@@ -676,6 +708,14 @@ def check(models: dict, reports: list, rep: Report, base: Path) -> str:
             rep.warn(f"R10 {r.path.name}: no custom theme; a report carries the brand theme (skill bi-designer of the "
                      "plugin bi-design: powerbi-theme.json; in Desktop View › Themes › Browse for themes), "
                      "skill ppp-power-bi, references/design.md")
+        kinds: dict = {}
+        for page, color in r.backgrounds:
+            kinds.setdefault(surface.kind(color), []).append(f"{page} {color}")
+        if len(kinds) > 1:
+            rep.warn(f"R13 {r.path.name}: pages on a dark background ({', '.join(kinds['dark'][:4])}"
+                     f"{' …' if len(kinds['dark']) > 4 else ''}) and on a light one ({', '.join(kinds['light'][:4])}"
+                     f"{' …' if len(kinds['light']) > 4 else ''}); a report keeps one background on every page, white "
+                     "or Dark Green, and every visual follows it (skill ppp-power-bi, references/design.md)")
         deneb = [(p.display or p.name, v.name) for p in r.pages for v in p.visuals if v.type.startswith(DENEB)]
         if deneb:
             pages = _unique([page for page, _ in deneb])

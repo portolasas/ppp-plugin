@@ -8,6 +8,12 @@ Legend: [B] confirmed · [O] open · [V] version-dependent
 - Titles Dark Green; avoid Accent Green lines on white backgrounds for thin elements (low contrast) –
   use it as fill for large bars or on Dark Green.
 - Logo: Dark Green logo top left/right on white report background (SVG/PNG via Image visual).
+- One surface per report, on every page and in every visual: **white** (default: page and boxes White, text Dark
+  Green) or **Dark Green** (page and boxes Dark Green, text White, highlight Accent Green). On Dark Green the chart
+  colours are the ones with at least 4.4:1 there: Accent Green, Medium Blue, Medium Yellow, Red, Medium Violet,
+  Dark Yellow, White.
+- Colours with a meaning (phases, products, reasons) are brand tokens, from the chart order first, the same token in
+  every visual; a colour measure for conditional formatting returns token hex values.
 
 ## Code apps / web (React, HTML, Markdown exports)
 - Generate CSS from tokens:

@@ -36,7 +36,8 @@ standard visual that fell short.
    first:
    - what the reader should see at a glance (the question the visual answers) – always;
    - the fields, where several fit; the reference (plan, target, previous period) for a comparison;
-   - the page of the report, and whether a click should filter the other visuals.
+   - the page of the report, and whether a click should filter the other visuals;
+   - for values with a meaning (a phase, a product) the brand token of each, unless the report already has them.
    You decide the rest and name it in the hand-over: the type (`bideneb suggest <Table[Field]>…`, then the `use` and
    `avoid` lines of `bideneb types`), the title (the answer the visual gives, not the field names), formats (they
    come from the model), sizes. A value that needs a sum, a share or "the latest" is a **measure**: propose the DAX
@@ -87,11 +88,17 @@ standard visual that fell short.
 ## Rules
 
 - **Brand.** Colours, fonts and sizes come from the brand profile (`bideneb brand`): the corporate design, with
-  the same colour values as the plugin bi-design. A colour outside it (finding B1) is replaced by the token the finding
-  names. A colour that
-  carries a meaning of the business (a phase, a product, the colours the report already uses for them) is the
-  user's decision: ask, and keep the answer in the brief, `"colours": {"#1FBB3E": "Mahlen, wie im Bericht (Nutzer,
+  the same colour values as the plugin bi-design. A colour outside it is an error (B1) that stops `embed`: write the
+  token the finding names. A colour with a meaning of the business (a phase, a product) is a brand token the user
+  chooses: propose brand tokens, chart order first, in the question of step 3, the same as in the other visuals of the
+  report, and record the choice in the README. Colours the report already uses outside the brand go into that
+  proposal; one stays only on the user's explicit word, kept in the brief: `"colours": {"#1FBB3E": "Mahlen (Nutzer,
   Datum)"}`.
+- **Background.** The visual sits on the surface of its page. With `report.page` in the brief (`bideneb new …
+  --page`) bideneb reads the page colour, draws for it (on Dark Green with the dark roles: `bideneb brand
+  --background #08312A`) and `embed` writes it as the box of the visual; the theme otherwise draws a white box, also
+  on a dark page. `"background"` in the brief only for a page not yet in the report. R11 names a visual that does
+  not sit on its page.
 - **Grain.** The visual gets one row per combination of its grouping fields. Every field in the brief changes the
   rows: add what is drawn, nothing else (finding F2).
 - **Files.** Specification and config are files next to the brief; the copy in the report is written by

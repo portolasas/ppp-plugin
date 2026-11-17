@@ -75,7 +75,7 @@ def reachable_states(spec: dict) -> list[dict]:
 
 
 def page(name: str, specs: dict, scenarios: dict, dates: list[str], states: list[dict], marks: list[str],
-         vega_version: str = deneb.VEGA_VERSION) -> str:
+         vega_version: str = deneb.VEGA_VERSION, background: str = "#FFFFFF") -> str:
     payload = json.dumps({"name": name, "specs": specs, "scenarios": scenarios, "dates": dates, "states": states,
                           "marks": marks, "sequence": [s for s in SEQUENCE if s in scenarios]},
                          ensure_ascii=False).replace("</", "<\\/")
@@ -83,7 +83,7 @@ def page(name: str, specs: dict, scenarios: dict, dates: list[str], states: list
 <html lang="de"><head><meta charset="utf-8"><title>bideneb live {name}</title>
 <script src="{VEGA_CDN.format(v=vega_version)}"></script>
 <style>body{{font-family:Segoe UI,Arial,sans-serif;margin:16px;background:#F6F5F3}}pre{{white-space:pre-wrap;background:#fff;padding:8px}}
-.v{{display:inline-block;margin:6px;background:#fff;border:1px solid #ccc;vertical-align:top}}.v b{{display:block;font-size:12px;padding:2px 4px}}</style>
+.v{{display:inline-block;margin:6px;background:{background};border:1px solid #ccc;vertical-align:top}}.v b{{display:block;font-size:12px;padding:2px 4px}}</style>
 </head><body><h3>bideneb live: {name} (Vega {vega_version}, as in Deneb {deneb.DENEB_VERSION})</h3>
 <pre id="result">running …</pre><div id="views"></div>
 <script>
@@ -187,7 +187,7 @@ function diff(a, b) {{
 
 
 def build(name: str, spec: dict, config: dict | None, scenarios: dict, sizes: list, brand,
-          states: list[dict] | None = None) -> str:
+          states: list[dict] | None = None, background: str = "#FFFFFF") -> str:
     """The HTML of the test page. scenarios: name -> rows as the dataset gets them (rows_for_deneb).
     The specification is prepared as for the local render (Deneb's patches, pbi functions approximated)."""
     specs, dates, marks = {}, [], []
@@ -205,4 +205,4 @@ def build(name: str, spec: dict, config: dict | None, scenarios: dict, sizes: li
     for st in reachable_states(next(iter(specs.values()), {})):
         if st not in found:
             found.append(st)
-    return page(name, specs, scenarios, dates, found, marks)
+    return page(name, specs, scenarios, dates, found, marks, background=background)

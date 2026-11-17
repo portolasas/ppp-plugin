@@ -2,6 +2,25 @@
 
 bi-deneb is released together with ppp and carries its version. This file lists the versions that changed bi-deneb.
 
+## 0.27.4 (2026-11-17)
+From SEQONIS 17.11.: on a dark green page the Deneb visual stayed white (the theme draws a white box behind a visual
+without its own background), and its phase colours were not colours of the brand: B1 was a warning, left open.
+- The page decides the surface: with `report.page` in the brief bideneb reads the page colour (canvas over wallpaper,
+  the defaults of Power BI, the theme; module `surface.py`, the same file as in ppp) and draws for it. A dark page
+  takes the dark roles of the brand (`charts.json` "dark": text White, focus Accent Green, chart colours with at
+  least 4.4:1 on Dark Green); `bideneb brand --background #08312A` shows them. Every type draws clean there.
+- `embed` writes the page colour as the box of the visual and refuses a visual drawn for the other surface before
+  it creates a page (`--force` writes it and names the error); `--new-page` copies background and wallpaper of the
+  report; a colour the user accepted in the brief (`colours`) does not stop `embed`.
+- R11: the visual does not sit on its page (drawn for the other surface; its box or a background of the
+  specification of the other surface).
+- B1 is an ERROR and stops `embed`; a colour the user keeps on their explicit word goes into the brief (`colours`).
+- B6 judges text on the page only (text on a fill: P7); B7 knows dark pages and skips lines of width 0 (a legend
+  rule of width 0 counted as a thin line).
+- Box plot: a collapsed median (one value) was drawn in the default colour of Vega-Lite; the config of Vega-Lite
+  sets the mark colour of the brand.
+- SKILL.md › Brand and Background, custom.md › Colour, findings.md (B1, B6, B7, R11).
+
 ## 0.27.1 (2026-11-16)
 From SEQONIS package 006: two custom visuals were empty when the user first opened them in Desktop, and their
 slicers were gone after the save. The cause of the empty visuals is open (a copy without data before a refresh, or no size

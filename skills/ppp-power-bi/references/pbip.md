@@ -48,7 +48,7 @@ components/power-bi/
 - Report-level measures live in `reportExtensions.json`. [D]
 - Filter values, slicer selections and series formatting carry data values into `visual.json` and bookmarks; check them before a commit when the data is confidential. [D]
 - A copied bookmark keeps only the visuals that exist on its page. [D]
-- A visual copied to another page keeps `parentGroupName`; when that group is not on the new page, Desktop removes the visual on save (SEQONIS 16.11.: four slicers). Remove the property or copy the whole group; `ppp pbi check` R12. Check the copy's colours on the new background too (white slicer text on a light page). Replacing a visual: rename it in `visualInteractions` of `page.json`. [B]
+- A visual copied to another page keeps `parentGroupName`; when that group is not on the new page, Desktop removes the visual on save (SEQONIS 16.11.: four slicers). Remove the property or copy the whole group; `ppp pbi check` R12. Check the copy's colours on the new background too (white slicer text on a light page; `ppp pbi check` R14, R15). Replacing a visual: rename it in `visualInteractions` of `page.json`. [B]
 - An AppSource visual is listed in `publicCustomVisuals` of `report.json`; its `visualType` is the GUID and the query roles are the names of its `capabilities.json` (public repository). Whether Desktop takes hand-written objects of such a visual: [O]; see [visuals.md](visuals.md).
 
 ## Copy of a project (prototype)

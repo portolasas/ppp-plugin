@@ -4,6 +4,7 @@ A profile has a name and two files: tokens.json (the colours; same format as the
 bi-design) and charts.json (what a chart needs beyond the tokens: palettes, sizes, what must not be text). The
 tokens.json of the corporate design is a copy of the one of the plugin bi-design beside this plugin in the repository
 (skills/bi-designer/marken/<name>); a test keeps the two identical."""
+import copy
 import json
 import os
 import re
@@ -12,6 +13,7 @@ from pathlib import Path
 BRANDS = Path(__file__).resolve().parent.parent.parent / "brands"
 DEFAULT = "boehringer-ingelheim"     # the corporate design
 FALLBACK = "neutral"                 # for a profile that cannot be loaded
+DARK = 0.2                           # relative luminance below which a page counts as dark (surface.DARK)
 HEX = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 CSS_NAMES = {"white": "#FFFFFF", "black": "#000000", "transparent": None, "none": None}
 
@@ -63,6 +65,27 @@ class Brand:
         self.by_hex = {}
         for k, v in self.colors.items():
             self.by_hex.setdefault(v, k)
+        self.surface = "light"                      # light, dark, or dark-missing (a dark page, no dark roles)
+        self.dark_text = self.c("text")             # the text colour on light: the dark candidate of text_on
+
+    def on(self, background: str | None) -> "Brand":
+        """The profile for a page of this colour. On a dark page the roles of charts["dark"] replace the others; a
+        profile without them stays light and says so (surface dark-missing)."""
+        hexv = norm(background or "") or None
+        if not hexv or luminance(hexv) >= DARK:
+            return self
+        out = copy.copy(self)
+        dark = self.charts.get("dark")
+        if not isinstance(dark, dict):
+            out.surface = "dark-missing"
+            return out
+        out.charts = {**self.charts, **{k: v for k, v in dark.items() if k not in ("derived", "source")}}
+        out.surface = "dark"
+        return out
+
+    @property
+    def dark(self) -> bool:
+        return self.surface == "dark"
 
     # ---- values
     def hex(self, token: str) -> str:
@@ -109,7 +132,7 @@ class Brand:
         for s in self.charts["status"].values():
             if self.hex(s["fill"]) == fill:
                 return self.hex(s["text"])
-        dark, light = self.c("text"), self.hex("white")
+        dark, light = self.dark_text, self.hex("white") if "white" in self.colors else "#FFFFFF"
         return dark if contrast(dark, fill) >= contrast(light, fill) else light
 
     def is_token(self, hexv: str) -> bool:
@@ -148,6 +171,7 @@ class Brand:
             cfg["title"].update({"font": self.font, "subtitleFont": self.font})
         else:
             cfg["view"] = {"stroke": None}
+            cfg["mark"] = {"color": self.c("focus")}   # no default of Vega-Lite (#4C78A8) for a part without colour
             cfg["line"] = {"strokeWidth": 2.5, "strokeCap": "round", "strokeJoin": "round"}
             cfg["point"] = {"size": 60, "filled": True}
             cfg["header"] = {"labelColor": text, "titleColor": text, "labelFontSize": label, "titleFontSize": label,

@@ -11,7 +11,7 @@ import re
 import uuid
 from pathlib import Path
 
-from . import deneb
+from . import deneb, surface
 from . import expr as ex
 from .checks import Finding, order
 
@@ -126,6 +126,22 @@ def find_page(report: Path, wanted: str) -> dict:
     return hits[0]
 
 
+def page_color(report: Path, wanted: str) -> str | None:
+    """The colour the page shows behind its visuals (canvas over wallpaper, theme and Power BI defaults), or None
+    when the report or the page cannot be read."""
+    try:
+        page = find_page(report, wanted)
+        return surface.page_background(_read(page["path"] / "page.json"), surface.Theme(report))
+    except (PbirError, OSError, json.JSONDecodeError):
+        return None
+
+
+def background_object(color: str) -> list:
+    """visualContainerObjects.background: the box in the colour of the page, opaque."""
+    return [{"properties": {"show": literal(True), "color": {"solid": {"color": literal(color)}},
+                            "transparency": literal(0)}}]
+
+
 def _schema_of(report: Path, kind: str, fallback: str) -> str:
     pattern = "pages/*/visuals/*/visual.json" if kind == "visualContainer" else "pages/*/page.json"
     for p in sorted(definition(report).glob(pattern)):
@@ -138,6 +154,25 @@ def _schema_of(report: Path, kind: str, fallback: str) -> str:
     return f"{SCHEMA_BASE}{kind}/{fallback}/schema.json"
 
 
+def _surface_page(report: Path) -> dict | None:
+    """page.json of the first page that is not a tooltip page: a new page takes its background and wallpaper."""
+    for p in pages(report):
+        try:
+            data = _read(p["path"] / "page.json")
+        except (OSError, json.JSONDecodeError):
+            continue
+        if str((data.get("pageBinding") or {}).get("type", "")).casefold() != "tooltip":
+            return data
+    return None
+
+
+def new_page_color(report: Path) -> str:
+    """The colour a page created by new_page will show."""
+    src = _surface_page(report) or {}
+    keep = {k: v for k, v in (src.get("objects") or {}).items() if k in ("background", "outspace")}
+    return surface.page_background({"objects": keep}, surface.Theme(report))
+
+
 def new_page(report: Path, display: str) -> dict:
     d = definition(report) / "pages"
     name = "p" + hashlib.sha1(display.encode("utf-8")).hexdigest()[:19]
@@ -146,6 +181,10 @@ def new_page(report: Path, display: str) -> dict:
     nl = _newline(report)
     page = {"$schema": _schema_of(report, "page", PAGE_SCHEMA_FALLBACK), "name": name, "displayName": display,
             "displayOption": "FitToPage", "height": 720, "width": 1280}
+    src = _surface_page(report) or {}
+    keep = {k: v for k, v in (src.get("objects") or {}).items() if k in ("background", "outspace")}
+    if keep:
+        page["objects"] = keep          # one background per report: the new page looks like the others
     _write(d / name / "page.json", page, nl)
     meta_path = d / "pages.json"
     if meta_path.is_file():
@@ -286,8 +325,10 @@ def vega_properties(provider: str, spec: dict, config: dict, interaction: dict, 
 # ---------------------------------------------------------------- embed
 def embed(report: Path, page: dict, name: str, fields: list, provider: str, spec: dict, config: dict,
           interaction: dict, position: dict | None = None, size: tuple = (640, 360), render_mode: str | None = None,
-          visual: str | None = None) -> dict:
-    """Write or update the visual; returns {path, created, registered}. visual: the name of an adopted visual."""
+          visual: str | None = None, background: str | None = None) -> dict:
+    """Write or update the visual; returns {path, created, registered}. visual: the name of an adopted visual.
+    background: the colour of the page, written as the box of the visual (without it the theme draws a white box,
+    also on a dark page)."""
     d = definition(report)
     nl = _newline(report)
     vname = visual or visual_name(name)
@@ -349,6 +390,8 @@ def embed(report: Path, page: dict, name: str, fields: list, provider: str, spec
         if position:
             visual.setdefault("position", {}).update(
                 {k: val for k, val in position.items() if k in ("x", "y", "width", "height")})
+    if background:
+        visual["visual"].setdefault("visualContainerObjects", {})["background"] = background_object(background)
     _write(path, visual, nl)
     rpath = d / "report.json"
     rep = _read(rpath)
@@ -395,8 +438,10 @@ def find_visual(report: Path, name: str) -> dict | None:
 
 
 # ---------------------------------------------------------------- check
-def verify(report: Path, name: str, fields: list, spec: dict | None, config: dict | None, interaction: dict) -> list:
-    """Findings about the visual as it stands in the report (codes R…)."""
+def verify(report: Path, name: str, fields: list, spec: dict | None, config: dict | None, interaction: dict,
+           background: str | None = None) -> list:
+    """Findings about the visual as it stands in the report (codes R…). background: the page colour the visual is
+    drawn for (the brief's, else the page's)."""
     out = []
     add = lambda level, code, text: out.append(Finding(level, code, text))
     try:
@@ -480,12 +525,42 @@ def verify(report: Path, name: str, fields: list, spec: dict | None, config: dic
                                  f"move it in Desktop, or embed with --position x,y,width,height")
         for text in dangling(page):
             add("WARNING", "R10", f"page {page['displayName'] or page['name']}: {text}")
+        for level, text in backgrounds(report, page, v, spec, config, background):
+            add("ERROR" if level == "ERROR" else "WARNING", "R11", f"{where}: {text}")
     odd = [p.get("queryRef") or "?" for p in v["projections"] if not plain(p)]
     if odd:
         add("WARNING", "R5", f"{where}: field(s) with an implicit aggregation or a hierarchy ({', '.join(odd)}): their "
                              f"name in the dataset depends on the language of Desktop, and bideneb cannot write "
                              f"them; use measures")
     return order(out)
+
+
+def backgrounds(report: Path, page: dict, v: dict, spec: dict | None, config: dict | None,
+                drawn_for: str | None) -> list:
+    """(level, text) where the visual does not sit on the background of its page: a box of the other kind (the white
+    box of the theme on a dark green page, Seqonis 17.11.), colours drawn for another background, a background the
+    specification paints itself."""
+    out = []
+    try:
+        theme = surface.Theme(report)
+        pc = surface.page_background(_read(page["path"] / "page.json"), theme)
+    except (OSError, json.JSONDecodeError):
+        return out
+    kind = surface.kind(pc)
+    if drawn_for and surface.norm(drawn_for) and surface.kind(surface.norm(drawn_for)) != kind:
+        out.append(("ERROR", f"drawn for a {surface.kind(surface.norm(drawn_for))} background ({drawn_for}), the page "
+                             f"is {kind} ({pc}): its text and colours do not stand there. Remove \"background\" from "
+                             f"the brief (bideneb then takes the page), build and embed again"))
+    box_ = surface.box(v["data"], pc, theme, default_shown=True)[0]
+    if surface.kind(box_) != kind:
+        out.append(("WARNING", f"its box is {surface.kind(box_)} ({box_}) on a {kind} page ({pc}): `bideneb embed` "
+                               f"writes the page colour as its background"))
+    for where, obj in (("specification", spec), ("config", config)):
+        own = surface.norm((obj or {}).get("background")) if isinstance(obj, dict) else None
+        if own and surface.kind(own) != kind:
+            out.append(("WARNING", f"the {where} paints its own background {own} on a {kind} page ({pc}): remove "
+                                   f"\"background\" there, the box of the visual carries the page colour"))
+    return out
 
 
 # ---------------------------------------------------------------- Deneb template (import by hand)

@@ -2,6 +2,14 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.27.5 (2026-11-17)
+- Einrichtung für neue Nutzer (PLUGIN PL-28): Profil setup/ppp.code-profile mit den Erweiterungen Power Platform Tools und Python, mit „Use for New Windows“ das Profil jedes neuen Fensters; README und Doku nennen den Installationslink vscode://chat-plugin/install?source=portolasas/ppp-plugin&plugin=ppp
+
+## 0.27.4 (2026-11-17)
+- Ein Hintergrund je Bericht (PLUGIN PL-25, Seqonis 17.11.): ppp pbi check meldet Seiten eines Berichts mit hellem und dunklem Hintergrund (R13), einen Visual-Kasten, der nicht zu seiner Seite passt, etwa ein weißes Deneb-Visual auf dunkelgrüner Seite (R14), und Text mit zu wenig Kontrast zu seinem Hintergrund (R15: Titel, Achsen, Legende, Textfeld, Slicer-Einträge, Karten, Tabellen, je auf ihrer eigenen Füllung); ein Visual ohne eigenen Hintergrund trägt den Kasten des Themes, Basis- und eigenes Theme werden je Eigenschaft zusammengeführt; die Seitenfarbe folgt den Vorgaben von Power BI (Seitenfläche ohne eigene Transparenz ist durchsichtig, es zählt das Hintergrundbild); ppp-power-bi › design.md: eine Fläche je Bericht, weiß oder Dunkelgrün, Farben mit Bedeutung sind Markenfarben, auch in einer Farb-Kennzahl
+- bi-deneb: liest die Farbe der Seite aus dem Bericht und zeichnet auf Dunkelgrün mit eigenen Rollen der Marke (charts.json dark); embed schreibt die Seitenfarbe als Hintergrund des Visuals und verweigert ein für die andere Fläche gezeichnetes Visual, bevor es eine Seite anlegt; eine neue Seite übernimmt Hintergrund und Hintergrundbild des Berichts; eine vom Nutzer freigegebene Farbe (Brief colours) hält embed nicht an; R11 meldet ein Visual, das nicht auf seiner Seite sitzt; B1 (Farbe außerhalb der Marke) ist ein Fehler und hält embed an; B7 zählt Linien der Breite 0 nicht; B6 bewertet nur Text auf der Seite; der Boxplot zeichnet einen zusammengefallenen Median nicht mehr in der Standardfarbe von Vega-Lite
+- bi-design: plattformen.md › Power BI nennt die Fläche je Bericht und die Markenfarben auf Dunkelgrün
+
 ## 0.27.3 (2026-11-17)
 - Hooks von VS Code unter Windows (PLUGIN PL-27): der Starter hooks/ppp_hook.cmd findet unter C:\BITrusted auch eine Umgebung in <Ordner>\<Name> ohne envs, wie mamba create -p sie anlegt, nie aber im Paket-Cache pkgs von conda
 

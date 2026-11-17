@@ -119,7 +119,7 @@ class Boxplot(VisualType):
         ext = c.opt("extent", "1.5")
         mark = {"type": "boxplot", "extent": "min-max" if ext == "min-max" else 1.5, "size": 18,
                 "color": b.c("focus"),
-                "box": {"color": b.c("focus")}, "median": {"color": b.hex("white"), "strokeWidth": 2},
+                "box": {"color": b.c("focus")}, "median": {"fill": b.hex("white"), "stroke": b.c("focus"), "strokeWidth": 1},
                 "rule": {"color": b.c("textSecondary")}, "ticks": {"color": b.c("textSecondary")},
                 "outliers": {"color": b.c("textSecondary"), "size": 18, "filled": True}}
         y = cat_enc(c, cat, "y", "ascending", "max(60, denebContainer.width * 0.3)")

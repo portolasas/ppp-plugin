@@ -86,6 +86,8 @@ class Ctx:
         self.interaction = {"tooltip": True, "crossFilter": selection, "highlight": False,
                             **(brief.get("interaction") or {})}
         self.locale = brief.get("locale") or "de-DE"
+        self.background = "#FFFFFF"     # the page colour the visual is drawn for (brief.resolve sets it)
+        self.page_background = None     # the colour of its page in the report, when known
 
     def f(self, role: str) -> F | None:
         v = self.fields.get(role)

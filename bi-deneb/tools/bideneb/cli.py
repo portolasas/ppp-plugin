@@ -153,8 +153,9 @@ def examine(ctx, vtype, spec, config, files, sizes, scenarios, pictures=True, ba
     if not pictures or checks.worst(static) == "ERROR" and any(f.code in ("D1",) for f in static):
         return checks.accept_colours(static, ctx.brief.get("colours")), [], written, notes
     if render.available() is None:
-        return static + [checks.Finding("WARNING", "P0", "not rendered: vl-convert-python is not installed "
-                                                        "(`bideneb setup`); only the static rules ran")], [], written, notes
+        return checks.accept_colours(static, ctx.brief.get("colours")) + [checks.Finding(
+            "WARNING", "P0", "not rendered: vl-convert-python is not installed (`bideneb setup`); only the static rules "
+                             "ran")], [], written, notes
     files["preview"].mkdir(parents=True, exist_ok=True)
     name = ctx.brief["name"]
     for sc in scenarios:
@@ -294,8 +295,11 @@ def cmd_setup(args) -> int:
 
 
 def cmd_brand(args) -> int:
-    b = br.load(args.name)
-    say(f"brand {b.name} ({b.tokens.get('brand', '')}); font {b.font}; sizes {b.charts['fontSizesPx']} px")
+    b = br.load(args.name).on(args.background)
+    if b.surface == "dark-missing":
+        raise Fail(f"the profile {b.name} has no colours for a dark page ({args.background})")
+    say(f"brand {b.name} ({b.tokens.get('brand', '')}); font {b.font}; sizes {b.charts['fontSizesPx']} px; "
+        f"{'dark page' if b.dark else 'light page'}" + ("" if b.dark else " (--background #08312A shows the dark roles)"))
     for role in ("text", "textSecondary", "grid", "background", "focus", "context", "reference", "good", "bad",
                  "goodText", "badText"):
         hexv = b.c(role)
@@ -304,7 +308,8 @@ def cmd_brand(args) -> int:
         say(f"  {pal:<14} " + " ".join(f"{b.token_of(h)} {h}" for h in b.palette(pal)))
     say("  trafficLight   " + " ".join(f"{k} {v}" for k, v in b.traffic().items()))
     say("  never as text  " + ", ".join(b.charts["neverAsText"]))
-    say("  never as thin line or small marker on light: " + ", ".join(b.charts["neverAsThinMarkOnLight"]))
+    thin = "neverAsThinMarkOnDark" if b.dark else "neverAsThinMarkOnLight"
+    say(f"  never as thin line or small marker on {'dark' if b.dark else 'light'}: " + ", ".join(b.charts.get(thin, [])))
     return 0
 
 
@@ -584,12 +589,12 @@ def finish(args, path, brief, ctx, vtype, files, spec, config) -> int:
     scenarios = [args.scenario] if getattr(args, "scenario", None) else ["typical", "stress", "few", "empty"]
     static, picture, written, notes = examine(ctx, vtype, spec, config, files, sizes, scenarios,
                                               pictures=not getattr(args, "no_render", False),
-                                              background=brief.get("background", "#FFFFFF"))
+                                              background=ctx.background)
     extra = []
     rep = report_of(path, brief)
     if rep is not None:
         try:
-            extra = pbir.verify(rep, vname(brief), ctx.all(), spec, config, ctx.interaction)
+            extra = pbir.verify(rep, vname(brief), ctx.all(), spec, config, ctx.interaction, ctx.background)
         except pbir.PbirError as err:
             extra = [checks.Finding("ERROR", "R0", str(err))]
     if written:
@@ -633,7 +638,7 @@ def cmd_render(args) -> int:
             raise Fail(str(err)) from None
         tag = f"{brief['name']}_{scenario}_{w}x{h}" + ("_selected" if selected else "")
         out = files["preview"] / f"{tag}.png"
-        out.write_bytes(render.png(render.framed(res.svg, w, h, args.background or brief.get("background", "#FFFFFF")),
+        out.write_bytes(render.png(render.framed(res.svg, w, h, args.background or ctx.background),
                                    args.scale))
         say(f"wrote {out} ({len(rows)} rows)")
         if args.svg:
@@ -658,7 +663,7 @@ def cmd_live(args) -> int:
         raise Fail("a Vega-Lite specification is compiled to Vega first, which needs vl-convert-python: `bideneb setup`")
     files["preview"].mkdir(parents=True, exist_ok=True)
     out = files["preview"] / f"{brief['name']}_live.html"
-    html = live.build(brief["name"], spec, config, scenarios, sizes, ctx.brand, states)
+    html = live.build(brief["name"], spec, config, scenarios, sizes, ctx.brand, states, ctx.background)
     out.write_bytes(html.encode("utf-8"))
     payload = json.JSONDecoder().raw_decode(html.split("const P = ", 1)[1])[0]
     states = payload["states"]
@@ -689,8 +694,9 @@ def cmd_embed(args) -> int:
             raise Fail("which report? pass --report <path to .Report or .pbip>"
                        + (": " + ", ".join(p.name for p in near) if near else ""))
         rep = near[0]
-    static = checks.static(spec, config, ctx.brand, [f.key for f in ctx.all()], ctx.interaction,
-                           render_mode=brief.get("renderMode", "svg"), generated=vtype is not None and not edited(spec))
+    static = checks.accept_colours(checks.static(spec, config, ctx.brand, [f.key for f in ctx.all()], ctx.interaction,
+                                                 render_mode=brief.get("renderMode", "svg"),
+                                                 generated=vtype is not None and not edited(spec)), brief.get("colours"))
     errors = [f for f in static if f.level == "ERROR"]
     if errors and not args.force:
         for f in errors:
@@ -704,7 +710,8 @@ def cmd_embed(args) -> int:
         except render.RenderError as err:
             raise Fail(f"the specification does not run: {err}. Fix it (`bideneb check`) before embedding, or pass "
                        f"--force") from None
-        broken = [f for f in checks.picture(res, ctx.brand, len(rows), (w, h)) if f.code in ("P1", "P2")]
+        broken = [f for f in checks.picture(res, ctx.brand, len(rows), (w, h), ctx.background)
+                  if f.code in ("P1", "P2")]
         if broken:
             for f in broken:
                 say("  " + f.line())
@@ -736,8 +743,7 @@ def cmd_embed(args) -> int:
             if page_name and page_name not in (page["name"], page["displayName"]):
                 raise Fail(f"the visual already stands on page '{page['displayName']}'; move it in Desktop")
         elif args.new_page:
-            page = pbir.new_page(rep, args.new_page)
-            say(f"created page '{args.new_page}'")
+            page = None                 # created below, after the check of the surface
         elif page_name:
             page = pbir.find_page(rep, page_name)
         else:
@@ -755,9 +761,23 @@ def cmd_embed(args) -> int:
         elif (brief.get("report") or {}).get("position") and existing is None:
             position = brief["report"]["position"]
         size = vtype.default_size if vtype is not None else (640, 360)
+        shown = page["displayName"] if page else args.new_page
+        page_bg = pbir.page_color(rep, page["name"]) if page else pbir.new_page_color(rep)
+        own = "background" in brief
+        fix = (f"set \"background\": \"{page_bg}\" in the brief (the new page takes the background of the report)"
+               if page is None else
+               f"remove \"background\" from the brief (bideneb then draws for the page)" if own else
+               f"set \"report\": {{\"page\": \"{shown}\"}} in the brief (bideneb then draws for the page)")
+        if page_bg and not args.force and (br.luminance(page_bg) < br.DARK) != ctx.brand.dark:
+            raise Fail(f"page '{shown}' is {'dark' if br.luminance(page_bg) < br.DARK else 'light'} ({page_bg}), the "
+                       f"visual is drawn for {ctx.background}: its text and colours would not stand there. {fix[0].upper()}"
+                       f"{fix[1:]}, `bideneb build {brief['name']}`, embed again")
+        if page is None:
+            page = pbir.new_page(rep, args.new_page)
+            say(f"created page '{args.new_page}' with the background of the report ({page_bg or '#FFFFFF'})")
         result = pbir.embed(rep, page, brief["name"], ctx.all(), deneb.provider_of(spec), spec, config,
                             ctx.interaction, position, size, brief.get("renderMode"),
-                            (brief.get("report") or {}).get("visual"))
+                            (brief.get("report") or {}).get("visual"), page_bg)
     except pbir.PbirError as err:
         raise Fail(str(err)) from None
     import os
@@ -769,7 +789,7 @@ def cmd_embed(args) -> int:
     say(f"{'created' if result['created'] else 'updated'} {result['path']}")
     if result["registered"]:
         say("added Deneb to publicCustomVisuals in report.json")
-    findings = pbir.verify(rep, vname(brief), ctx.all(), spec, config, ctx.interaction)
+    findings = pbir.verify(rep, vname(brief), ctx.all(), spec, config, ctx.interaction, ctx.background)
     code = report_findings([], [], findings)
     say("Desktop does not see the change while the project is open there, and saving from Desktop writes its own "
         "state over it: the user closes the project first, or reopens it without saving.")
@@ -972,6 +992,7 @@ def parser() -> argparse.ArgumentParser:
     add("setup", cmd_setup, "install the renderer (vl-convert-python) and Pillow with pip --user")
     s = add("brand", cmd_brand, "colours, palettes and rules of a brand profile")
     s.add_argument("name", nargs="?")
+    s.add_argument("--background", help="page colour; a dark one (#08312A) shows the roles for a dark page")
     s = add("fields", cmd_fields, "tables, columns and measures of the model of a Power BI project (metadata only)")
     s.add_argument("project")
     s.add_argument("--table")

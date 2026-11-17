@@ -85,7 +85,7 @@ ppp itself is called with `python -I`; `bippt` and `bideneb` without `-I`, becau
 ## Quick start
 
 ### 1. Install
-**VS Code.** No JSON editing and no install script:
+**VS Code.** No JSON editing and no install script. New to VS Code? Download [`setup/ppp.code-profile`](https://raw.githubusercontent.com/portolasas/ppp-plugin/main/setup/ppp.code-profile) (right-click › "Save link as...", keep the extension `.code-profile`) and import it first (Command Palette › "Profiles: Import Profile..." › "Select File...", then "Create" and "Use for New Windows"): it installs the extensions Power Platform Tools and Python, and every new window opens in the profile ppp. Then the fastest way is the link `vscode://chat-plugin/install?source=portolasas/ppp-plugin&plugin=ppp` (paste it into the address bar of your browser and confirm in VS Code); or by hand:
 1. Add the marketplace: open the Settings, search for `chat.plugins.marketplaces`, choose "Add Item" and enter `portolasas/ppp-plugin`. Or in the Agents view: Customizations › Browse › Configure Marketplaces › Add Marketplace.
 2. Install **ppp** from the marketplace (Customizations › Browse, or the Extensions view under Agent Plugins) and confirm the trust prompt. Install **bi-design** and **bi-deneb** the same way if you want them.
 3. Run "Developer: Reload Window" and choose the agent **ppp** once in the agent picker; it stays chosen. With the optional plugins the picker also shows `bi-ppt` and `bi-deneb`; in a ppp project you stay with `ppp`, which loads their skills itself.

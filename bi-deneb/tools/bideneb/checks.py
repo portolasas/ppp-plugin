@@ -341,8 +341,8 @@ def static(spec: dict, config: dict | None, brand, dataset: list[str] | None, in
             if word in CSS_COLORS and not brand.is_token(CSS_COLORS[word]):
                 foreign.setdefault(CSS_COLORS[word], []).append(f"{ex.show(path[1:])}.{key} ('{v}')")
             elif word.startswith(("hsl(", "hsla(")):
-                add("WARNING", "B1", f"{v} ({ex.show(path[1:])}.{key}): write colours as the hex values of the "
-                                     f"brand tokens")
+                add("ERROR", "B1", f"{v} ({ex.show(path[1:])}.{key}): write colours as the hex values of the "
+                                   f"brand tokens")
         if key in ex.EXPR_KEYS:
             candidates = [s for s in ex.analyse(v)["strings"]]
         else:
@@ -356,9 +356,10 @@ def static(spec: dict, config: dict | None, brand, dataset: list[str] | None, in
             add("WARNING", "B2", f"font '{v}' ({ex.show(path[1:])}.{key}): the brand sets {brand.font}")
     for hexv, places in foreign.items():
         token, near = brand.nearest(hexv)
-        add("WARNING", "B1", f"{hexv} is written at {len(places)} place(s) (first: {places[0]}) and is not a colour "
-                             f"of the brand {brand.name}; nearest token: {token} {near}. A colour with a meaning of "
-                             f"its own (a status of the business) is the user's decision: ask")
+        add("ERROR", "B1", f"{hexv} is written at {len(places)} place(s) (first: {places[0]}) and is not a colour "
+                           f"of the brand {brand.name}; nearest token: {token} {near}. A colour with a meaning of its "
+                           f"own (a phase, a product, a status) is the user's decision: ask before embedding, and keep "
+                           f"the answer in the brief under \"colours\"")
     for path, key, v in ex.walk({"spec": spec, "config": config or {}}):
         if key in ("fontSize", "labelFontSize", "titleFontSize", "subtitleFontSize") and isinstance(v, (int, float)) \
                 and v not in brand.charts["fontSizesPx"]:
@@ -484,7 +485,8 @@ def picture(result, brand, rows: int, size: tuple, background: str = "#FFFFFF") 
         need = 3.0 if large else 4.5
         if ratio < need:
             low.setdefault((t.fill, back), []).append((ratio, t))
-        if t.fill in never_text or (t.fill in large_only and not large):
+        on_page = back == (br.norm(background) or background)     # text on a fill is judged by its contrast (P7)
+        if on_page and (t.fill in never_text or (t.fill in large_only and not large)):
             forbidden.setdefault(t.fill, []).append(t)
     for (fill, back), items in low.items():
         ratio, t = items[0]
@@ -496,22 +498,24 @@ def picture(result, brand, rows: int, size: tuple, background: str = "#FFFFFF") 
         add("ERROR", "B6", f"{len(items)} text(s) in {_name(brand, fill)} (e.g. '{_short(items[0].text)}'): the brand "
                            f"does not allow this colour for text; text is {_name(brand, brand.c('text'))} or "
                            f"{_name(brand, brand.c('textSecondary'))}")
-    thin = brand.tokens_in("neverAsThinMarkOnLight")
+    dark = br.luminance(background) < br.DARK
+    thin = brand.tokens_in("neverAsThinMarkOnDark" if dark else "neverAsThinMarkOnLight")
+    weak_on = (lambda c: br.luminance(c) < br.DARK) if dark else (lambda c: br.luminance(c) > 0.6)
     thin_hits = {}
     for it in scene.items:
         if not it.data:
             continue      # axes, grids and legends may be weak
-        if it.kind in ("line", "rule") and it.stroke in thin and it.stroke_width < 4 and br.luminance(background) > 0.6:
+        if it.kind in ("line", "rule") and it.stroke in thin and 0 < it.stroke_width < 4 and weak_on(background):
             thin_hits.setdefault(it.stroke, 0)
             thin_hits[it.stroke] += 1
         if it.kind == "symbol" and not it.role.startswith("legend") and (it.fill in thin or (not it.fill and it.stroke in thin)) \
-                and (it.box[2] - it.box[0]) < 14 and br.luminance(sc.backdrop(scene, it, background)) > 0.6:
+                and (it.box[2] - it.box[0]) < 14 and weak_on(sc.backdrop(scene, it, background)):
             key = it.fill or it.stroke
             thin_hits[key] = thin_hits.get(key, 0) + 1
     for color, n in thin_hits.items():
-        add("WARNING", "B7", f"{n} thin line(s) or small marker(s) in {_name(brand, color)} on a light background: too "
-                             f"weak to see; the brand keeps this colour for fills; lines take "
-                             f"{', '.join(_name(brand, c) for c in brand.palette('line')[:3])}")
+        add("WARNING", "B7", f"{n} thin line(s) or small marker(s) in {_name(brand, color)} on a "
+                             f"{'dark' if dark else 'light'} background: too weak to see; the brand keeps this colour "
+                             f"for fills; lines take {', '.join(_name(brand, c) for c in brand.palette('line')[:3])}")
     signal = brand.tokens_in("signalOnly")
     area = w * h
     for it in scene.items:
@@ -527,8 +531,8 @@ def picture(result, brand, rows: int, size: tuple, background: str = "#FFFFFF") 
                 strange[col] = strange.get(col, 0) + 1
     for col, n in sorted(strange.items(), key=lambda kv: -kv[1])[:6]:
         token, near = brand.nearest(col)
-        add("WARNING", "B1", f"{col} is drawn {n} time(s) and is not a colour of the brand {brand.name}; nearest "
-                             f"token: {token} {near} (defaults of Vega count too: set them in the config)")
+        add("ERROR", "B1", f"{col} is drawn {n} time(s) and is not a colour of the brand {brand.name}; nearest "
+                           f"token: {token} {near} (defaults of Vega count too: set them in the config)")
     if any(it.gradient for it in scene.items) and brand.charts["rules"].get("noGradients"):
         add("WARNING", "B5", "a gradient is drawn: the brand uses flat colours")
     radius = max((it.radius for it in scene.items), default=0)

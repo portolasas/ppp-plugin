@@ -12,7 +12,10 @@
   "interaction": {"tooltip": true, "crossFilter": true, "highlight": false},
   "sample": {"<display name>": ["value", ...]},   invented category names for the preview
   "sizes": [[640, 360], ...],              container sizes of the preview
-  "report": {"path": "../X.Report", "page": "Page name", "position": {"x":..,"y":..,"width":..,"height":..}}
+  "report": {"path": "../X.Report", "page": "Page name", "position": {"x":..,"y":..,"width":..,"height":..}},
+  "background": "#08312A",                 optional; without it the colour of report.page, else white. A dark page
+                                           draws with the dark roles of the brand (charts.json "dark")
+  "colours": {"#1FBB3E": "..."}            colours outside the brand the user decided on
 }"""
 import json
 import re
@@ -107,6 +110,11 @@ def resolve(brief: dict, path: Path | None = None, model: md.Model | None = None
     except FileNotFoundError as ex:
         problems.append(f"brand: {ex}")
         brand = br.load("neutral")
+    background, page_bg = background_of(brief, path)
+    brand = brand.on(background)
+    if brand.surface == "dark-missing":
+        problems.append(f"brand: the profile {brand.name} has no colours for a dark page ({background}); use the "
+                        f"corporate design, or a light page")
     if model is None:
         model = find_model(path, brief)
     raw_fields = brief.get("fields") or {}
@@ -165,7 +173,25 @@ def resolve(brief: dict, path: Path | None = None, model: md.Model | None = None
                 problems.append(f"options.{k}: type {tid} has no such option; options: {', '.join(names) or 'none'}")
             elif names[k].choices and v not in names[k].choices:
                 problems.append(f"options.{k}: {v!r} is not one of {', '.join(map(str, names[k].choices))}")
-    return Ctx(brief, brand, fields, vtype.selection if vtype is not None else True), vtype, problems
+    ctx = Ctx(brief, brand, fields, vtype.selection if vtype is not None else True)
+    ctx.background, ctx.page_background = background, page_bg
+    return ctx, vtype, problems
+
+
+def background_of(brief: dict, path: Path | None) -> tuple[str, str | None]:
+    """(the background the visual is drawn for, the colour of its page in the report or None). The brief's
+    "background" wins; without it the page of report.page decides; without both white."""
+    page_bg = None
+    rep = brief.get("report") or {}
+    if path is not None and rep.get("path") and rep.get("page"):
+        p = (Path(path).resolve().parent / rep["path"]).resolve()
+        if p.suffix.casefold() == ".pbip":
+            p = p.with_suffix("").parent / (p.stem + ".Report")
+        if p.is_dir():
+            from . import pbir
+            page_bg = pbir.page_color(p, rep["page"])
+    own = br.norm(brief.get("background") or "") or None
+    return own or page_bg or "#FFFFFF", page_bg
 
 
 def sizes(brief: dict, vtype) -> list:
