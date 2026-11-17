@@ -489,6 +489,16 @@ def cmd_init(a) -> int:
 
 def cmd_setup(a) -> int:
     from . import agent, deps
+    if a.models:
+        from . import vscode
+        if a.wait:  # the helper that models_step starts: waits for VS Code to close, writes, logs
+            from datetime import datetime
+            print(f"{datetime.now():%Y-%m-%d %H:%M:%S} waiting for VS Code to close", flush=True)
+            lines = vscode.wait_then_write()
+            print("\n".join(f"{datetime.now():%Y-%m-%d %H:%M:%S} {line}" for line in lines), flush=True)
+            return 0
+        print("\n".join(deps.models_step()))
+        return 0
     if a.vscode:
         lines, ok = deps.setup_vscode()
         print("\n".join(lines), flush=True)
@@ -1127,7 +1137,13 @@ def build_parser() -> argparse.ArgumentParser:
                            "context of 272K and the marketplace in the settings of the Copilot runtime "
                            "(~/.copilot/settings.json), which new sessions of the Agents view take; the settings of ppp "
                            "in settings.json of the Default profile (only those not set yet); the extensions of ppp with "
-                           "code --install-extension. Backs each file up first and keeps every other key")
+                           "code --install-extension; the model list of the Agents view (--models). Backs each file up "
+                           "first and keeps every other key")
+    mode.add_argument("--models", action="store_true",
+                      help="show only GPT-6.1 Sol, Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5 and GPT-6 Astra "
+                           "in the model list of VS Code and pin Sol and Opus: written into the database of VS Code "
+                           "(backed up first) when VS Code is closed, else by a helper once every window is closed")
+    c.add_argument("--wait", action="store_true", help=argparse.SUPPRESS)
     c.set_defaults(func=cmd_setup)
     c = sub.add_parser("settings", help="Show or save the personal settings (~/.ppp/settings.json).",
                        description="Show or save the personal settings in ~/.ppp/settings.json: language of chat and cards, "

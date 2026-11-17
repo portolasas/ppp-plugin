@@ -305,7 +305,31 @@ def vscode_parts(run=subprocess.run) -> list[Part]:
                         f"{settings_file} is no valid JSON ({e}): fix it, then ppp setup --vscode"))
     except OSError as e:
         out.append(Part("VS Code settings", "git, diffs and the model of the chat", False, f"{settings_file}: {e}"))
+    try:
+        fine, detail = vscode.model_list_state()
+    except (OSError, ValueError) as e:  # sqlite3.Error is no OSError: caught below
+        fine, detail = False, str(e)
+    except Exception as e:  # noqa: BLE001 - a locked or changed database of VS Code must not break the check
+        fine, detail = False, f"database of VS Code not readable ({e})"
+    out.append(Part("Model list of VS Code", "only the five models of ppp in the Agents view", fine, detail))
     return out
+
+
+def models_step() -> list[str]:
+    """The model list of the Agents view: written now when VS Code is closed, else by a helper once it is."""
+    from . import agent, vscode
+    if not vscode.state_db().is_file():
+        return ["Model list of VS Code: not yet, VS Code has not run on this computer."]
+    if not vscode.vscode_running():
+        import sqlite3
+        try:
+            return vscode.write_model_list()
+        except (RuntimeError, OSError, ValueError, sqlite3.Error) as e:  # locked, no ItemTable, a broken value
+            return [f"Model list of VS Code: not written ({e})."]
+    log = agent.PPP_HOME / "models.log"
+    how = vscode.start_waiter(agent.TOOL, log)
+    return [f"Model list of VS Code: a helper writes it once every window of VS Code is closed ({how}; log {log}): "
+            "only GPT-6.1 Sol, Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5 and GPT-6 Astra stay shown."]
 
 
 def setup_vscode(run=subprocess.run) -> tuple[list[str], bool]:
@@ -339,6 +363,7 @@ def setup_vscode(run=subprocess.run) -> tuple[list[str], bool]:
         ok = ok and fine
     else:
         lines.append("VS Code extensions: all there.")
+    lines += models_step()
     lines += ["Close all windows of VS Code and open it again: new sessions of the Agents view then start with "
               "GPT-6.1 Sol, high, 272K.",
               "Then, in the Agents view: Customizations > Extensions, enable each extension of ppp for the Agents view "

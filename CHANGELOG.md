@@ -2,6 +2,11 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.27.10 (2026-11-17)
+- ppp setup --models (auch in --vscode): die Modellliste von VS Code zeigt nur GPT-6.1 Sol, Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5 und GPT-6 Astra, Sol und Opus angeheftet; geschrieben in die Datenbank von VS Code, sobald es geschlossen ist (Helfer im Hintergrund, Sicherung vorher); ppp setup --check meldet sie (PLUGIN PL-28)
+- Neue Agent-Sitzungen starten mit der Freigabe Allow All (chat.defaultConfiguration)
+- Profil setup/ppp.code-profile für die Modellliste nicht mehr nötig
+
 ## 0.27.9 (2026-11-17)
 - ppp setup --vscode und --check starten die Kommandozeile von VS Code unter Windows als Code.exe mit cli.js (wie code.cmd), weil eine Gruppenrichtlinie code.cmd sperren kann; eine Sperre wird als solche gemeldet, dann gibt ppp je Erweiterung einen Link vscode:extension/<id> aus, Skill ppp-setup zeigt sie auf einer Karte (PLUGIN PL-28)
 

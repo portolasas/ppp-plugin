@@ -4,7 +4,8 @@ The same definition builds the profile plugin/setup/ppp.code-profile (tools/vsco
 ppp setup --vscode brings into the Default profile without an import: the extensions with `code --install-extension`,
 the settings merged into the user settings.json. Pinned and hidden models are UI state in VS Code's own database, which
 VS Code holds while it runs; only the profile carries them. No setting that turns on further hooks (such as
-chat.useClaudeHooks), and no choice that is each user's own (workspace trust, session sync, approvals).
+chat.useClaudeHooks), and no choice that is each user's own (workspace trust, session sync); approvals start
+with Allow All at the user's wish (17.11.).
 """
 from __future__ import annotations
 
@@ -29,6 +30,9 @@ SETTINGS = {
     "diffEditor.maxComputationTime": 0,           # diffs of large solution XML would stop otherwise
     "terminal.integrated.initialHint": False,
     "chat.viewSessions.orientation": "stacked",
+    # new agent sessions start with Allow All, tool calls run without asking (user, 17.11.); the hooks of ppp still
+    # refuse a direct pac call, and decisions still come as cards; an organisation that disables auto approval wins
+    "chat.defaultConfiguration": {"mode": "interactive", "approvals": "allowAll"},
 }
 # The model of the chat in the normal window is UI state, not a setting (export of the user's profile, 17.11.): the
 # chosen model per picker and its thinking level and context size per model. The Agents view has a built-in profile of
@@ -276,3 +280,156 @@ def write_json(path: Path, data: dict, indent: int) -> Path | None:
         if tmp.exists():
             tmp.unlink()
     return backup
+
+
+# --- the model list of the Agents view -----------------------------------------------------------------------------
+# Pinned and hidden models are UI state, kept in the application storage of VS Code (globalStorage/state.vscdb), which
+# the Agents view reads (research 17.11.: its _modelPreferencesScope is the application scope; no setting, policy or
+# command hides models, only the organisation's Copilot model policy would allow-list them). VS Code holds the
+# database while it runs, so ppp writes it only when no Code.exe runs: a write of a running VS Code would be lost.
+
+PINNED = ["agent-host-copilotcli:gpt-6.1-sol", "agent-host-copilotcli:claude-opus-5.5"]
+
+
+def state_db() -> Path:
+    """The application storage of VS Code (state.vscdb of the Default profile)."""
+    return user_settings().parent / "globalStorage" / "state.vscdb"
+
+
+def model_name(identifier: str) -> str:
+    """The model of an identifier of any provider: agent-host-copilotcli:gpt-6.1-sol, copilot/gpt-6.1-sol,
+    agent-host-claude:@provider=copilot:claude-opus-5.5 all name gpt-6.1-sol or claude-opus-5.5."""
+    return re.split(r"[:/]", identifier)[-1]
+
+
+def _read(db: Path, key: str):
+    import sqlite3
+    con = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        row = con.execute("select value from ItemTable where key = ?", (key,)).fetchone()
+    finally:
+        con.close()
+    if row is None:
+        return None
+    value = row[0].decode("utf-8") if isinstance(row[0], bytes) else row[0]
+    return json.loads(value)
+
+
+def cached_models(db: Path | None = None) -> list[str]:
+    """Identifiers of the models VS Code last saw, over every provider (chat.cachedLanguageModels.v2)."""
+    data = _read(db or state_db(), "chat.cachedLanguageModels.v2") or []
+    return [m["identifier"] for m in data if isinstance(m, dict) and m.get("identifier")]
+
+
+def wanted_hidden(models: list[str], hidden: list[str]) -> list[str]:
+    """Every model outside VISIBLE hidden, the user's own hidden ones kept, none of VISIBLE hidden."""
+    keep = set(VISIBLE)
+    return sorted({m for m in models + hidden if model_name(m) not in keep})
+
+
+def model_list_state(db: Path | None = None) -> tuple[bool, str]:
+    db = db or state_db()
+    if not db.is_file():
+        return False, f"{db} not there yet (VS Code has not run)"
+    models = cached_models(db)
+    if not models:
+        return False, "VS Code lists no models yet: open the Agents view once, then ppp setup --vscode"
+    hidden = (_read(db, "chatModelVisibility") or {}).get("hiddenModels") or []
+    missing = [m for m in wanted_hidden(models, hidden) if m not in hidden]
+    shown = sorted({model_name(m) for m in models if m not in hidden})
+    if missing:
+        return False, f"{len(missing)} models outside the five of ppp still shown (ppp setup --vscode)"
+    return True, "shown: " + ", ".join(shown)
+
+
+def vscode_running(run=subprocess.run) -> bool:
+    """Whether VS Code runs: then its database is in use and a write would be lost."""
+    try:
+        if sys.platform == "win32":
+            proc = run(["tasklist", "/FI", "IMAGENAME eq Code.exe", "/FO", "CSV", "/NH"], capture_output=True,
+                       text=True, errors="replace", timeout=60)
+            # only a tasklist that answered counts: a refused or broken one says nothing about VS Code (review 17.11.)
+            return proc.returncode != 0 or '"code.exe"' in proc.stdout.lower()
+        name = "Visual Studio Code" if sys.platform == "darwin" else "code"
+        return run(["pgrep", "-x" if name == "code" else "-f", name], capture_output=True, timeout=60).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return True  # unknown counts as running: never write a database VS Code may hold
+
+
+def write_model_list(db: Path | None = None, running=None) -> list[str]:
+    """Hide every model outside the five of ppp and pin GPT-6.1 Sol and Claude Opus 5.5; back the database up first.
+    Raises RuntimeError while VS Code runs."""
+    import sqlite3
+    db = db or state_db()
+    if (running or vscode_running)():
+        raise RuntimeError("VS Code is running")
+    models = cached_models(db)
+    if not models:
+        return ["VS Code lists no models yet: open the Agents view once, then ppp setup --vscode again."]
+    hidden_before = (_read(db, "chatModelVisibility") or {}).get("hiddenModels") or []
+    hidden = wanted_hidden(models, hidden_before)
+    pinned = PINNED + [p for p in (_read(db, "chatModelPinned") or []) if p not in PINNED and model_name(p) in VISIBLE]
+    backup = db.with_name(f"{db.name}.ppp-{datetime.now():%Y%m%d-%H%M%S-%f}")
+    shutil.copy2(db, backup)
+    for old in sorted(db.parent.glob(f"{db.name}.ppp-*"))[:-3]:  # the newest three backups stay
+        old.unlink(missing_ok=True)
+    con = sqlite3.connect(str(db), timeout=10)
+    try:
+        with con:
+            con.execute("insert or replace into ItemTable (key, value) values (?, ?)",
+                        ("chatModelVisibility", json.dumps({"hiddenModels": hidden})))
+            con.execute("insert or replace into ItemTable (key, value) values (?, ?)",
+                        ("chatModelPinned", json.dumps(pinned)))
+    finally:
+        con.close()
+    shown = sorted({model_name(m) for m in models if m not in hidden})
+    return [f"Backup: {backup}", f"Model list of VS Code: {len(hidden)} models hidden, shown: {', '.join(shown)}; "
+            "pinned: GPT-6.1 Sol, Claude Opus 5.5."]
+
+
+def wait_then_write(db: Path | None = None, running=None, sleep=None, limit: float = 4 * 3600,
+                    poll: float = 3) -> list[str]:
+    """Wait until VS Code is closed, then write the model list; gives up after limit seconds."""
+    import time
+    sleep = sleep or time.sleep
+    running = running or vscode_running
+    waited = 0.0
+    while running():
+        if waited >= limit:
+            return [f"Model list of VS Code not written: VS Code still ran after {limit / 3600:.0f} h."]
+        sleep(poll)
+        waited += poll
+    sleep(2)  # VS Code writes its database while it shuts down; then check again: it may have started anew
+    import sqlite3
+    try:
+        return write_model_list(db, running=running)
+    except RuntimeError:
+        return ["Model list of VS Code not written: VS Code started again; run ppp setup --vscode once more."]
+    except (OSError, ValueError, sqlite3.Error) as e:
+        return [f"Model list of VS Code not written ({e})."]
+
+
+def start_waiter(tool: Path, log: Path) -> str:
+    """Start ppp setup --models --wait in its own process, apart from VS Code: it writes the model list once VS Code is
+    closed. On Windows it breaks away from the job of VS Code where the job allows it, else Windows would end it
+    together with VS Code. Returns how it started."""
+    log.parent.mkdir(parents=True, exist_ok=True)
+    command = [sys.executable, "-I", str(tool), "setup", "--models", "--wait"]
+    out = open(log, "a", encoding="utf-8")
+    try:
+        if sys.platform == "win32":
+            base = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            for flags in (base | subprocess.CREATE_BREAKAWAY_FROM_JOB, base):
+                try:
+                    subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=out, stderr=out, close_fds=True,
+                                     creationflags=flags)
+                    return "apart from VS Code" if flags & subprocess.CREATE_BREAKAWAY_FROM_JOB else \
+                        "in the job of VS Code (it may end with VS Code)"
+                except OSError:
+                    continue
+            return "could not start"
+        subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=out, stderr=out, close_fds=True,
+                         start_new_session=True)
+        return "apart from VS Code"
+    finally:
+        out.close()
