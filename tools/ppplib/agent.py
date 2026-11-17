@@ -38,15 +38,95 @@ def home_folder() -> Path:
 PPP_HOME = home_folder()
 SETTINGS = PPP_HOME / "settings.json"
 TOOL_CALL = PPP_HOME / "tool-call.txt"
+PYTHON_FILE = PPP_HOME / "python.txt"  # the Python for the hooks and the tool call on Windows (PL-27)
 MARKETPLACE = "portolasas/ppp-plugin"
 GUIDANCE = ("beginner", "standard", "experienced")
 MARK = re.compile(r"<!-- ppp agent (\S+) source ([0-9a-f]{12}) -->")  # the mark of the copies before 0.2.0
 
 
-def tool_command() -> str:
-    """The call of the command line with absolute paths, as the agent uses it in a terminal."""
+def _store_stub(path: str) -> bool:
+    """The placeholder of the Microsoft Store in WindowsApps: it starts no Python, it offers to install one."""
+    return "windowsapps" in path.replace("\\", "/").lower().split("/")
+
+
+def recorded_python() -> str | None:
+    """The Python that ppp setup recorded in ~/.ppp/python.txt (PL-27), when the file names one that exists. The hook
+    launcher ppp_hook.cmd reads the same file; it serves a Python outside PATH, such as a conda or mamba environment."""
+    try:
+        raw = PYTHON_FILE.read_bytes()
+    except OSError:
+        return None
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("oem" if sys.platform == "win32" else "latin-1", errors="replace")
+    given = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    return given if given and Path(given).is_file() else None
+
+
+def _for_cmd(exe: str) -> bytes | None:
+    """The path as cmd.exe reads it from a file (OEM code page; review 17.11.: a UTF-8 ü was not found): ASCII as it is,
+    else the short 8.3 path when it is ASCII, else the OEM bytes; None when none of these can name it."""
+    if exe.isascii():
+        return exe.encode("ascii")
+    try:
+        import ctypes
+        size = ctypes.windll.kernel32.GetShortPathNameW(exe, None, 0)
+        buffer = ctypes.create_unicode_buffer(size)
+        if size and ctypes.windll.kernel32.GetShortPathNameW(exe, buffer, size) and buffer.value.isascii():
+            return buffer.value.encode("ascii")
+    except (AttributeError, OSError, ValueError):
+        pass
+    try:
+        return exe.encode("oem")
+    except (LookupError, UnicodeEncodeError):
+        return None
+
+
+def record_python() -> str | None:
+    """Keeps the Python this command runs in for the hooks and the tool call (PL-27), in one line with CRLF, as cmd.exe
+    reads it. A running Python is never the Store placeholder, also not one installed from the Store under WindowsApps."""
+    exe = sys.executable
+    data = _for_cmd(exe) if sys.platform == "win32" and exe else None
+    if not data:
+        return None
+    try:
+        if PYTHON_FILE.is_file() and PYTHON_FILE.read_bytes() == data + b"\r\n":
+            return exe
+        PPP_HOME.mkdir(parents=True, exist_ok=True)
+        PYTHON_FILE.write_bytes(data + b"\r\n")
+    except OSError:
+        return None
+    return exe
+
+
+def _same_file(a: str, b: str) -> bool:
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+_PLAIN = re.compile(r"[A-Za-z0-9_./:-]+")  # a path that PowerShell, cmd and bash all take unquoted
+
+
+def tool_command(shell: str = "powershell") -> str:
+    """The call of the command line with absolute paths, as the agent uses it in a terminal. On Windows `python` when it
+    starts the recorded Python (or this one); otherwise that Python by its path, for a conda or mamba environment
+    outside PATH (PL-27). A plain path with forward slashes works in PowerShell, cmd and bash; any other is quoted for
+    the given shell: `& "…"` for PowerShell, the terminal of the agent in VS Code (also tool-call.txt), `"…"` for bash,
+    the shell tool of Claude Code."""
     if sys.platform == "win32":
-        return f'python -I "{TOOL}"'
+        exe = recorded_python() or sys.executable
+        on_path = shutil.which("python")
+        if not exe or (on_path and not _store_stub(on_path) and _same_file(on_path, exe)):
+            return f'python -I "{TOOL}"'
+        exe = Path(exe).as_posix()
+        if _PLAIN.fullmatch(exe):
+            return f'{exe} -I "{TOOL}"'
+        if shell == "posix":
+            return '"' + exe.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`") + f'" -I "{TOOL}"'
+        return "& '" + exe.replace("'", "''") + f"' -I \"{TOOL}\""
     exe = "python3" if shutil.which("python3") else "python"
     return f'{exe} -I "{TOOL}"'
 
@@ -84,7 +164,11 @@ def setup() -> list[str]:
         else:
             lines += [f"Not removed: {AGENT_COPY} has no mark of ppp but hides the agent ppp of the plugin; "
                       "rename or remove it yourself.", ""]
+    python = record_python()
     write_tool_call()
+    if python:
+        lines += [f"Python for the VS Code hooks and the tool call: {python} (kept in {PYTHON_FILE}; run ppp setup "
+                  "with another Python to change it)"]
     lines += [f"Tool call: {tool_command()} (kept in {TOOL_CALL})", "",
               f"VS Code: Settings > chat.plugins.marketplaces > 'Add Item' > {MARKETPLACE} (if not there yet;",
               "or Customizations > Browse > Configure Marketplaces > Add Marketplace), install ppp from the marketplace,",

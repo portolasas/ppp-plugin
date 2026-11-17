@@ -4,32 +4,36 @@
     "SessionStart": [
       {
         "type": "command",
-        "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" SessionStart copilot",
-        "windows": "python -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" SessionStart copilot",
+        "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" SessionStart copilot || true",
+        "windows": "cd /d %PLUGIN_ROOT%\\hooks&& .\\ppp_hook.cmd SessionStart copilot",
+        "powershell": "$r = if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { '${PLUGIN_ROOT}' }; & \"$r/hooks/ppp_hook.cmd\" SessionStart copilot; exit 0",
         "timeout": 15
       }
     ],
     "Stop": [
       {
         "type": "command",
-        "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" Stop copilot",
-        "windows": "python -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" Stop copilot",
+        "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" Stop copilot || true",
+        "windows": "cd /d %PLUGIN_ROOT%\\hooks&& .\\ppp_hook.cmd Stop copilot",
+        "powershell": "$r = if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { '${PLUGIN_ROOT}' }; & \"$r/hooks/ppp_hook.cmd\" Stop copilot; exit 0",
         "timeout": 15
       }
     ],
     "PreCompact": [
       {
         "type": "command",
-        "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact copilot",
-        "windows": "python -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact copilot",
+        "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreCompact copilot || true",
+        "windows": "cd /d %PLUGIN_ROOT%\\hooks&& .\\ppp_hook.cmd PreCompact copilot",
+        "powershell": "$r = if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { '${PLUGIN_ROOT}' }; & \"$r/hooks/ppp_hook.cmd\" PreCompact copilot; exit 0",
         "timeout": 15
       }
     ],
     "PreToolUse": [
       {
         "type": "command",
-        "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreToolUse copilot",
-        "windows": "python -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreToolUse copilot",
+        "command": "python3 -I \"${PLUGIN_ROOT}/hooks/ppp_hook.py\" PreToolUse copilot || true",
+        "windows": "cd /d %PLUGIN_ROOT%\\hooks&& .\\ppp_hook.cmd PreToolUse copilot",
+        "powershell": "$r = if ($env:PLUGIN_ROOT) { $env:PLUGIN_ROOT } else { '${PLUGIN_ROOT}' }; & \"$r/hooks/ppp_hook.cmd\" PreToolUse copilot; exit 0",
         "timeout": 15
       }
     ]

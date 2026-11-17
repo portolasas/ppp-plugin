@@ -16,6 +16,8 @@ PreToolUse    in a connected project (project.json names an environment) refuses
               ppplib/tenant.py protects the calls ppp makes itself, a direct pac call of the agent goes past it.
 A hook never blocks because of its own error: when in doubt it lets the turn pass.
 Call: python -I ppp_hook.py <event> <copilot|claude>, hook input as JSON on stdin (keys in snake_case or camelCase).
+On Windows VS Code starts it through ppp_hook.cmd, which finds the Python (also one of conda or mamba outside PATH) and
+ends with 0 even when no Python starts: the agent host refuses every tool call after a PreToolUse hook that failed (PL-27).
 """
 from __future__ import annotations
 
@@ -116,7 +118,7 @@ def session_start(data: dict, root: Path, tool: str) -> dict:
     head += ["## This session",
              f"- Project: {config.get('name', root.name)} in {root}"
              + (" (storage local: commit, never pull or push; ppp backup on request)" if config.get("storage") == "local" else ""),
-             f"- Tool call: {agent.tool_command()} <command>"]
+             f"- Tool call: {agent.tool_command('powershell' if tool == 'copilot' else 'posix')} <command>"]
     if isinstance(settings, dict) and settings:
         publisher = agent.publisher_of(settings)  # a broken entry counts as not set
         head.append(f"- Settings: language {settings.get('language')}, guidance {settings.get('guidance')}"

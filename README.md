@@ -63,7 +63,7 @@ Two rules of the skill `ppp-power-bi` hold with or without the optional plugins:
 
 ## Requirements
 - VS Code with GitHub Copilot and agent plugins enabled, or Claude Code.
-- Python 3.10 or newer. On Windows `python` must start it from `PATH` (installer option "Add python.exe to PATH"): the hooks and the tool call run `python`, and with only the launcher `py` both reach the placeholder of the Microsoft Store. `python --version` in a new terminal shows it.
+- Python 3.10 or newer. On Windows simplest with `python` on `PATH` (installer option "Add python.exe to PATH"); `python --version` in a new terminal shows it. A Python outside `PATH`, such as a conda, mamba or miniforge environment, works too: run `ppp setup` once with it (`<path to python.exe> -I <plugin>\tools\ppp.py setup`); the VS Code hooks and the tool call then take it from `~/.ppp/python.txt` (the Claude Code hooks still start `python3` or `python` from `PATH`). The VS Code hooks never block a tool call when no Python starts.
 - Power Platform CLI `pac` (in `PATH`, from the VS Code extension Power Platform Tools, or in `~/.dotnet/tools`). A connected project also needs pac signed in on the computer (`pac auth create`, once, by you).
 - git. Each project chooses its storage at intake: a private GitHub repository, or a local folder without any server (git without a remote, backed up on request with `ppp backup` into a folder you choose, restored with `ppp restore`). Bitbucket is prepared.
 - In VS Code a model that follows the agent text: GPT-6.1 Sol for building, Claude Opus 5.5 for clarification, planning and diagnosis. Not GPT-6 Luna. GPT models with the small context size (272k) in the model picker: the long context costs double above 272k; Claude models cost the same in both.
