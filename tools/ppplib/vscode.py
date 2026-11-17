@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -79,55 +80,105 @@ def user_settings() -> Path:
     return base / "Code" / "User" / "settings.json"
 
 
-def code_command() -> str | None:
-    """The command line of VS Code (code), on PATH or where the installer puts it."""
+BLOCKED = ("gruppenrichtlinie", "group policy", "blocked by your system administrator", "applocker")
+
+
+def _windows_direct(launcher: Path) -> list[str] | None:
+    """Code.exe with cli.js, which code.cmd starts with ELECTRON_RUN_AS_NODE=1: a group policy may block the batch file
+    code.cmd in the user folder while Code.exe may run (first run on the company computer, 17.11.)."""
+    root = launcher.parent.parent
+    exe = root / "Code.exe"
+    if not exe.is_file():
+        return None
+    cli = None
+    try:
+        m = re.search(r'%~dp0\.\.\\([^"]*cli\.js)"', launcher.read_text(encoding="utf-8", errors="replace"))
+        cli = root / m.group(1) if m else None
+    except OSError:
+        pass
+    if not cli or not cli.is_file():
+        found = list(root.glob("*/resources/app/out/cli.js")) + list(root.glob("resources/app/out/cli.js"))
+        # commit folders are hashes: the newest by time, an older folder may stay behind after an update
+        cli = max(found, key=lambda p: p.stat().st_mtime) if found else None
+    return [str(exe), str(cli)] if cli else None
+
+
+def code_command() -> list[str] | None:
+    """How to start the command line of VS Code: on Windows Code.exe with cli.js directly, else code on PATH or where
+    the installer puts it."""
     found = shutil.which("code")
-    if found:
-        return found
-    candidates = []
+    candidates = [Path(found)] if found else []
     if sys.platform == "win32":
-        for var in ("LOCALAPPDATA", "ProgramFiles"):
+        for var, sub in (("LOCALAPPDATA", "Programs"), ("ProgramFiles", "")):
             if os.environ.get(var):
-                base = Path(os.environ[var]) / ("Programs" if var == "LOCALAPPDATA" else "") / "Microsoft VS Code"
-                candidates.append(base / "bin" / "code.cmd")
+                candidates.append(Path(os.environ[var]) / sub / "Microsoft VS Code" / "bin" / "code.cmd")
+        for c in candidates:
+            launcher = c if c.suffix.lower() == ".cmd" else c.with_suffix(".cmd")
+            direct = _windows_direct(launcher) if launcher.is_file() else None
+            if direct:
+                return direct
     elif sys.platform == "darwin":
         candidates.append(Path("/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"))
-    return next((str(c) for c in candidates if c.is_file()), None)
+    return next(([str(c)] for c in candidates if c.is_file()), None)
 
 
-def installed_extensions(code: str, run=subprocess.run) -> set[str] | None:
-    """Lower-case ids of the extensions of the Default profile, None when code does not answer."""
-    try:
-        proc = run([code, "--list-extensions"], capture_output=True, text=True, encoding="utf-8", errors="replace",
-                   timeout=120)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if proc.returncode:
-        return None
-    return {line.strip().lower() for line in proc.stdout.splitlines() if line.strip()}
+def _argv(code) -> list[str]:
+    return [code] if isinstance(code, str) else list(code)
 
 
-def missing_extensions(code: str | None, run=subprocess.run) -> list[str] | None:
+def _env(argv: list[str]) -> dict | None:
+    if len(argv) == 2 and argv[1].lower().endswith("cli.js"):  # as code.cmd starts it
+        return dict(os.environ, ELECTRON_RUN_AS_NODE="1", VSCODE_DEV="")
+    return None
+
+
+def extension_state(code, run=subprocess.run) -> tuple[list[str] | None, str]:
+    """(missing extensions of ppp in the Default profile, problem). None with a problem when code cannot answer:
+    "not found", "blocked by a group policy" or what code said."""
     if not code:
-        return None
-    have = installed_extensions(code, run)
-    return None if have is None else [i for i, _, _, _ in EXTENSIONS if i.lower() not in have]
+        return None, "not found"
+    argv = _argv(code)
+    try:
+        proc = run([*argv, "--list-extensions"], capture_output=True, text=True, encoding="utf-8", errors="replace",
+                   timeout=120, env=_env(argv))
+    except FileNotFoundError:
+        return None, "not found"
+    except (OSError, subprocess.SubprocessError) as e:  # a policy may refuse the start itself (WinError 1260)
+        return None, "blocked by a group policy" if any(b in str(e).lower() for b in BLOCKED) else str(e)
+    said = f"{proc.stdout}\n{proc.stderr}".strip()
+    if any(b in said.lower() for b in BLOCKED):
+        return None, "blocked by a group policy"
+    if proc.returncode:
+        return None, (said.splitlines() or [f"exit code {proc.returncode}"])[-1]
+    have = {line.strip().lower() for line in proc.stdout.splitlines() if line.strip()}
+    return [i for i, _, _, _ in EXTENSIONS if i.lower() not in have], ""
 
 
-def install_extensions(code: str, ids: list[str], run=subprocess.run) -> tuple[list[str], bool]:
+def missing_extensions(code, run=subprocess.run) -> list[str] | None:
+    return extension_state(code, run)[0]
+
+
+def install_links(ids: list[str] | None = None) -> list[str]:
+    """One link per extension: pasted into the address bar of the browser it opens the extension in VS Code, where one
+    click on Install installs it; works where a group policy blocks the command line of VS Code."""
+    return [f"vscode:extension/{i}" for i in (ids if ids is not None else [e[0] for e in EXTENSIONS])]
+
+
+def install_extensions(code, ids: list[str], run=subprocess.run) -> tuple[list[str], bool]:
+    argv = _argv(code)
     lines, ok = [], True
     for ext in ids:
         try:
             # output not captured: on a timeout Windows kills only cmd.exe, and the Code.exe behind it would keep a
             # captured pipe open (review 17.11.); code prints its own progress and errors
-            proc = run([code, "--install-extension", ext], timeout=600)
+            proc = run([*argv, "--install-extension", ext], timeout=600, env=_env(argv))
             done = proc.returncode == 0
             reason = str(proc.stderr or "").strip().splitlines()[-1:] if not done else []
         except (OSError, subprocess.SubprocessError) as e:
             done, reason = False, [str(e)]
         lines.append(f"Installed the extension {ext}" if done else
                      f"Not installed: {ext} ({reason[0] if reason else 'code failed'}; your company may allow only "
-                     "approved extensions)")
+                     f"approved extensions; or install it from vscode:extension/{ext})")
         ok = ok and done
     return lines, ok
 

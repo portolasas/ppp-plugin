@@ -285,11 +285,11 @@ def vscode_parts(run=subprocess.run) -> list[Part]:
     if not code and not settings_file.parent.is_dir():
         return []
     out = []
-    missing = vscode.missing_extensions(code, run)
+    missing, problem = vscode.extension_state(code, run)
     if missing is None:
         out.append(Part("VS Code extensions", "pac, Python, PowerShell in VS Code", False,
-                        "the command line code of VS Code was not found: install the extensions from the profile "
-                        "setup/ppp.code-profile or by hand"))
+                        f"the command line of VS Code: {problem}; install each extension from its link, one click on "
+                        f"Install in VS Code: {' '.join(vscode.install_links())}"))
     else:
         out.append(Part("VS Code extensions", "pac, Python, PowerShell in VS Code", not missing,
                         ", ".join(missing) + " missing (ppp setup --vscode)" if missing else "all there"))
@@ -327,10 +327,11 @@ def setup_vscode(run=subprocess.run) -> tuple[list[str], bool]:
             lines.append(f"{label}: could not write ({e}); nothing changed. Close VS Code, then ppp setup --vscode again.")
             ok = False
     code = vscode.code_command()
-    missing = vscode.missing_extensions(code, run)
+    missing, problem = vscode.extension_state(code, run)
     if missing is None:
-        lines.append("VS Code extensions: the command line code of VS Code was not found; install them from the "
-                     "profile setup/ppp.code-profile or by hand.")
+        lines.append(f"VS Code extensions: the command line of VS Code: {problem}. Install each extension from its "
+                     "link instead (paste it into the address bar of the browser, then Install in VS Code):")
+        lines += [f"  {link}" for link in vscode.install_links()]
         ok = False
     elif missing:
         done, fine = vscode.install_extensions(code, missing, run)

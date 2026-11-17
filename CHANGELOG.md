@@ -2,6 +2,9 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.27.9 (2026-11-17)
+- ppp setup --vscode und --check starten die Kommandozeile von VS Code unter Windows als Code.exe mit cli.js (wie code.cmd), weil eine Gruppenrichtlinie code.cmd sperren kann; eine Sperre wird als solche gemeldet, dann gibt ppp je Erweiterung einen Link vscode:extension/<id> aus, Skill ppp-setup zeigt sie auf einer Karte (PLUGIN PL-28)
+
 ## 0.27.8 (2026-11-17)
 - ppp walk: die Ruhezeit, nach der eine Seite als fertig gilt, lässt sich mit PPP_WALK_QUIET einstellen (sonst 2,5 s); die Tests nutzen 0,5 s
 - Skill ppp-setup und ppp setup --vscode führen nach der ersten Einrichtung weiter: Erweiterungen in der Agents-Ansicht unter Customizations › Extensions aktivieren, bei Power Platform Tools mit dem Microsoft-Konto anmelden (sonst findet pac keine Umgebungen), die Prüfung in einem neuen Chat wiederholen (PLUGIN PL-28)
