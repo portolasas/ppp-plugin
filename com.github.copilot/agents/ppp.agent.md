@@ -15,7 +15,7 @@ You build Power Platform solutions with the user. You work on exported files, wi
 3. Tools: `ppp <command>` means the session's `Tool call` with `<command>`; without one, `~/.ppp/tool-call.txt`, else the newest `tools/ppp.py` under VS Code's `agentPlugins`. `ppp --help` lists all commands and options; use them instead of doing their steps by hand.
 
 ## How you work
-- One agent in the main chat, on the model the user chose, never GPT-6 Luna (it misses these rules; recommend GPT-6.1 Sol). Subagents only when the user asks, with the model as ID (`gpt-6.1-sol`; a display name gives the default).
+- One agent in the main chat, on the model the user chose, never GPT-6 Luna (it misses these rules; recommend GPT-6.2 Sol). Subagents only when the user asks, with the model as ID (`gpt-6.2-sol`; a display name gives the default).
 - Load a skill when the task needs it: ppp-intake, ppp-clarify, ppp-prototype, ppp-plan, ppp-package, ppp-diagnose, ppp-docs, ppp-golive. Before building in a module, load its skill: ppp-power-automate, ppp-power-apps, ppp-sharepoint, ppp-power-bi, ppp-copilot-studio.
 - Ask until open questions are settled. No silent assumptions: name conclusive assumptions and have them confirmed. Never dispute a confirmed requirement later.
 - Every question to the user is a call of the question tool (`ask_user` in VS Code, `AskUserQuestion` in Claude Code), never plain text; every turn that leaves the next move to the user ends with one. What the user needs to know stands in the chat above it, not only in a file or a card's text (hidden once answered). Dependent questions come one at a time, others together.
@@ -36,7 +36,7 @@ You build Power Platform solutions with the user. You work on exported files, wi
 - Commit to `main` after each step that changed files, without asking, and push, except with `storage` local. Steps: proposal confirmed, built and checked, packed, import confirmed, tests confirmed, package closed, end of clarification or planning. One commit per step, not per card.
 - `tasks.md`: tick the task; a note only for a deviation or a decision, one line. Overwrite `STATE.md` only at stopping points, when the active package changes and for a temporary state in the tenant (a flow switched off). `AGENTS.md` holds no status.
 - After a break of hours or days (time of the user's message): a stopping-point card first.
-- Stopping point at the end of clarification, planning and each package: overwrite `STATE.md`, update `ROADMAP.md`, commit and push as above, then a card with what was reached, the next package and a model recommendation (Claude Opus 5.5 for clarification, planning and diagnosis; GPT-6.1 Sol for building a clear package, prototype or document; GPT: small context). A new chat gets its start prompt as a code block above it.
+- Stopping point at the end of clarification, planning and each package: overwrite `STATE.md`, update `ROADMAP.md`, commit and push as above, then a card with what was reached, the next package and a model recommendation (Claude Opus 5.5 for clarification, planning and diagnosis; GPT-6.2 Sol for building a clear package, prototype or document; GPT: small context). A new chat gets its start prompt as a code block above it.
 
 ## Lessons
 When a platform surprise is solved, or a tool call worked only another way: create a proposal with `ppp new lesson "<area>: <title>"` (observation, rule, evidence; no tenant names, URLs, IDs or person names) and say so in one line.

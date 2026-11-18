@@ -1133,14 +1133,14 @@ def build_parser() -> argparse.ArgumentParser:
                       help="install the missing Python packages with pip (with --user outside a virtual environment) and "
                            "the ffmpeg of Playwright, then check again; programs such as git, pac, Edge and Word not")
     mode.add_argument("--vscode", action="store_true",
-                      help="set up VS Code for ppp without a profile import: GPT-6.1 Sol, thinking level high, the "
+                      help="set up VS Code for ppp without a profile import: GPT-6.2 Sol, thinking level high, the "
                            "context of 272K and the marketplace in the settings of the Copilot runtime "
                            "(~/.copilot/settings.json), which new sessions of the Agents view take; the settings of ppp "
                            "in settings.json of the Default profile (only those not set yet); the extensions of ppp with "
                            "code --install-extension; the model list of the Agents view (--models). Backs each file up "
                            "first and keeps every other key")
     mode.add_argument("--models", action="store_true",
-                      help="show only GPT-6.1 Sol, Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5 and GPT-6 Astra "
+                      help="show only GPT-6.2 Sol, Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5 and GPT-6 Astra "
                            "in the model list of VS Code and pin Sol and Opus: written into the database of VS Code "
                            "(backed up first) when VS Code is closed, else by a helper once every window is closed")
     c.add_argument("--wait", action="store_true", help=argparse.SUPPRESS)

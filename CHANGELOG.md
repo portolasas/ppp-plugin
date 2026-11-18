@@ -2,6 +2,10 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.27.11 (2026-11-18)
+- GPT-6.2 Sol ist das Standardmodell von ppp statt GPT-6.1 Sol: ppp setup --vscode (Agents-Ansicht, chat.defaultModel), die Modellliste (GPT-6.1 Sol jetzt ausgeblendet), das Profil, Kernregeln, Skills, README und Agent bi-ppt
+- ppp setup --vscode stellt ein von ppp gesetztes GPT-6.1 Sol (früherer Standard) auf GPT-6.2 Sol um, in ~/.copilot/settings.json und chat.defaultModel; ppp setup --check meldet es; ein anderes selbst gewähltes Modell bleibt. Erst wenn VS Code GPT-6.2 Sol listet: bis dahin bleibt GPT-6.1 Sol gesetzt, sichtbar und angeheftet. Nach dem Update einmal ppp setup --vscode laufen lassen (bei geschlossenem VS Code für die Modellliste)
+
 ## 0.27.10 (2026-11-17)
 - ppp setup --models (auch in --vscode): die Modellliste von VS Code zeigt nur GPT-6.1 Sol, Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5 und GPT-6 Astra, Sol und Opus angeheftet; geschrieben in die Datenbank von VS Code, sobald es geschlossen ist (Helfer im Hintergrund, Sicherung vorher); ppp setup --check meldet sie (PLUGIN PL-28)
 - Neue Agent-Sitzungen starten mit der Freigabe Allow All (chat.defaultConfiguration)

@@ -182,7 +182,7 @@ FORMER_REPOS = {"portolasas/bi-design"}  # replaced by bi-design in this marketp
 # The Copilot runtime, which runs the Agents view, takes the model of a new session from its own settings; the Agents
 # view keeps no model state of a VS Code profile (17.11.: an imported profile left the thinking level at medium, these
 # keys gave GPT-6.1 Sol, high, 272K after a restart of VS Code). contextTier default is the small context of 272K.
-RUNTIME_WANTED = {"model": "gpt-6.1-sol", "effortLevel": "high", "contextTier": "default"}
+RUNTIME_WANTED = {"model": "gpt-6.2-sol", "effortLevel": "high", "contextTier": "default"}
 
 
 def _read_runtime(path: Path) -> dict:
@@ -215,7 +215,7 @@ def _in_use(data: dict, name: str, path: Path) -> bool:
 
 
 NAME = "Model of the Agents view"
-SERVES = "GPT-6.1 Sol, high, 272K in new sessions"
+SERVES = "GPT-6.2 Sol, high, 272K in new sessions"
 
 
 def runtime_part(path: Path | None = None) -> Part:
@@ -227,9 +227,12 @@ def runtime_part(path: Path | None = None) -> Part:
     except ValueError as e:  # json.JSONDecodeError is a ValueError
         return Part(NAME, SERVES, False, f"{path} is no plain JSON ({e}; comments are not allowed there): fix it by "
                                          "hand, then ppp setup --vscode")
+    from .vscode import replaced_model
     wrong = [f"{k} not set" for k in RUNTIME_WANTED if not data.get(k)]
     if "luna" in str(data.get("model", "")).lower():
         wrong.append(f"model {data['model']} misses the core rules")
+    elif replaced_model(data.get("model")):
+        wrong.append(f"model {data['model']} is a former default of ppp, now {RUNTIME_WANTED['model']}")
     if MARKETPLACE_REPO not in _repos(data).values():
         wrong.append(f"marketplace {MARKETPLACE_REPO} missing")
     for name, repo in _repos(data).items():
@@ -249,9 +252,11 @@ def write_runtime(path: Path | None = None) -> list[str]:
     data = _read_runtime(path)
     if "extraKnownMarketplaces" in data and not isinstance(data["extraKnownMarketplaces"], dict):
         raise ValueError("extraKnownMarketplaces is not an object")
+    from .vscode import replaced_model
     lines = []
-    for k, v in RUNTIME_WANTED.items():  # only what is missing, or a Luna: a model the user chose stays (review 17.11.)
-        if not data.get(k) or (k == "model" and "luna" in str(data[k]).lower()):
+    # only what is missing, a Luna or a former default of ppp: a model the user chose stays (review 17.11.)
+    for k, v in RUNTIME_WANTED.items():
+        if not data.get(k) or (k == "model" and replaced_model(data[k])):
             lines.append(f"Set {k}: {v}" + (f" (was {data[k]!r})" if k in data else ""))
             data[k] = v
     markets = data.setdefault("extraKnownMarketplaces", {})
@@ -329,7 +334,7 @@ def models_step() -> list[str]:
     log = agent.PPP_HOME / "models.log"
     how = vscode.start_waiter(agent.TOOL, log)
     return [f"Model list of VS Code: a helper writes it once every window of VS Code is closed ({how}; log {log}): "
-            "only GPT-6.1 Sol, Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5 and GPT-6 Astra stay shown."]
+            "only GPT-6.2 Sol, Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5 and GPT-6 Astra stay shown."]
 
 
 def setup_vscode(run=subprocess.run) -> tuple[list[str], bool]:
@@ -365,7 +370,7 @@ def setup_vscode(run=subprocess.run) -> tuple[list[str], bool]:
         lines.append("VS Code extensions: all there.")
     lines += models_step()
     lines += ["Close all windows of VS Code and open it again: new sessions of the Agents view then start with "
-              "GPT-6.1 Sol, high, 272K.",
+              "GPT-6.2 Sol, high, 272K.",
               "Then, in the Agents view: Customizations > Extensions, enable each extension of ppp for the Agents view "
               "(an installed extension stays off there until enabled; pac comes with Power Platform Tools); sign in "
               "with the Microsoft work account when Power Platform Tools asks (pac needs it for environments and "

@@ -23,7 +23,7 @@ from pathlib import Path
 # with the install link and ~/.copilot/settings.json, extensions.autoUpdate is on by default.
 SETTINGS = {
     "chat.plugins.enabled": True,
-    "chat.defaultModel": "gpt-6.1-sol",            # the chat outside the Agents view; the core rules recommend it
+    "chat.defaultModel": "gpt-6.2-sol",            # the chat outside the Agents view; the core rules recommend it
     "git.autofetch": True,                        # ppp works with git pull: new states show early
     "git.confirmSync": False,
     "git.enableSmartCommit": True,
@@ -41,20 +41,21 @@ SETTINGS = {
 AGENTS = "agent-host-copilotcli"
 # Pinned and hidden models are kept per computer in the Agents view; the normal window copies them once from its
 # profile (chatModelPreferences.agentsWindowMigrated), so a profile hides them on a fresh computer only (17.11.).
-# Visible: GPT-6.1 Sol, Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5 and GPT-6 Astra as the second GPT model when
-# Sol is not available (user, 17.11.). Hidden: every other model the Agents view offered on 17.11.2026, every Luna among
-# them, since GPT-6 Luna misses the core rules; a model that comes later stays visible.
-VISIBLE = ["gpt-6.1-sol", "claude-opus-5.5", "claude-sonnet-5.5", "claude-haiku-5.5", "gpt-6-astra"]
+# Visible: GPT-6.2 Sol, Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5 and GPT-6 Astra as the second GPT model when
+# Sol is not available (user, 17.11.; GPT-6.2 Sol in place of GPT-6.1 Sol since 18.11.). Hidden: every other model the
+# Agents view offered on 17.11.2026, every Luna among them, since GPT-6 Luna misses the core rules, and GPT-6.1 Sol;
+# a model that comes later stays visible.
+VISIBLE = ["gpt-6.2-sol", "claude-opus-5.5", "claude-sonnet-5.5", "claude-haiku-5.5", "gpt-6-astra"]
 HIDDEN = ["auto", "hydrafusion", "hydrafusion-max", "claude-fable-5.2", "claude-fable-5.1", "claude-fable-5",
-          "claude-sonnet-5", "claude-opus-4.8-fast", "claude-haiku-4.5", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna",
-          "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.3-codex", "mai-code-1.1-flash", "gemini-4-argon", "gemini-4-carbon",
-          "gemini-4-hydrogen", "gemini-3.8-flash", "grok-4.7", "grok-4.6", "kimi-k3"]
+          "claude-sonnet-5", "claude-opus-4.8-fast", "claude-haiku-4.5", "gpt-6.1-sol", "gpt-6.1-terra",
+          "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.3-codex", "mai-code-1.1-flash",
+          "gemini-4-argon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-3.8-flash", "grok-4.7", "grok-4.6", "kimi-k3"]
 GLOBAL_STATE = {
-    f"chat.currentLanguageModel.panel.{AGENTS}": f"{AGENTS}:gpt-6.1-sol",
+    f"chat.currentLanguageModel.panel.{AGENTS}": f"{AGENTS}:gpt-6.2-sol",
     f"chat.modelConfiguration.panel.{AGENTS}": json.dumps({
-        f"{AGENTS}:gpt-6.1-sol": {"thinkingLevel": "high", "contextSize": 272000},
+        f"{AGENTS}:gpt-6.2-sol": {"thinkingLevel": "high", "contextSize": 272000},
         f"{AGENTS}:claude-opus-5.5": {"thinkingLevel": "high", "contextSize": 200000}}),
-    "chatModelPinned": json.dumps([f"{AGENTS}:gpt-6.1-sol", f"{AGENTS}:claude-opus-5.5"]),
+    "chatModelPinned": json.dumps([f"{AGENTS}:gpt-6.2-sol", f"{AGENTS}:claude-opus-5.5"]),
     "chatModelVisibility": json.dumps({"hiddenModels": [f"{AGENTS}:{m}" for m in HIDDEN]}),
 }
 # id, uuid and display name as the Marketplace gives them (17.11.2026); applicationScoped as in the templates of VS Code.
@@ -231,10 +232,38 @@ def read_settings(path: Path | None = None) -> dict:
     return read_jsonc(path.read_text(encoding="utf-8-sig")) if path.is_file() else {}
 
 
+# Defaults of ppp before the current one: a model setting with one of them was written by ppp, not chosen by the user,
+# so ppp setup moves it on to the current default (user, 18.11.: GPT-6.1 Sol to GPT-6.2 Sol). Only once VS Code lists
+# the current default: before that a former default stays set and shown, or no Sol would be left (Opus review 18.11.).
+FORMER_DEFAULTS = {"gpt-6.1-sol"}
+
+
+def _listed(models: list[str]) -> bool:
+    return any(model_name(m) == VISIBLE[0] for m in models)
+
+
+def default_listed(db: Path | None = None) -> bool:
+    """Whether VS Code lists the current default of ppp (VISIBLE[0]); unknown counts as not listed."""
+    import sqlite3
+    db = db or state_db()
+    try:
+        return db.is_file() and _listed(cached_models(db))
+    except (OSError, ValueError, sqlite3.Error):
+        return False
+
+
+def replaced_model(model) -> bool:
+    """Whether ppp setup replaces this model: a Luna, which misses the core rules, or a former default of ppp once VS
+    Code lists the current one."""
+    name = model_name(str(model or "")).lower()
+    return "luna" in name or (name in FORMER_DEFAULTS and default_listed())
+
+
 def missing_settings(data: dict) -> list[str]:
-    """Settings of ppp the user has not set; a value the user chose stays, only a Luna as model counts as missing."""
+    """Settings of ppp the user has not set; a value the user chose stays, only a Luna or a former default of ppp as
+    model counts as missing."""
     out = [k for k in SETTINGS if k not in data]
-    if "luna" in str(data.get("chat.defaultModel", "")).lower():
+    if replaced_model(data.get("chat.defaultModel")):
         out.append("chat.defaultModel")
     return out
 
@@ -288,7 +317,7 @@ def write_json(path: Path, data: dict, indent: int) -> Path | None:
 # command hides models, only the organisation's Copilot model policy would allow-list them). VS Code holds the
 # database while it runs, so ppp writes it only when no Code.exe runs: a write of a running VS Code would be lost.
 
-PINNED = ["agent-host-copilotcli:gpt-6.1-sol", "agent-host-copilotcli:claude-opus-5.5"]
+PINNED = ["agent-host-copilotcli:gpt-6.2-sol", "agent-host-copilotcli:claude-opus-5.5"]
 
 
 def state_db() -> Path:
@@ -297,8 +326,8 @@ def state_db() -> Path:
 
 
 def model_name(identifier: str) -> str:
-    """The model of an identifier of any provider: agent-host-copilotcli:gpt-6.1-sol, copilot/gpt-6.1-sol,
-    agent-host-claude:@provider=copilot:claude-opus-5.5 all name gpt-6.1-sol or claude-opus-5.5."""
+    """The model of an identifier of any provider: agent-host-copilotcli:gpt-6.2-sol, copilot/gpt-6.2-sol,
+    agent-host-claude:@provider=copilot:claude-opus-5.5 all name gpt-6.2-sol or claude-opus-5.5."""
     return re.split(r"[:/]", identifier)[-1]
 
 
@@ -323,8 +352,13 @@ def cached_models(db: Path | None = None) -> list[str]:
 
 def wanted_hidden(models: list[str], hidden: list[str]) -> list[str]:
     """Every model outside VISIBLE hidden, the user's own hidden ones kept, none of VISIBLE hidden."""
-    keep = set(VISIBLE)
+    keep = shown_models(models)
     return sorted({m for m in models + hidden if model_name(m) not in keep})
+
+
+def shown_models(models: list[str]) -> set[str]:
+    """VISIBLE, and the former defaults as long as VS Code does not list the current one."""
+    return set(VISIBLE) if _listed(models) else set(VISIBLE) | FORMER_DEFAULTS
 
 
 def model_list_state(db: Path | None = None) -> tuple[bool, str]:
@@ -339,7 +373,8 @@ def model_list_state(db: Path | None = None) -> tuple[bool, str]:
     shown = sorted({model_name(m) for m in models if m not in hidden})
     if missing:
         return False, f"{len(missing)} models outside the five of ppp still shown (ppp setup --vscode)"
-    return True, "shown: " + ", ".join(shown)
+    waiting = "" if _listed(models) else f"; {VISIBLE[0]} not listed yet, the former default stays shown"
+    return True, "shown: " + ", ".join(shown) + waiting
 
 
 def vscode_running(run=subprocess.run) -> bool:
@@ -357,7 +392,7 @@ def vscode_running(run=subprocess.run) -> bool:
 
 
 def write_model_list(db: Path | None = None, running=None) -> list[str]:
-    """Hide every model outside the five of ppp and pin GPT-6.1 Sol and Claude Opus 5.5; back the database up first.
+    """Hide every model outside the five of ppp and pin GPT-6.2 Sol and Claude Opus 5.5; back the database up first.
     Raises RuntimeError while VS Code runs."""
     import sqlite3
     db = db or state_db()
@@ -368,7 +403,8 @@ def write_model_list(db: Path | None = None, running=None) -> list[str]:
         return ["VS Code lists no models yet: open the Agents view once, then ppp setup --vscode again."]
     hidden_before = (_read(db, "chatModelVisibility") or {}).get("hiddenModels") or []
     hidden = wanted_hidden(models, hidden_before)
-    pinned = PINNED + [p for p in (_read(db, "chatModelPinned") or []) if p not in PINNED and model_name(p) in VISIBLE]
+    keep = shown_models(models)
+    pinned = PINNED + [p for p in (_read(db, "chatModelPinned") or []) if p not in PINNED and model_name(p) in keep]
     backup = db.with_name(f"{db.name}.ppp-{datetime.now():%Y%m%d-%H%M%S-%f}")
     shutil.copy2(db, backup)
     for old in sorted(db.parent.glob(f"{db.name}.ppp-*"))[:-3]:  # the newest three backups stay
@@ -384,7 +420,7 @@ def write_model_list(db: Path | None = None, running=None) -> list[str]:
         con.close()
     shown = sorted({model_name(m) for m in models if m not in hidden})
     return [f"Backup: {backup}", f"Model list of VS Code: {len(hidden)} models hidden, shown: {', '.join(shown)}; "
-            "pinned: GPT-6.1 Sol, Claude Opus 5.5."]
+            "pinned: GPT-6.2 Sol, Claude Opus 5.5."]
 
 
 def wait_then_write(db: Path | None = None, running=None, sleep=None, limit: float = 4 * 3600,
