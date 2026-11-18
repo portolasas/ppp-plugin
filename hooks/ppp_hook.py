@@ -7,7 +7,8 @@ in the session target Local the policy ChatHooks switches them off (PL-16).
 
 SessionStart  core rules (only Claude Code; in VS Code the plugin agent ppp brings them, PL-4), settings, tool call and
               STATE.md as context (at most 10,000 characters, a limit of Claude Code): for VS Code as additionalContext
-              at the top level, for Claude Code in hookSpecificOutput. Keeps the tool call in ~/.ppp/tool-call.txt.
+              at the top level, for Claude Code in hookSpecificOutput. Keeps the tool call in ~/.ppp/tool-call.txt and
+              notes in ~/.ppp/hooks-seen.json that hooks run, also outside a project (ppp setup --check).
 Stop          card guard: a question in plain text sends the agent back once (A-10); usage note per session (PL-13).
 PreCompact    tells the user to save the state and start a new chat; the model gets nothing.
 PreToolUse    in a connected project (project.json names an environment) refuses a command line that calls pac itself;
@@ -16,8 +17,9 @@ PreToolUse    in a connected project (project.json names an environment) refuses
               ppplib/tenant.py protects the calls ppp makes itself, a direct pac call of the agent goes past it.
 A hook never blocks because of its own error: when in doubt it lets the turn pass.
 Call: python -I ppp_hook.py <event> <copilot|claude>, hook input as JSON on stdin (keys in snake_case or camelCase).
-On Windows VS Code starts it through ppp_hook.cmd, which finds the Python (also one of conda or mamba outside PATH) and
-ends with 0 even when no Python starts: the agent host refuses every tool call after a PreToolUse hook that failed (PL-27).
+On Windows the PowerShell line of VS Code starts python.exe directly (tools/copilot_hooks.py): ppp_hook.cmd, the launcher
+of 0.27.2 to 0.27.11, was blocked by AppLocker. It ends with 0 even when no Python starts: the agent host refuses every
+tool call after a PreToolUse hook that failed (PL-27).
 """
 from __future__ import annotations
 
@@ -108,6 +110,7 @@ def append(path: Path, record: dict) -> None:
 def session_start(data: dict, root: Path, tool: str) -> dict:
     from ppplib import agent, registry
     agent.write_tool_call()
+    agent.note_hook(tool)  # ppp setup --check: hooks run at all (PL-27)
     settings = agent.read_settings()
     try:
         config = json.loads((root / "project.json").read_text(encoding="utf-8-sig"))
@@ -222,6 +225,7 @@ def main() -> int:
                 try:
                     from ppplib import agent
                     agent.write_tool_call()
+                    agent.note_hook(tool)
                 except Exception:  # noqa: BLE001 – outside a project nothing is said, not even an error
                     pass
             return 0

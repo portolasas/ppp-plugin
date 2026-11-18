@@ -2,6 +2,12 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.27.12 (2026-11-18)
+- Hooks von VS Code unter Windows ohne Starter-Datei (PL-27): die PowerShell-Zeile startet python.exe direkt mit hooks/ppp_hook.py; hooks/ppp_hook.cmd entfällt, weil AppLocker die Batchdatei im Benutzerprofil still blockte (Firmenrechner, Ereignis 8007, seit 0.27.2 lief dort kein Hook); Python aus PPP_PYTHON, python.txt, PATH oder py -3, auch im eingeschränkten Sprachmodus. Die Suche in C:\BITrusted, CONDA_PREFIX und den üblichen conda-Ordnern entfällt: ein Python aus conda oder mamba außerhalb des PATH nennt python.txt, also nach ppp setup einmal mit diesem Python
+- ppp setup --check meldet Hooks of the Agents view: jeder SessionStart notiert ~/.ppp/hooks-seen.json; lief kein Hook dieser Version, nennt es die Sperren von AppLocker seit der Installation
+- ppp setup --vscode trägt portolasas/ppp-plugin in chat.plugins.marketplaces ein (eigene Einträge bleiben): die Plugins erscheinen in der Erweiterungsleiste unter @agentPlugins mit Update Plugins, auch wenn eine Richtlinie Customizations › Browse ausblendet (PL-28 (10))
+- Kernregeln: ohne Hooks sucht der Agent tools/ppp.py auch in ~/.copilot/installed-plugins
+
 ## 0.27.11 (2026-11-18)
 - GPT-6.2 Sol ist das Standardmodell von ppp statt GPT-6.1 Sol: ppp setup --vscode (Agents-Ansicht, chat.defaultModel), die Modellliste (GPT-6.1 Sol jetzt ausgeblendet), das Profil, Kernregeln, Skills, README und Agent bi-ppt
 - ppp setup --vscode stellt ein von ppp gesetztes GPT-6.1 Sol (früherer Standard) auf GPT-6.2 Sol um, in ~/.copilot/settings.json und chat.defaultModel; ppp setup --check meldet es; ein anderes selbst gewähltes Modell bleibt. Erst wenn VS Code GPT-6.2 Sol listet: bis dahin bleibt GPT-6.1 Sol gesetzt, sichtbar und angeheftet. Nach dem Update einmal ppp setup --vscode laufen lassen (bei geschlossenem VS Code für die Modellliste)

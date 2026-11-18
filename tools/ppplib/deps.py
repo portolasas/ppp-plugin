@@ -153,6 +153,7 @@ def parts() -> list[Part]:
                           "none recorded and none on PATH: run ppp setup once with this Python"))
     if RUNTIME_SETTINGS.parent.is_dir():  # the Copilot runtime of VS Code is there (not with Claude Code alone)
         found.append(runtime_part())
+        found.append(hooks_part())
     found += vscode_parts()
     git = shutil.which("git")
     found.append(Part("git", "every project", bool(git), git or "install Git for Windows or the git of your system", True))
@@ -212,6 +213,89 @@ def _in_use(data: dict, name: str, path: Path) -> bool:
     """Whether a plugin of the marketplace name is still enabled or installed (its copy would stay behind)."""
     enabled = data.get("enabledPlugins") if isinstance(data.get("enabledPlugins"), dict) else {}
     return any(k.endswith(f"@{name}") for k in enabled) or (path.parent / "installed-plugins" / name).is_dir()
+
+
+HOOKS = "Hooks of the Agents view"
+HOOKS_SERVE = "session context, card guard, no direct pac call"
+# AppLocker logs a blocked script (8007) and a blocked program (8004); every start of PowerShell under AppLocker also logs
+# 8007 for a test file __PSScriptPolicyTest_*, which says nothing (design review 18.11.)
+APPLOCKER = (("Microsoft-Windows-AppLocker/MSI and Script", 8007), ("Microsoft-Windows-AppLocker/EXE and DLL", 8004))
+
+
+def hooks_part(run=subprocess.run) -> Part:
+    """ok when a SessionStart hook of this version ran in the Agents view (~/.ppp/hooks-seen.json, PL-27). A launcher
+    that AppLocker blocks says nothing: from 0.27.2 to 0.27.11 the hooks did not run on the company computer, and no log
+    showed it (18.11.). When they have not run, names the blocks AppLocker logged since this copy came."""
+    from . import VERSION, agent
+    seen = agent.hooks_seen().get("copilot")
+    seen = seen if isinstance(seen, dict) else {}
+    if seen.get("version") == VERSION:
+        return Part(HOOKS, HOOKS_SERVE, True, f"last run {seen.get('time')} from {seen.get('plugin')}")
+    detail = (f"last run {seen.get('time')} with {seen.get('version')}, not yet with {VERSION}" if seen.get("time")
+              else "no hook has run yet") + ": start a new chat with the agent ppp in the Agents view, then check again"
+    if sys.platform == "win32":
+        try:
+            since = (agent.PLUGIN / "plugin.json").stat().st_mtime
+        except OSError:
+            since = 0.0
+        blocks = applocker_blocks(since, run)
+        if blocks:
+            detail += "; AppLocker blocked " + "; ".join(blocks[:3]) + ": ask IT to allow it"
+    return Part(HOOKS, HOOKS_SERVE, False, detail)
+
+
+def _applocker_events(text: str) -> list[tuple[float, str]]:
+    """(time as epoch seconds, FilePath) of the events wevtutil printed as XML, one <Event> after the other."""
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(f"<Events>{text}</Events>")
+    except ET.ParseError:
+        return []
+    out = []
+    for event in root:
+        when = path = None
+        for element in event.iter():
+            tag = element.tag.rsplit("}", 1)[-1]
+            if tag == "TimeCreated":
+                when = element.get("SystemTime")
+            elif tag == "FilePath" and element.text:
+                path = element.text.strip()
+        m = re.match(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)", when or "")
+        if m and path:
+            from datetime import timezone
+            out.append((datetime.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp(), path))
+    return out
+
+
+def applocker_blocks(since: float, run=subprocess.run) -> list[str] | None:
+    """The blocks AppLocker logged since `since` (epoch seconds) for ppp: a script of a plugin folder of ppp (8007) or a
+    python.exe or py.exe (8004), newest first. None when no log could be read (no AppLocker, or the logs are closed to
+    this user: by default Interactive Users may read them, a group policy can change that)."""
+    from datetime import timezone
+    found, read = [], False
+    # the time limit in the query: every start of PowerShell under AppLocker logs a test file, and the newest 200 must
+    # not be those only (audit 18.11.)
+    start = datetime.fromtimestamp(max(since, 0.0), timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    for log, number in APPLOCKER:
+        query = f"/q:*[System[(EventID={number}) and TimeCreated[@SystemTime>='{start}']]]"
+        try:
+            proc = run(["wevtutil", "qe", log, "/rd:true", "/c:200", "/f:xml", query],
+                       capture_output=True, text=True, errors="replace", timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if proc.returncode != 0:
+            continue
+        read = True
+        for when, path in _applocker_events(proc.stdout):
+            upper = path.upper().replace("/", "\\")
+            if when < since or "__PSSCRIPTPOLICYTEST_" in upper:
+                continue
+            ours = "PPP_HOOK" in upper or ("\\PPP\\" in upper and any(
+                folder in upper for folder in ("\\INSTALLED-PLUGINS\\", "\\AGENTPLUGINS\\", "\\AGENT-PLUGINS\\")))
+            python = upper.endswith(("\\PYTHON.EXE", "\\PY.EXE"))
+            if (number == 8007 and ours) or (number == 8004 and python):
+                found.append((when, f"{datetime.fromtimestamp(when):%Y-%m-%d %H:%M} {path} (event {number})"))
+    return [line for _, line in sorted(found, reverse=True)] if read else None
 
 
 NAME = "Model of the Agents view"

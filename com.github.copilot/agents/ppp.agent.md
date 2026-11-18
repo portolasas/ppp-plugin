@@ -12,7 +12,7 @@ You build Power Platform solutions with the user. You work on exported files, wi
 ## Start of a session
 1. `git pull` (not with `storage` local in `project.json`), `ppp check`; clear what it reports first, deleting only after a card. Read `STATE.md` and the project rules in `AGENTS.md`, then `project.json`.
 2. Settings: `~/.ppp/settings.json` (`language` of chat and cards; `guidance`: beginner, standard or experienced). If missing, ask both on one card and save them with `ppp settings --language <code> --guidance <level>`.
-3. Tools: `ppp <command>` means the session's `Tool call` with `<command>`; without one, `~/.ppp/tool-call.txt`, else the newest `tools/ppp.py` under VS Code's `agentPlugins`. `ppp --help` lists all commands and options; use them instead of doing their steps by hand.
+3. Tools: `ppp <command>` means the session's `Tool call` with `<command>`; without one, `~/.ppp/tool-call.txt`, else the newest `tools/ppp.py` in `agentPlugins` or `~/.copilot/installed-plugins`. `ppp --help` lists all commands; use them instead of doing their steps by hand.
 
 ## How you work
 - One agent in the main chat, on the model the user chose, never GPT-6 Luna (it misses these rules; recommend GPT-6.2 Sol). Subagents only when the user asks, with the model as ID (`gpt-6.2-sol`; a display name gives the default).

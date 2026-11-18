@@ -39,6 +39,7 @@ PPP_HOME = home_folder()
 SETTINGS = PPP_HOME / "settings.json"
 TOOL_CALL = PPP_HOME / "tool-call.txt"
 PYTHON_FILE = PPP_HOME / "python.txt"  # the Python for the hooks and the tool call on Windows (PL-27)
+HOOKS_SEEN = PPP_HOME / "hooks-seen.json"  # when a SessionStart hook of each tool ran last (PL-27, ppp setup --check)
 MARKETPLACE = "portolasas/ppp-plugin"
 GUIDANCE = ("beginner", "standard", "experienced")
 MARK = re.compile(r"<!-- ppp agent (\S+) source ([0-9a-f]{12}) -->")  # the mark of the copies before 0.2.0
@@ -51,7 +52,7 @@ def _store_stub(path: str) -> bool:
 
 def recorded_python() -> str | None:
     """The Python that ppp setup recorded in ~/.ppp/python.txt (PL-27), when the file names one that exists. The hook
-    launcher ppp_hook.cmd reads the same file; it serves a Python outside PATH, such as a conda or mamba environment."""
+    line of VS Code reads the same file; it serves a Python outside PATH, such as a conda or mamba environment."""
     try:
         raw = PYTHON_FILE.read_bytes()
     except OSError:
@@ -65,8 +66,9 @@ def recorded_python() -> str | None:
 
 
 def _for_cmd(exe: str) -> bytes | None:
-    """The path as cmd.exe reads it from a file (OEM code page; review 17.11.: a UTF-8 ü was not found): ASCII as it is,
-    else the short 8.3 path when it is ASCII, else the OEM bytes; None when none of these can name it."""
+    """The path as the hook line of VS Code reads it from python.txt (Get-Content -Encoding Oem; in 0.27.2 to 0.27.11
+    cmd.exe, which also reads the OEM code page; review 17.11.: a UTF-8 ü was not found): ASCII as it is, else the short
+    8.3 path when it is ASCII, else the OEM bytes; None when none of these can name it."""
     if exe.isascii():
         return exe.encode("ascii")
     try:
@@ -84,8 +86,9 @@ def _for_cmd(exe: str) -> bytes | None:
 
 
 def record_python() -> str | None:
-    """Keeps the Python this command runs in for the hooks and the tool call (PL-27), in one line with CRLF, as cmd.exe
-    reads it. A running Python is never the Store placeholder, also not one installed from the Store under WindowsApps."""
+    """Keeps the Python this command runs in for the hooks and the tool call (PL-27), in one line with CRLF, in the OEM
+    code page as the hook line reads it. A running Python is never the Store placeholder, also not one installed from the
+    Store under WindowsApps."""
     exe = sys.executable
     data = _for_cmd(exe) if sys.platform == "win32" and exe else None
     if not data:
@@ -140,6 +143,40 @@ def write_tool_call() -> None:
             TOOL_CALL.write_text(call, encoding="utf-8", newline="\n")
     except OSError:
         pass
+
+
+def note_hook(tool: str, now=None) -> None:
+    """Notes that a SessionStart hook of this copy ran for tool (copilot, claude): time, version, plugin folder. ppp setup
+    --check reads it to tell whether hooks run at all; a launcher that is blocked says nothing (PL-27, 18.11.). Never
+    raises: a hook must not fail because of this note."""
+    from datetime import datetime
+    try:
+        try:
+            seen = json.loads(HOOKS_SEEN.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            seen = {}
+        seen = seen if isinstance(seen, dict) else {}
+        seen[tool] = {"time": (now or datetime.now()).isoformat(timespec="seconds"), "version": VERSION,
+                      "plugin": str(PLUGIN)}
+        PPP_HOME.mkdir(parents=True, exist_ok=True)
+        # through a temporary file: two sessions that start at once must not read half a note (audit 18.11.)
+        tmp = HOOKS_SEEN.with_name(f"{HOOKS_SEEN.name}.{os.getpid()}.tmp")
+        try:
+            tmp.write_text(json.dumps(seen, indent=2) + "\n", encoding="utf-8", newline="\n")
+            os.replace(tmp, HOOKS_SEEN)
+        finally:
+            tmp.unlink(missing_ok=True)  # left only when replacing failed, e.g. while another session reads the note
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def hooks_seen() -> dict:
+    """The notes of note_hook per tool; empty when none could be read."""
+    try:
+        seen = json.loads(HOOKS_SEEN.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return seen if isinstance(seen, dict) else {}
 
 
 def body() -> str:

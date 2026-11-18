@@ -259,12 +259,36 @@ def replaced_model(model) -> bool:
     return "luna" in name or (name in FORMER_DEFAULTS and default_listed())
 
 
+# The marketplace of ppp in VS Code's own list (user, 18.11.): VS Code then shows its plugins in the Extensions view
+# (@agentPlugins, "Agent Plugins - Installed" with Update Plugins), also where an organisation policy hides
+# Customizations › Browse (ChatCustomizationMarketplace); test on the company computer 18.11. An application setting: VS
+# Code takes it from the Default profile only, so it stays out of SETTINGS, which the profile file carries too (PL-28 (1)).
+# Entries of the user stay; where the key is missing, the default of VS Code 1.147 comes along.
+MARKETPLACES = "chat.plugins.marketplaces"
+DEFAULT_MARKETPLACES = ["github/awesome-copilot#marketplace"]
+PPP_MARKETPLACE = "portolasas/ppp-plugin"
+
+
+def _has_ppp_marketplace(value) -> bool:
+    return isinstance(value, list) and any(isinstance(v, str) and PPP_MARKETPLACE in v.lower() for v in value)
+
+
+def _wanted(data: dict, key: str):
+    """The value ppp sets for a missing key: for the marketplaces the user's list (or the default) with the one of ppp."""
+    if key == MARKETPLACES:
+        given = data.get(MARKETPLACES)
+        return (list(given) if isinstance(given, list) else list(DEFAULT_MARKETPLACES)) + [PPP_MARKETPLACE]
+    return SETTINGS[key]
+
+
 def missing_settings(data: dict) -> list[str]:
     """Settings of ppp the user has not set; a value the user chose stays, only a Luna or a former default of ppp as
-    model counts as missing."""
+    model counts as missing, and a list of marketplaces without the one of ppp."""
     out = [k for k in SETTINGS if k not in data]
     if replaced_model(data.get("chat.defaultModel")):
         out.append("chat.defaultModel")
+    if not _has_ppp_marketplace(data.get(MARKETPLACES)):
+        out.append(MARKETPLACES)
     return out
 
 
@@ -278,8 +302,9 @@ def write_settings(path: Path | None = None) -> list[str]:
         return [f"{path}: the settings of ppp are there."]
     lines = []
     for k in missing:
-        lines.append(f"Set {k}: {json.dumps(SETTINGS[k])}" + (f" (was {json.dumps(data[k])})" if k in data else ""))
-        data[k] = SETTINGS[k]
+        value = _wanted(data, k)
+        lines.append(f"Set {k}: {json.dumps(value)}" + (f" (was {json.dumps(data[k])})" if k in data else ""))
+        data[k] = value
     backup = write_json(path, data, indent=4)
     if backup:
         lines.insert(0, f"Backup: {backup}")
@@ -289,7 +314,8 @@ def write_settings(path: Path | None = None) -> list[str]:
 
 def missing_as_json() -> str:
     """The settings of ppp as JSON to copy by hand into a settings.json that holds comments."""
-    return ", ".join(f"{json.dumps(k)}: {json.dumps(v)}" for k, v in SETTINGS.items())
+    return ", ".join(f"{json.dumps(k)}: {json.dumps(v)}" for k, v in
+                     [*SETTINGS.items(), (MARKETPLACES, DEFAULT_MARKETPLACES + [PPP_MARKETPLACE])])
 
 
 def write_json(path: Path, data: dict, indent: int) -> Path | None:
