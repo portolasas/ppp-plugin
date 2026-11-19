@@ -197,11 +197,15 @@ def cmd_canvas(a) -> int:
         own = root / "components" / "power-apps" / "generator" / "versionen.py" if root else None
         versions_file = own if own and own.is_file() else BLOCKS / "versionen.py"
     versions = canvas.allowed_versions(versions_file.read_text(encoding="utf-8")) if versions_file else None
-    sources = a.sources
+    sources, rx = a.sources, None
     if sources is None and root:
-        prefix = load_config(root).get("prefix")
-        sources = f"{prefix}_*" if prefix else ""
-    rx = canvas.sources_regex(sources or "")
+        config = load_config(root)
+        if config.get("mode") == "quick":   # the prefix is no list prefix there: the sources the screens read (SM-4)
+            names = canvas.screen_sources(files)
+            sources, rx = ", ".join(names), canvas.names_regex(names)
+        else:
+            sources = f"{config['prefix']}_*" if config.get("prefix") else ""
+    rx = rx or canvas.sources_regex(sources or "")
     rep = Report("ppp canvas")
     n_ctl, n_fx = canvas.check(files, versions, rx, rep)
     lines = [f"[{lvl}]".ljust(8) + msg for lvl, msg in rep.lines]
@@ -463,12 +467,19 @@ def _word_fields(target: Path) -> int:
 
 
 def cmd_init(a) -> int:
-    root = Path(a.folder).resolve() if a.folder else Path.cwd()
     modules = _split(a.modules)
     connected = a.environment.strip().lower() != "offline"
     if a.confirm_import and not connected:
         raise ToolError("--confirm-import needs --environment <name>: an offline project has no environment to import into.")
-    from . import agent
+    from . import agent, registry
+    if a.from_quick:
+        return _init_from_quick(a, modules)
+    if a.mode == "quick":
+        return _init_quick(a, modules, connected)
+    missing = [flag for flag, value in (("--name", a.name), ("--prefix", a.prefix), ("--storage", a.storage)) if not value]
+    if missing:
+        raise ToolError("ppp init needs " + ", ".join(missing) + " (mode quick does without them: ppp init --mode quick).")
+    root = Path(a.folder).resolve() if a.folder else Path.cwd()
     publisher, source = a.publisher.strip(), "--publisher"
     if not publisher:  # the developer's publisher from the settings of this computer, if there is one
         publisher, source = (agent.publisher_of(agent.read_settings()) or {}).get("uniqueName", ""), str(agent.SETTINGS)
@@ -480,7 +491,57 @@ def cmd_init(a) -> int:
     print("\n".join(lines))
     if publisher:
         print(f"Publisher {publisher} in project.json (from {source}).")
+    registry.note(root)
+    rep = structure.check(root)
+    print(rep.text())
+    return 1 if rep.errors else 0
+
+
+def _init_quick(a, modules: list[str], connected: bool) -> int:
+    """ppp init --mode quick (SCHNELLMODUS SM-3, SM-4, SM-12, SM-13): in the given folder, else in the opened folder when it
+    is a quick folder, else in <quickHome>/<solution>."""
+    from . import agent, registry
+    if a.publisher.strip():
+        raise ToolError("Mode quick takes the Publisher from the solution only (SM-13): leave out --publisher.")
+    if a.storage not in (None, "local") or a.exchange != "local":
+        raise ToolError("A quick folder starts with storage local and exchange/ out of git; \"In GitHub ablegen\" switches later "
+                        "with ppp storage github --remote <url>.")
+    if a.role and not connected:
+        raise ToolError("--role needs --environment <name>: an offline quick folder has no environment.")
+    opened, elsewhere = Path.cwd(), None
+    if a.folder:
+        root = Path(a.folder).expanduser().resolve()
+    else:
+        elsewhere = structure.folder_problem(opened)
+        if elsewhere and not (a.solution or a.name):
+            raise ToolError(f"The opened folder is no quick folder: {elsewhere}. Give --solution <name>, and ppp init creates "
+                            "<quickHome>/<name>.")
+        root = structure.quick_folder(agent.quick_home(), a.solution or a.name) if elsewhere else opened
+    lines = structure.init_quick(root, a.solution or None, a.name or None, a.prefix or None, modules,
+                                 a.language, a.environment.strip() if connected else None, a.role, a.confirm_import != "no")
+    print("\n".join(lines))
+    if elsewhere:
+        print(f"Created outside the opened folder ({elsewhere}). Next, in this order: "
+              + (f"ppp connect --in-use yes|no --project {root}; " if connected else "")
+              + f"write the request into {root / 'CHANGE.md'} and commit there; then a card: open {root} and start a new chat "
+              "there, with the start prompt as a code block. This chat goes no further.")
+    registry.note(root)
+    rep = structure.check(root)
+    print(rep.text())
+    return 1 if rep.errors else 0
+
+
+def _init_from_quick(a, modules: list[str]) -> int:
+    """ppp init --from-quick: take a quick folder up as a project (SM-8), with the facts of the intake card."""
     from . import registry
+    missing = [flag for flag, value in (("--name", a.name), ("--prefix", a.prefix), ("--storage", a.storage)) if not value]
+    if a.mode not in structure.PROJECT_MODES:
+        missing.append("--mode small|medium")
+    if missing:
+        raise ToolError("ppp init --from-quick needs the facts of the intake card: " + ", ".join(missing) + ".")
+    root = find_root(Path(a.folder) if a.folder else None)
+    lines = structure.from_quick(root, a.name, a.prefix, modules, a.mode, a.language, a.storage)
+    print("\n".join(lines))
     registry.note(root)
     rep = structure.check(root)
     print(rep.text())
@@ -536,7 +597,7 @@ def cmd_settings(a) -> int:
             raise ToolError(f"The Publisher {found['uniqueName']} in {a.publisher_from} has no CustomizationOptionValuePrefix "
                             "that is a number.")
         given = {**found, "displayName": found["displayName"] or found["uniqueName"]}
-    if not a.language and not a.guidance and not a.sessions and not a.backup and not given and not a.team and not a.person:
+    if not (a.language or a.guidance or a.sessions or a.backup or given or a.team or a.person or a.quick_home):
         current = agent.read_settings()
         print(f"{agent.SETTINGS}: {current}" if current else f"{agent.SETTINGS} is missing. "
               "Set it with --language <code> --guidance beginner|standard|experienced.")
@@ -548,7 +609,7 @@ def cmd_settings(a) -> int:
                   "from an unpacked solution with --publisher-from <folder or Other/Solution.xml>.")
         return 0
     print(f"Saved {agent.SETTINGS}: "
-          f"{agent.write_settings(a.language, a.guidance, a.sessions, a.backup, given or None, a.team, a.person)}")
+          f"{agent.write_settings(a.language, a.guidance, a.sessions, a.backup, given or None, a.team, a.person, a.quick_home)}")
     return 0
 
 
@@ -590,8 +651,8 @@ def cmd_connect(a) -> int:
         print("\n".join(move.connect_target(root, a.name, _yes(a.in_use))))
         return 0
     lines = connected.connect(root, a.name or None, a.role, _yes(a.in_use), _yes(a.confirm_import), a.off)
-    if not a.off:   # the publisher of the settings in the environment just connected (ERWEITERUNGEN A.1)
-        lines += publisher.connect_lines(root, tenant.environment(root))
+    if not a.off and load_config(root).get("mode") != "quick":  # the publisher of the settings there (ERWEITERUNGEN A.1);
+        lines += publisher.connect_lines(root, tenant.environment(root))   # mode quick has the solution's only (SM-13)
     print("\n".join(lines))
     return 0
 
@@ -612,6 +673,9 @@ def cmd_export(a) -> int:
 def cmd_import(a) -> int:
     from . import connected, move, publisher
     root = find_root(a.project)
+    if a.create and load_config(root).get("mode") == "quick":
+        raise ToolError("Mode quick changes an existing solution and creates none (SM-13). A new solution makes this a project: "
+                        "ppp init --from-quick.")
     if a.create:        # an empty first solution with the publisher of the settings (ERWEITERUNGEN A.1)
         given = [flag for flag, on in (("a package", a.package), ("--restore", a.restore), ("--environment", a.environment),
                                        ("--accept-drift", a.accept_drift), ("--with-apps", a.with_apps),
@@ -682,9 +746,11 @@ def cmd_backup(a) -> int:
 
 def cmd_projects(a) -> int:
     from . import registry, team
-    if sum(map(bool, (a.team, a.scan, a.forget))) > 1:
-        raise ToolError("ppp projects takes one of --team, --scan and --forget.")
-    if a.team:
+    if sum(map(bool, (a.team, a.scan, a.forget, a.solution))) > 1:
+        raise ToolError("ppp projects takes one of --team, --scan, --forget and --solution.")
+    if a.solution:
+        lines = registry.solution_lines(a.solution)
+    elif a.team:
         lines = team.table()
     elif a.forget:
         lines = registry.forget(a.forget)
@@ -1027,15 +1093,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     c = sub.add_parser("init", help="Create the core of a ppp project in a folder; existing files stay untouched.",
                        description="Create the core of a ppp project (README, AGENTS, CLAUDE, STATE, ROADMAP, project.json, "
-                                   "core folders, components/<module>/README.md); existing files stay untouched.", epilog=EPILOG)
+                                   "core folders, components/<module>/README.md); existing files stay untouched. --mode quick "
+                                   "creates a quick folder for one change, --from-quick takes one up as a project.", epilog=EPILOG)
     c.add_argument("folder", nargs="?", default="", help="project folder (default: current folder)")
-    c.add_argument("--name", required=True, help="project name, e.g. 'ASUM – Automatic SharePoint User Management'")
-    c.add_argument("--prefix", required=True, help="prefix before flows, lists and components, e.g. ASUM")
+    c.add_argument("--name", default="", help="project name, e.g. 'ASUM – Automatic SharePoint User Management' (mode quick: "
+                                               "default the solution)")
+    c.add_argument("--prefix", default="", help="prefix before flows, lists and components, e.g. ASUM (mode quick: derived, "
+                                                "provisional)")
     c.add_argument("--modules", default="", help="comma-separated: " + ", ".join(structure.MODULES))
-    c.add_argument("--mode", default="medium", choices=structure.MODES)
+    c.add_argument("--mode", default="medium", choices=structure.MODES,
+                   help="small, medium, large; quick: one change to existing material, with project.json, CHANGE.md, "
+                        ".gitignore and .gitattributes only, storage local; without a folder in the opened folder when it is "
+                        "empty or holds only the material, else in <quickHome>/<solution> (ppp settings --quick-home)")
+    c.add_argument("--from-quick", action="store_true",
+                   help="take the quick folder up as a project: with --name, --prefix, --storage, --mode small|medium and "
+                        "--modules; each change of CHANGE.md becomes an archived package, manual changes and open points go "
+                        "to STATE.md")
     c.add_argument("--language", default="de", help="language of handbook and training (default de)")
     c.add_argument("--solution", default="", help="unique name of the main solution, if it exists already")
-    c.add_argument("--storage", required=True, choices=storage.STORAGES,
+    c.add_argument("--storage", default=None, choices=storage.STORAGES,
                    help="where the project lives: github (git with a remote, pushed) or local (git without a remote, "
                         "backed up with ppp backup); bitbucket is prepared and starts as local (ABLAGE AB-6)")
     c.add_argument("--exchange", choices=storage.EXCHANGES, default="local",
@@ -1090,6 +1166,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--team", action="store_true", help="instead the shared projects of the team folder: who was last on "
                                                        "which, who holds it, how to take it over")
     c.add_argument("--home", default="", help="with --scan: home folder with .copilot (default: the user's)")
+    c.add_argument("--solution", default="", help="only the projects of any mode that work on this solution (its unique name), "
+                                                  "to offer before a new quick folder")
     c.set_defaults(func=cmd_projects)
 
     c = command("catalog", cmd_catalog, "List the building blocks that proved themselves in the other projects of this "
@@ -1160,6 +1238,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--team", default="", help="team folder: a synced folder the team shares, e.g. a SharePoint library; an "
                                               "empty one gets the layout (projects/, knowledge/, material/). Needs --person")
     c.add_argument("--person", default="", help="your name in the team folder: it names your file and your backups there")
+    c.add_argument("--quick-home", default="", help="folder for the quick folders of mode quick, never in OneDrive or another "
+                                                    "sync folder (default ~/ppp/schnell); created when missing")
     c.add_argument("--publisher-name", default=None, help="unique name of the Publisher: letters, digits and underscores, no digit "
                                                           "first, at most 256 characters")
     c.add_argument("--publisher-display", default=None, help="display name of the Publisher (default: the unique name)")

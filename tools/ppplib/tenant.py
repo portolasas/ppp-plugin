@@ -280,13 +280,28 @@ def find_environment(name: str) -> dict:
 
 
 def solutions(url: str, timeout: float = 600) -> dict[str, dict]:
-    """The solutions of the environment by unique name in lower case: name, version, managed, publisher (its unique name,
-    pac test round 2, N8)."""
+    """The solutions of the environment by unique name in lower case: name, display name, version, managed, publisher
+    (its unique name, pac test round 2, N8)."""
     data = _read_json(url, ["solution", "list"], timeout)
-    return {str(s["SolutionUniqueName"]).lower(): {"name": str(s["SolutionUniqueName"]), "version": str(s.get("VersionNumber") or ""),
+    return {str(s["SolutionUniqueName"]).lower(): {"name": str(s["SolutionUniqueName"]), "display": str(s.get("FriendlyName") or ""),
+                                                  "version": str(s.get("VersionNumber") or ""),
                                                   "managed": bool(s.get("IsManaged")),
                                                   "publisher": str(s.get("PublisherUniqueName") or "")}
             for s in data if isinstance(s, dict) and s.get("SolutionUniqueName")}
+
+
+def find_solution(online: dict[str, dict], name: str) -> dict | None:
+    """The solution the user names, from the list of solutions(): by its unique name, else by its display name as the
+    portal shows it, regardless of case and outer blanks (SCHNELLMODUS SM-2). None when no solution has either name; a
+    display name that several solutions carry is never taken."""
+    wanted = name.strip().lower()
+    if wanted in online:
+        return online[wanted]
+    hits = [s for s in online.values() if s.get("display", "").strip().lower() == wanted]
+    if len(hits) > 1:
+        raise ToolError(f"{len(hits)} solutions of the environment have the display name {name!r}: "
+                        + ", ".join(s["name"] for s in hits) + ". Give the unique name of the one meant.")
+    return hits[0] if hits else None
 
 
 def connections(url: str) -> dict[str, dict]:

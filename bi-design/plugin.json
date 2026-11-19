@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "bi-design",
-  "version": "0.27.12",
+  "version": "0.27.16",
   "description": "bi-design: Boehringer Ingelheim corporate design for agents - skill bi-designer for any visual output (colours, fonts, logo, icons, recipes per medium) and agent bi-ppt, which builds, updates, checks and converts PowerPoint decks in the BI master v2.1 with the generator bippt.",
   "author": {
     "name": "Pascal Naumann"

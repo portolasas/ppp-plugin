@@ -309,9 +309,15 @@ def merge_publisher(current: object, given: dict) -> dict:
             "optionValuePrefix": check_option_prefix(merged["optionValuePrefix"])}
 
 
+def quick_home() -> Path:
+    """Where ppp init --mode quick creates a quick folder when the opened one is none (SCHNELLMODUS SM-3)."""
+    given = (read_settings() or {}).get("quickHome")
+    return Path(given).expanduser() if isinstance(given, str) and given.strip() else Path.home() / "ppp" / "schnell"
+
+
 def write_settings(language: str | None, guidance: str | None, sessions: str | None = None,
                    backup: str | None = None, publisher: dict | None = None, team: str | None = None,
-                   person: str | None = None) -> dict:
+                   person: str | None = None, quick_home: str | None = None) -> dict:
     current = read_settings() or {}
     if language:
         current["language"] = language
@@ -339,6 +345,15 @@ def write_settings(language: str | None, guidance: str | None, sessions: str | N
             if not current.get("person"):
                 raise ToolError("--team needs --person <name>: your name in the team folder.")
             current["teamHome"] = str(teamfolder.prepare(team))
+    if quick_home:  # never in a sync folder: it would hold the only git history of each quick folder (SM-3)
+        from . import storage
+        folder = Path(quick_home).expanduser().resolve()
+        service = storage.sync_of(folder)
+        if service:
+            raise ToolError(f"{folder} lies in the {service} folder; the sync can break the git history of the quick folders. "
+                            "Choose a folder on this computer's disk outside the sync, e.g. ~/ppp/schnell.")
+        folder.mkdir(parents=True, exist_ok=True)
+        current["quickHome"] = str(folder)
     missing = [k for k in ("language", "guidance") if k not in current]
     if missing:
         raise ToolError("missing: " + ", ".join(f"--{k}" for k in missing))

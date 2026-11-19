@@ -134,7 +134,7 @@ def connect(root: Path, name: str | None = None, role: str | None = None, in_use
     if by_default:      # before the role: its message names this environment as the example to call
         online = tenant.solutions(found["url"])
         mine = [str(s.get("uniqueName")) for s in config.get("solutions") or [] if s.get("uniqueName")]
-        if mine and not any(n.lower() in online for n in mine):
+        if mine and not any(tenant.find_solution(online, n) for n in mine):
             raise ToolError(f"None of this project's solutions ({', '.join(mine)}) is in {found['name']}, the default "
                             "environment: nothing written. Ask on a card for the display name of the environment the project "
                             "works in (top right in make.powerapps.com), then ppp connect \"<name>\" --role <role>. When the "
@@ -152,6 +152,13 @@ def connect(root: Path, name: str | None = None, role: str | None = None, in_use
         raise ToolError(f"role must be one of {', '.join(structure.ENVIRONMENT_ROLES)}")
     if online is None:  # a named environment or one the project is connected to: the role is asked before the tenant
         online = tenant.solutions(found["url"])
+    renamed = []    # a display name the user gave (ppp init --mode quick --solution) becomes the unique name (SM-2)
+    for s in config.get("solutions") or []:
+        given = str(s.get("uniqueName") or "") if isinstance(s, dict) else ""
+        hit = tenant.find_solution(online, given) if given and given.lower() not in online else None
+        if hit:
+            s["uniqueName"] = hit["name"]
+            renamed.append(f"{given} -> {hit['name']}")
     data = {"name": found["name"], "environmentUrl": found["url"], "role": role,
             "inUse": bool(old.get("inUse", False)) if in_use is None else in_use,
             **{k: v for k, v in old.items() if k not in ("name", "environmentUrl", "role", "inUse")}}
@@ -170,6 +177,8 @@ def connect(root: Path, name: str | None = None, role: str | None = None, in_use
     lines = [f"Connected to {found['name']}: environments/{alias}.json with its address, role {role}, "
              + ("in productive use" if data["inUse"] else "not in productive use") + f"; card before each import: {_card(env)}.",
              importlog.usual_line(root, alias)]
+    if renamed:
+        lines.append("Display name taken as the unique name of the solution in project.json: " + ", ".join(renamed))
     for s in config.get("solutions") or []:
         there = online.get(str(s.get("uniqueName", "")).lower())
         lines.append(f"  {s.get('uniqueName')} ({s.get('role')}): " + (f"online {there['version']}" + (", managed" if there["managed"] else "")
@@ -211,9 +220,10 @@ def export(root: Path, take, name: str | None = None, compare: bool = False, no_
     name = name or package_solution(load_config(root))
     if not name:
         raise ToolError("project.json names no solution yet: ppp export --solution <UniqueName>.")
-    online = tenant.solutions(env["url"]).get(name.lower())
+    online = tenant.find_solution(tenant.solutions(env["url"]), name)
     if not online:
-        raise ToolError(f"The solution {name} is not in the environment {env['alias']}.")
+        raise ToolError(f"The solution {name} is not in the environment {env['alias']}, neither by its unique name nor by its "
+                        "display name.")
     if online["managed"]:
         raise ToolError(f"{online['name']} is managed in {env['alias']}; ppp works on unmanaged solutions.")
     folder = root / "solution" / online["name"]

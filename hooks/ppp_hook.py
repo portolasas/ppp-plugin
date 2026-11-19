@@ -6,7 +6,8 @@ com.github.copilot/hooks/hooks.json passes `copilot` for VS Code, which runs the
 in the session target Local the policy ChatHooks switches them off (PL-16).
 
 SessionStart  core rules (only Claude Code; in VS Code the plugin agent ppp brings them, PL-4), settings, tool call and
-              STATE.md as context (at most 10,000 characters, a limit of Claude Code): for VS Code as additionalContext
+              STATE.md (in mode quick CHANGE.md, SCHNELLMODUS SM-7) as context (at most 10,000 characters, a limit of
+              Claude Code): for VS Code as additionalContext
               at the top level, for Claude Code in hookSpecificOutput. Keeps the tool call in ~/.ppp/tool-call.txt and
               notes in ~/.ppp/hooks-seen.json that hooks run, also outside a project (ppp setup --check).
 Stop          card guard: a question in plain text sends the agent back once (A-10); usage note per session (PL-13).
@@ -36,6 +37,9 @@ TOOLS = {"copilot": "copilot", "claude": "claude-code"}  # argument of the hook 
 # Sections of STATE.md that go first when it does not fit; the manual changes stand near the end of the template and were
 # the first to be cut (review 07.11.: in Claude Code about 3,000 characters remain beside the core rules).
 FIRST = ("Active package", "Next step", "Manual changes in the tenant")
+# CHANGE.md of mode quick: the current change stands below manual changes and open points, the completed ones after it;
+# cut from behind, a long history would cost the current change first (SCHNELLMODUS SM-7)
+QUICK_FIRST = ("Manual changes in the tenant", "Open points", "Current change")
 # pac where a shell takes its command from: at the start, after a separator, after a shell keyword (do, then, else, !),
 # after a wrapper such as cmd /c, bash -lc, xargs, iex or dotnet tool run; by name or by path, quoted or not. A word pac
 # further back (an argument, a text in quotes) is not a call.
@@ -52,15 +56,16 @@ DENIED = ("ppp: this project is connected to the tenant (environment {alias}), a
           "command only quotes pac in a text, write that text with the file tool.")
 
 
-def state_within(content: str, room: int) -> str:
-    """STATE.md within room characters: unchanged when it fits. Else its head, the sections of FIRST in that order, then
-    the other sections in file order. Within each group whole sections go first, then the first one that did not fit, cut."""
+def state_within(content: str, room: int, first: tuple = FIRST, name: str = "STATE.md") -> str:
+    """STATE.md (or CHANGE.md, with its own order) within room characters: unchanged when it fits. Else its head, the
+    sections of first in that order, then the other sections in file order. Within each group whole sections go first,
+    then the first one that did not fit, cut."""
     if len(content) <= room:
         return content
     head, *sections = content.split("\n## ")
     sections = ["## " + s.rstrip("\n") + "\n" for s in sections]
     title = lambda s: s[3:].split("\n", 1)[0].strip()
-    rank = lambda s: next((i for i, f in enumerate(FIRST) if title(s).startswith(f)), None)
+    rank = lambda s: next((i for i, f in enumerate(first) if title(s).startswith(f)), None)
     text, left = head.rstrip("\n")[:room] + "\n", []
     for group in (sorted((s for s in sections if rank(s) is not None), key=rank),
                   [s for s in sections if rank(s) is None]):
@@ -79,7 +84,7 @@ def state_within(content: str, room: int) -> str:
     if len(head) > room:
         left.insert(0, "the start (cut)")
     names = ", ".join(left[:6]) + (f" and {len(left) - 6} more" if len(left) > 6 else "")
-    return text + f"\n[…] STATE.md is longer; read the rest from the file. Missing or cut here: {names}."
+    return text + f"\n[…] {name} is longer; read the rest from the file. Missing or cut here: {names}."
 
 
 def is_ppp_config(path: Path) -> bool:
@@ -117,12 +122,26 @@ def session_start(data: dict, root: Path, tool: str) -> dict:
     except (OSError, ValueError):
         config = {}
     registry.note(root, config)  # the register of this computer (HOME HO-3); never raises
+    quick = config.get("mode") == "quick"
     head = [] if tool == "copilot" else [agent.body()]
-    head += ["## This session",
-             f"- Project: {config.get('name', root.name)} in {root}"
-             + (" (storage local: commit, never pull or push; ppp backup on request)" if config.get("storage") == "local" else ""),
-             f"- Tool call: {agent.tool_command('powershell' if tool == 'copilot' else 'posix')} <command>"]
-    if isinstance(settings, dict) and settings:
+    if quick:   # SCHNELLMODUS SM-6, SM-7, SM-14
+        where = ("commit after each step, never push" if config.get("storage") == "local"
+                 else "commit and push after each step")
+        head += ["## This session",
+                 f"- Quick folder (mode quick, skill ppp-quick): {config.get('name', root.name)} in {root}; CHANGE.md instead of "
+                 f"STATE.md, ROADMAP.md and packages; {where}; one stopping point once CHANGE.md stands"]
+    else:
+        head += ["## This session",
+                 f"- Project: {config.get('name', root.name)} in {root}"
+                 + (" (storage local: commit, never pull or push; ppp backup on request)" if config.get("storage") == "local" else "")]
+    head.append(f"- Tool call: {agent.tool_command('powershell' if tool == 'copilot' else 'posix')} <command>")
+    if isinstance(settings, dict) and settings and quick:
+        head.append(f"- Settings: language {settings.get('language')}, guidance {settings.get('guidance')}; the publisher comes "
+                    "from the solution (mode quick)")
+    elif quick:
+        head.append(f"- {agent.SETTINGS} is missing: ask language and guidance on the next card and save them with ppp settings "
+                    "(no publisher in mode quick).")
+    elif isinstance(settings, dict) and settings:
         publisher = agent.publisher_of(settings)  # a broken entry counts as not set
         head.append(f"- Settings: language {settings.get('language')}, guidance {settings.get('guidance')}"
                     + (f", publisher {publisher['uniqueName']} (prefix {publisher['prefix']})" if publisher else ""))
@@ -133,10 +152,11 @@ def session_start(data: dict, root: Path, tool: str) -> dict:
         head.append(f"- {agent.SETTINGS} is missing: before anything else ask language, guidance and publisher on one card "
                     "(the publisher may be skipped if the user has none yet).")
     text = "\n".join(head) + "\n"
-    state = root / "STATE.md"
+    name, first = ("CHANGE.md", QUICK_FIRST) if quick else ("STATE.md", FIRST)
+    state = root / name
     if state.is_file():
         content = state.read_text(encoding="utf-8", errors="replace")
-        text += "\n## STATE.md\n" + state_within(content, max(LIMIT - len(text) - 400, 0))
+        text += f"\n## {name}\n" + state_within(content, max(LIMIT - len(text) - 400, 0), first, name)
     if tool == "copilot":  # the agent host drops hookSpecificOutput (Nachtest 4, 25.10.)
         return {"additionalContext": text[:LIMIT]}
     return {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text[:LIMIT]}}

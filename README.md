@@ -19,10 +19,12 @@ A project can be **connected** to one environment (`ppp connect`). Then the agen
 
 ## What you get with ppp
 - **Agent `ppp`** with the core rules: questions as cards with a recommendation first, no silent assumptions, evidence before claims, a commit after each confirmed step, stopping points with a model recommendation.
-- **16 skills**, loaded when a task needs them:
+- **18 skills**, loaded when a task needs them:
   - phases: `ppp-intake`, `ppp-clarify`, `ppp-prototype`, `ppp-plan`, `ppp-package`, `ppp-diagnose`, `ppp-docs`, `ppp-golive`;
   - platform knowledge, each statement marked observed, documented, open or version-dependent: `ppp-power-automate`, `ppp-power-apps`, `ppp-sharepoint`, `ppp-power-bi`, `ppp-copilot-studio`;
   - `ppp-app-walk`: walks through your running app in Edge with automated clicks, reviews layout and usability from measurements and pictures, checks expected values and load times, reproduces errors, compares with the last run, and builds the illustrated Word handbook from its Markdown text, and training videos;
+  - `ppp-quick`: quick mode for one change to an existing flow, app or report without the project structure: a quick folder with `CHANGE.md` as the only document, the same checks and cards, at the end a one-off, a private GitHub repository or a project;
+  - `ppp-audit`: an independent audit of the plan or of a risky package proposal by a read-only subagent never weaker than the chat's model, offered on the confirmation card;
   - `ppp-sessions`: on your request, uploads the session logs of your ppp projects to a private repository of yours, to improve ppp from them;
   - `ppp-setup`: checks what ppp needs on this computer (Python, git, pac, Playwright with Edge and ffmpeg, python-docx, Word, the packages of bi-design) and, after your yes, installs the missing Python packages (`ppp setup --check`, `ppp setup --install`).
 - **Command line `ppp`** (Python standard library only; `ppp --help` lists every command with its options):

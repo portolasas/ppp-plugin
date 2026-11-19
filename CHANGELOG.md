@@ -2,6 +2,22 @@
 
 Versions of the ppp plugin, newest first. Every published change raises at least the patch version and names here what changed; a learning session adds the lesson IDs as evidence (archive `knowledge/lessons/` in the ppp repository).
 
+## 0.27.16 (2026-11-19)
+- ppp import --create: customizations.xml ohne Unterschied der Zeilenenden geprüft (pac auf macOS schreibt LF); Tests mit /private/var auf macOS
+
+## 0.27.15 (2026-11-19)
+- Schnellmodus (SCHNELLMODUS SM-1 bis SM-14): Skill ppp-quick; ppp init --mode quick legt einen Schnellordner mit project.json, CHANGE.md, .gitignore und .gitattributes an (im geöffneten Ordner, wenn er geeignet ist, sonst in quickHome; vorläufiges Kürzel gegen das Register; Material an seinen Platz), ppp init --from-quick macht daraus ein Projekt mit archivierten Paketen 001…NNN; ppp check mit eigenem Zweig und Budget für CHANGE.md; SessionStart spielt CHANGE.md mit eigener Rangfolge ein
+- ppp projects --solution findet jedes Projekt einer Lösung; ppp connect und ppp export nehmen den Anzeigenamen einer Lösung; ppp settings --quick-home (nie im Sync-Ordner); ppp canvas nimmt im Modus quick die Datenquellen aus den Screens; im Modus quick keine Sicherungskarte und keine Erinnerung, kein Publisher aus den Einstellungen
+- ppp storage github|bitbucket prüft vor dem ersten Push den ganzen Verlauf auf Zugangsdaten
+- Kernregeln: eine Zeile für den Einstieg außerhalb eines Projekts und den Modus quick (SM-11); Beschreibungen von ppp-intake und ppp-package abgegrenzt, ppp-audit für CHANGE.md
+
+## 0.27.14 (2026-11-19)
+- ppp-audit: der Auditor ist nie schwächer als das Modell des Chats; in Claude Code prüft immer Opus (ARBEITSWEISE A-15)
+
+## 0.27.13 (2026-11-19)
+- Skill ppp-audit: unabhängige Prüfung von Plan oder riskantem Paket durch einen lesenden Subagenten auf der anderen Modellfamilie; die Bestätigungskarten von ppp-plan und ppp-package bieten sie an
+- Kernregeln: Subagenten, die nur lesen (Recherche auf gpt-6.1-terra, Audit), startet ppp von sich aus (ARBEITSWEISE A-1, A-15)
+
 ## 0.27.12 (2026-11-18)
 - Hooks von VS Code unter Windows ohne Starter-Datei (PL-27): die PowerShell-Zeile startet python.exe direkt mit hooks/ppp_hook.py; hooks/ppp_hook.cmd entfällt, weil AppLocker die Batchdatei im Benutzerprofil still blockte (Firmenrechner, Ereignis 8007, seit 0.27.2 lief dort kein Hook); Python aus PPP_PYTHON, python.txt, PATH oder py -3, auch im eingeschränkten Sprachmodus. Die Suche in C:\BITrusted, CONDA_PREFIX und den üblichen conda-Ordnern entfällt: ein Python aus conda oder mamba außerhalb des PATH nennt python.txt, also nach ppp setup einmal mit diesem Python
 - ppp setup --check meldet Hooks of the Agents view: jeder SessionStart notiert ~/.ppp/hooks-seen.json; lief kein Hook dieser Version, nennt es die Sperren von AppLocker seit der Installation

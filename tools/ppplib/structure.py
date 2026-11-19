@@ -19,7 +19,8 @@ from .report import Report
 STRUCTURE_VERSION = 2  # 2 since 09.11.: storage in project.json (ABLAGE AB-9)
 TEMPLATES = Path(__file__).resolve().parent.parent.parent / "templates"
 MODULES = ("power-automate", "power-apps", "sharepoint", "power-bi", "copilot-studio")
-MODES = ("small", "medium", "large")
+MODES = ("small", "medium", "large", "quick")
+PROJECT_MODES = ("small", "medium", "large")  # quick: one change to existing material, without the project core (SCHNELLMODUS)
 TRAINING_FORMATS = ("word", "powerpoint", "both")  # optional; ppp-docs asks before the documents for users are built
 ROLES = ("main", "transfer", "read-only")
 # A connected project (VERBUNDEN VB-1, VB-2, VB-11): project.json names its environment by an alias, and
@@ -28,7 +29,12 @@ ENVIRONMENT_ROLES = ("development", "test", "production")
 NO_ROLE = "No role for the environment yet: pac does not name it, and ppp import waits for it."
 ALIAS = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 ENVIRONMENT_URL = re.compile(r"https://[A-Za-z0-9.-]+/?")
-CORE_FILES =("README.md", "AGENTS.md", "CLAUDE.md", "STATE.md", "ROADMAP.md", "project.json")
+CORE_FILES = ("README.md", "AGENTS.md", "CLAUDE.md", "STATE.md", "ROADMAP.md", "project.json")
+# mode quick (SCHNELLMODUS SM-4, SM-7): CHANGE.md is the only document; folders only for the material and the tenant
+QUICK_FILES = ("project.json", "CHANGE.md", ".gitignore", ".gitattributes")
+QUICK_DIRS = ("solution", "exchange", "lessons", "components", "environments")
+QUICK_SECTIONS = ("Manual changes in the tenant", "Open points", "Current change", "Completed changes")
+CHANGE_BUDGET = 6_000  # like STATE.md: the session start passes about 3,000 characters in Claude Code
 CORE_DIRS = ("specs", "changes", "changes/archive", "decisions", "components", "solution")
 OPTIONAL_DIRS = ("exchange", "inputs", "environments", "tests", "prototype", "lessons", "docs", "legacy")
 DOCS_DIRS = ("handbook", "training", "six-sigma", "project")
@@ -83,8 +89,9 @@ def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, lang
     unknown = [m for m in modules if m not in MODULES]
     if unknown:
         raise ToolError(f"Unknown modules {unknown}; known: {', '.join(MODULES)}")
-    if mode not in MODES:
-        raise ToolError(f"Mode must be one of {', '.join(MODES)}")
+    if mode not in PROJECT_MODES:
+        raise ToolError(f"Mode must be one of {', '.join(PROJECT_MODES)}" + ("; mode quick has its own init (init_quick)"
+                                                                          if mode == "quick" else ""))
     if kind == "bitbucket":
         raise ToolError(storage.BITBUCKET_LATER)
     if kind not in storage.STORAGES:
@@ -147,6 +154,316 @@ def init(root: Path, name: str, prefix: str, modules: list[str], mode: str, lang
                    + ("always." if confirm_import else "only on a deviation in the tenant."))
         if not role:
             out.append(f"{NO_ROLE} ppp connect \"{environment}\" --role development|test|production sets it.")
+    return out
+
+
+# ------------------------------------------------------------------ mode quick (SCHNELLMODUS)
+# Folders that hold many other things are never a quick folder: every subfolder would become a ppp project for the hooks
+# (SM-12). Their names under the user's home, compared without case.
+BROAD = ("documents", "dokumente", "desktop", "schreibtisch", "downloads", "developer", "projects", "projekte", "repos",
+         "source", "github", "library", "onedrive")
+# what the user may hand over in the opened folder (SM-5): a solution export, screens for "paste code", a report as PBIP
+MATERIAL_FILES = (".zip", ".yaml", ".yml", ".pbip")
+MATERIAL_DIRS = (".semanticmodel", ".report", ".dataset")
+
+
+def _material(path: Path) -> str | None:
+    """Where a piece of material goes in a quick folder: exchange, power-apps or power-bi; None for anything else."""
+    low = path.name.lower()
+    if path.is_file() and low.endswith(".zip"):
+        return "exchange"
+    if path.is_file() and low.endswith((".yaml", ".yml")):
+        return "power-apps"
+    if (path.is_file() and low.endswith(".pbip")) or (path.is_dir() and low.endswith(MATERIAL_DIRS)):
+        return "power-bi"
+    return None
+
+
+def folder_problem(folder: Path) -> str | None:
+    """Why a folder cannot be a quick folder (SM-12), or None: it is empty or holds only material, lies in no sync folder,
+    is in no git repository and is not a broad folder such as the home folder or Documents."""
+    folder = folder.expanduser().resolve()
+    home = Path.home().resolve()
+    if folder == home or folder in home.parents or folder.parent == folder:
+        return f"{folder} is the home folder or above it"
+    if folder.parent == home and folder.name.casefold() in BROAD:
+        return f"{folder} is a broad folder that holds other work"
+    service = storage.sync_of(folder)
+    if service:
+        return f"{folder} lies in the {service} folder; the sync can break the git history"
+    existing = next((p for p in (folder, *folder.parents) if p.is_dir()), None)
+    top = gitutil.git(existing, "rev-parse", "--show-toplevel", check=False).decode("utf-8", "replace").strip() if existing else ""
+    if top:
+        return f"{folder} lies in the git repository {top}; its commits would go there"
+    if folder.is_dir():
+        other = [p.name for p in sorted(folder.iterdir()) if not p.name.startswith(".") and _material(p) is None]
+        if other:
+            return f"{folder} holds more than the material ({', '.join(other[:4])})"
+    return None
+
+
+def quick_folder(base: Path, title: str) -> Path:
+    """<quickHome>/<slug of the solution>, without a date (SM-3)."""
+    return base.expanduser() / slug(title)
+
+
+def derive_prefix(title: str, root: Path | None = None) -> str:
+    """The provisional prefix of a quick folder (SM-4): the letters and digits of the title, umlauts written out, a letter
+    first, at most 20; a number is added when another project of the register has it, so ppp backup keeps them apart."""
+    from . import registry
+    base = title
+    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("Ä", "Ae"), ("Ö", "Oe"), ("Ü", "Ue"), ("ß", "ss")):
+        base = base.replace(a, b)
+    base = re.sub(r"[^A-Za-z0-9]", "", base)[:20] or "Quick"
+    if not base[0].isalpha():
+        base = ("Q" + base)[:20]
+    taken = registry.prefixes(root)
+    candidate, n = base, 1
+    while candidate.casefold() in taken:
+        n += 1
+        candidate = f"{base[:20 - len(str(n))]}{n}"
+    return candidate
+
+
+def _place_material(root: Path) -> tuple[list[str], list[str]]:
+    """Move the material of the opened folder to its place: ZIPs to exchange/, screens to components/power-apps/screens/,
+    a PBIP to components/power-bi/. Returns the lines and the modules it needs."""
+    moved, modules = [], []
+    for p in sorted(root.iterdir()) if root.is_dir() else []:
+        if p.name.startswith("."):
+            continue
+        place = _material(p)
+        target = {"exchange": root / "exchange", "power-apps": root / "components" / "power-apps" / "screens",
+                  "power-bi": root / "components" / "power-bi"}.get(place)
+        if target is None:
+            continue
+        target.mkdir(parents=True, exist_ok=True)
+        if (target / p.name).exists():
+            raise ToolError(f"{gitutil.rel(root, target / p.name)} exists already; move {p.name} by hand.")
+        shutil.move(str(p), str(target / p.name))
+        moved.append(f"{p.name} -> {gitutil.rel(root, target / p.name)}")
+        if place != "exchange" and place not in modules:
+            modules.append(place)
+    return moved, modules
+
+
+def _merge_lines(path: Path, text: str, first: bool = False) -> bool:
+    """Write the template's lines into a file that exists already (a PBIP brings its own .gitignore); True when written."""
+    old = path.read_text(encoding="utf-8") if path.is_file() else None
+    if old is None:
+        path.write_bytes(text.encode("utf-8"))
+        return True
+    missing = [line for line in text.splitlines() if line.strip() and line not in old.splitlines()]
+    if not missing:
+        return False
+    added = "\n".join(missing) + "\n"
+    path.write_bytes(((added + old) if first else (old.rstrip("\n") + "\n" + added)).encode("utf-8"))
+    return True
+
+
+def init_quick(root: Path, solution: str | None = None, name: str | None = None, prefix: str | None = None,
+               modules: list[str] | None = None, language: str = "de", environment: str | None = None,
+               role: str | None = None, confirm_import: bool = True) -> list[str]:
+    """A quick folder (SCHNELLMODUS SM-3, SM-4): project.json in mode quick with storage local, CHANGE.md, .gitignore,
+    .gitattributes and git without a remote. The material in the folder goes to its place. The prefix is provisional
+    and derived without a question; the environment is written with its role and inUse false (ppp connect --in-use sets
+    it). No publisher: in mode quick it comes from the solution only (SM-13)."""
+    modules = list(modules or [])
+    if role is not None and role not in ENVIRONMENT_ROLES:
+        raise ToolError(f"role must be one of {', '.join(ENVIRONMENT_ROLES)}")
+    if role and not environment:
+        raise ToolError("--role needs --environment <name>: an offline quick folder has no environment.")
+    unknown = [m for m in modules if m not in MODULES]
+    if unknown:
+        raise ToolError(f"Unknown modules {unknown}; known: {', '.join(MODULES)}")
+    if (root / "project.json").exists():
+        raise ToolError(f"{root / 'project.json'} exists already; this is a ppp project. Use ppp check.")
+    problem = folder_problem(root)
+    if problem:
+        raise ToolError(f"Not a quick folder: {problem}. Leave out the folder: ppp init --mode quick --solution <name> then "
+                        "creates <quickHome>/<solution> (ppp settings --quick-home).")
+    if prefix is not None and not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", prefix):
+        raise ToolError(f"Prefix must be letters and digits, starting with a letter: {prefix}")
+    from . import registry
+    if prefix and prefix.casefold() in registry.prefixes(root):
+        raise ToolError(f"The prefix {prefix} belongs to another project of this computer (ppp projects); ppp backup would mix "
+                        "their backups. Leave out --prefix, and init derives a free one.")
+    title = solution or name or root.name
+    root.mkdir(parents=True, exist_ok=True)
+    moved, needed = _place_material(root)
+    modules = sorted(set(modules) | set(needed), key=MODULES.index)
+    prefix = prefix or derive_prefix(title, root)
+    alias = slug(environment) if environment else None
+    config = {"structureVersion": STRUCTURE_VERSION, "name": name or title, "prefix": prefix, "mode": "quick",
+              "storage": "local", **({"environment": alias, "confirmImport": confirm_import} if alias else {}),
+              "modules": modules, "solutions": [{"uniqueName": solution, "role": "main"}] if solution else [],
+              "handbookLanguage": language}
+    created = []
+    (root / "project.json").write_bytes((json.dumps(config, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+    created.append("project.json")
+    if alias:
+        path = root / "environments" / f"{alias}.json"
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes((json.dumps({"name": environment, **({"role": role} if role else {}), "inUse": False},
+                                     indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+        created.append(f"environments/{alias}.json")
+    change = root / "CHANGE.md"
+    if not change.exists():
+        change.write_bytes(fill((TEMPLATES / "quick" / "CHANGE.md").read_text(encoding="utf-8"),
+                                {"name": name or title}).encode("utf-8"))
+        created.append("CHANGE.md")
+    for tpl, target, first in (("gitignore", ".gitignore", False), ("gitattributes", ".gitattributes", True)):
+        if _merge_lines(root / target, (TEMPLATES / "project" / tpl).read_text(encoding="utf-8"), first):
+            created.append(target)
+    (root / "exchange").mkdir(exist_ok=True)
+    out = [f"Quick folder {root}: " + ", ".join(created)]
+    if moved:
+        out.append("Material moved to its place: " + "; ".join(moved))
+    if not gitutil.is_repo(root):
+        gitutil.git(root, "init", "-q", "-b", "main")
+        out.append("Initialized a git repository on main, without a remote.")
+    out.append(f"Prefix {prefix}: provisional, for this folder only; it is fixed by P5 when the folder is taken up as a project "
+               "(ppp init --from-quick).")
+    out.append("Mode quick: CHANGE.md instead of STATE.md and ROADMAP.md; commit after each step, never push; no backup card.")
+    if alias:
+        out.append(f"Connected to the environment {environment}: environments/{alias}.json "
+                   + (f"with role {role}" if role else "without a role yet") + ", not in productive use (ppp connect --in-use "
+                   "yes|no sets it).")
+        if not role:
+            out.append(f"{NO_ROLE} ppp connect \"{environment}\" --role development|test|production sets it.")
+    others = [line for line in registry.with_solution(solution, root)] if solution else []
+    if others:
+        out.append(f"WARNING other projects of this computer work on {solution}; offer them first: " + "; ".join(others))
+    return out
+
+
+def _sections(text: str) -> list[tuple[str, str]]:
+    """The ## sections of a file as (title, body)."""
+    parts = re.split(r"^## ", text, flags=re.M)[1:]
+    return [(part.split("\n", 1)[0].strip(), part.split("\n", 1)[1] if "\n" in part else "") for part in parts]
+
+
+DATED = re.compile(r"^\d{4}-\d{2}-\d{2}\s+")  # ### <date> <title> of a completed change
+
+
+def _placeholder(text: str) -> bool:
+    return not text.strip() or bool(re.fullmatch(r"\s*<[^>]*>\s*", text))
+
+
+def quick_changes(text: str) -> list[tuple[str, str]]:
+    """The changes of CHANGE.md, oldest first: the completed ones in file order, then the current one, each as
+    (title, text). A current change still holding the template's title is none."""
+    changes, current = [], None
+    for title, body in _sections(text):
+        if title.startswith("Current change"):
+            name = title.partition(":")[2].strip()
+            if not _placeholder(name):
+                current = (name, body.strip() + "\n")
+        elif title.startswith("Completed changes"):
+            for block in re.split(r"^### ", body, flags=re.M)[1:]:
+                head, _, rest = block.partition("\n")
+                if head.strip():
+                    changes.append((head.strip(), rest.strip() + "\n"))
+    return changes + ([current] if current else [])
+
+
+def _section(text: str, title: str) -> str:
+    return next((body.strip() for t, body in _sections(text) if t.startswith(title)), "")
+
+
+def from_quick(root: Path, name: str, prefix: str, modules: list[str], mode: str, language: str, kind: str) -> list[str]:
+    """Take a quick folder up as a project (SM-8): set the facts in project.json, add the core files and folders, make
+    every change of CHANGE.md an archived package 001…NNN with proposal.md, tasks.md and a ROADMAP.md row, and carry the
+    manual changes and open points into STATE.md. CHANGE.md goes; git keeps it, and the history and solution/ stay."""
+    path = root / "project.json"
+    config = json.loads(path.read_text(encoding="utf-8-sig")) if path.is_file() else {}
+    if config.get("mode") != "quick":
+        raise ToolError("ppp init --from-quick takes up a quick folder (mode quick in project.json); this folder is "
+                        + (f"in mode {config.get('mode')}" if config else "no ppp project") + ".")
+    if mode not in PROJECT_MODES:
+        raise ToolError(f"--mode must be one of {', '.join(PROJECT_MODES)} for the project")
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", prefix):
+        raise ToolError(f"Prefix must be letters and digits, starting with a letter: {prefix}")
+    from . import registry
+    if prefix.casefold() in registry.prefixes(root):
+        raise ToolError(f"The prefix {prefix} belongs to another project of this computer (ppp projects).")
+    unknown = [m for m in modules if m not in MODULES]
+    if unknown:
+        raise ToolError(f"Unknown modules {unknown}; known: {', '.join(MODULES)}")
+    if kind == "bitbucket":
+        raise ToolError(storage.BITBUCKET_LATER)
+    if kind not in storage.STORAGES:
+        raise ToolError("Storage must be github or local")
+    text = (root / "CHANGE.md").read_text(encoding="utf-8") if (root / "CHANGE.md").is_file() else ""
+    changes = quick_changes(text)
+    modules = list(dict.fromkeys([*(config.get("modules") or []), *modules]))
+    new = {}
+    for key, value in config.items():
+        new[key] = value
+    new.update(name=name, prefix=prefix, mode=mode, storage=kind, modules=modules, handbookLanguage=language)
+    path.write_bytes((json.dumps(new, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+    module_lines = "\n".join(f"  - {m}: [components/{m}/README.md](components/{m}/README.md)" for m in modules) or "  - none yet"
+    values = {"name": name, "mode": mode, "module_lines": module_lines}
+    created = []
+    for tpl in sorted((TEMPLATES / "project").iterdir()):
+        if tpl.name in ("gitignore", "gitattributes", "STATE.md", "ROADMAP.md"):
+            continue
+        if not (root / tpl.name).exists():
+            (root / tpl.name).write_bytes(fill(tpl.read_text(encoding="utf-8"), values).encode("utf-8"))
+            created.append(tpl.name)
+    for m in modules:
+        readme = root / "components" / m / "README.md"
+        if not readme.exists():
+            readme.parent.mkdir(parents=True, exist_ok=True)
+            readme.write_bytes((TEMPLATES / "components" / m / "README.md").read_bytes())
+            created.append(gitutil.rel(root, readme))
+    rows, archive, folder = [], root / "changes" / "archive", None
+    archive.mkdir(parents=True, exist_ok=True)
+    for n, (title, body) in enumerate(changes, 1):
+        folder = archive / f"{n:03d}-{slug(DATED.sub('', title) or title)}"
+        folder.mkdir()
+        (folder / "proposal.md").write_bytes(
+            f"# {n:03d} {title}\n\nTaken over from CHANGE.md of mode quick (ppp init --from-quick); git keeps the full text.\n\n"
+            f"{body}".encode("utf-8"))
+        (folder / "tasks.md").write_bytes(
+            f"# Tasks {n:03d} {title}\n\n## 1. Mode quick\n- [x] 1.1 Proposed, built, checked, imported and tested in mode "
+            "quick; what was tested stands in proposal.md\n".encode("utf-8"))
+        request = _section(body.replace("### ", "## "), "Request") or body
+        goal = next((line.strip() for line in request.splitlines() if line.strip()), "")
+        goal = re.sub(r"^(?:-\s*)?Request:\s*", "", goal).replace("|", "/")[:120]
+        rows.append(f"| {n:03d} | [{title}](changes/archive/{folder.name}/proposal.md) | {goal} | done |")
+    roadmap = (TEMPLATES / "project" / "ROADMAP.md").read_text(encoding="utf-8")
+    roadmap = roadmap.replace("|---|---|---|---|\n", "|---|---|---|---|\n" + "".join(r + "\n" for r in rows))
+    (root / "ROADMAP.md").write_bytes(roadmap.encode("utf-8"))
+    manual, points = _section(text, "Manual changes in the tenant"), _section(text, "Open points")
+    manual = "\n".join(line for line in manual.splitlines() if line.startswith("- ")) or "- none"
+    points = "\n".join(line for line in points.splitlines() if line.startswith("- ")) or "- none"
+    state = fill((TEMPLATES / "project" / "STATE.md").read_text(encoding="utf-8"), {"mode": mode})
+    state = state.replace("<one or two sentences>", "Step 3 of the intake (inventories, drafts in specs/), then ppp-clarify.")
+    state = state.replace("## Open questions and assumptions to confirm\n- none", "## Open questions and assumptions to confirm\n" + points)
+    state = state.replace("needs the state.\n- none", "needs the state.\n" + manual)
+    state = state.replace('<solution, version, date, or "none yet">',
+                          f"see changes/archive/{folder.name}/proposal.md, Starting point" if folder else "none yet")
+    (root / "STATE.md").write_bytes(state.encode("utf-8"))
+    for d in ("specs", "decisions") + (() if modules else ("components",)):
+        if not any((root / d).glob("*")):
+            (root / d).mkdir(parents=True, exist_ok=True)
+            (root / d / ".gitkeep").write_bytes(b"")
+    if not any(archive.iterdir()):
+        (archive / ".gitkeep").write_bytes(b"")
+    (root / "solution").mkdir(exist_ok=True)
+    if not any((root / "solution").iterdir()):
+        (root / "solution" / ".gitkeep").write_bytes(b"")
+    if (root / "CHANGE.md").is_file():
+        (root / "CHANGE.md").unlink()
+    out = [f"Taken up as a project in mode {mode}, prefix {prefix}, storage {kind}: "
+           + (f"{len(changes)} archived packages (001…{len(changes):03d}) with ROADMAP.md rows" if changes else "no change in CHANGE.md")
+           + "; STATE.md with the manual changes and open points; CHANGE.md removed (git keeps it). History and solution/ stay.",
+           "Created: " + ", ".join(created + ["ROADMAP.md", "STATE.md"])]
+    if kind == "github":
+        out.append("Storage github: set the remote with ppp storage github --remote <url> (it checks the history for credentials), "
+                   "then push after a card.")
+    out.append("Next: step 3 of ppp-intake (inventories, drafts in specs/), then ppp-clarify. Commit now.")
     return out
 
 
@@ -291,9 +608,10 @@ def _numbered(entries: list[str], where: str, rep: Report, suffix: str = "") -> 
         numbers[m.group(1)] = e
 
 
-def _outside(root: Path) -> list[tuple[Path, bool]]:
+def _outside(root: Path, quick: bool = False) -> list[tuple[Path, bool]]:
     """Top-level entries outside the structure, each with True when git does not track it."""
-    allowed = set(CORE_FILES) | {d.split("/")[0] for d in CORE_DIRS} | set(OPTIONAL_DIRS)
+    allowed = (set(QUICK_FILES) | set(QUICK_DIRS)) if quick else \
+        set(CORE_FILES) | {d.split("/")[0] for d in CORE_DIRS} | set(OPTIONAL_DIRS)
     repo = gitutil.is_repo(root)
     # a leftover outside git stays on one computer only, e.g. after a transition done on the other one
     return [(p, repo and not gitutil.git(root, "ls-files", "--", p.name).strip())
@@ -330,7 +648,11 @@ def remove_leftovers(root: Path, dry_run: bool = False) -> list[str]:
     """Remove local leftover trees outside git that hold no files (GEN-20261025-WIN-01), and the folders in changes/
     without files."""
     removed, kept = [], []
-    trees = [(p, p.name + "/") for p, local in _outside(root) if local and p.is_dir()]
+    try:
+        quick = json.loads((root / "project.json").read_text(encoding="utf-8-sig")).get("mode") == "quick"
+    except (OSError, ValueError, AttributeError):
+        quick = False
+    trees = [(p, p.name + "/") for p, local in _outside(root, quick) if local and p.is_dir()]
     for p, label in trees + [(p, f"changes/{p.name}/") for p in package_leftovers(root)]:
         count = _empty_tree(p)
         if count is None:
@@ -352,6 +674,21 @@ def remove_leftovers(root: Path, dry_run: bool = False) -> list[str]:
         out.append("Leftovers with files or links, untouched; move what is still needed to legacy/, inputs/ or exchange/: "
                    + ", ".join(kept))
     return out
+
+
+def _leftovers(root: Path, copies: list, rep: Report, quick: bool = False) -> None:
+    """Entries outside the structure; a local one without files can go with ppp tidy --leftovers."""
+    for p, local in _outside(root, quick):
+        if p.name in {c for c, _, _ in copies}:
+            continue
+        empty = _empty_tree(p) if local and p.is_dir() else None
+        if empty is not None:
+            rep.error(f"S not part of the structure: {p.name}/ (not in git: a local leftover without files, {empty} folders; "
+                      "remove it with ppp tidy --leftovers after a card)")
+        else:
+            rep.error(f"S not part of the structure{' of mode quick' if quick else ''}: {p.name}{'/' if p.is_dir() else ''}"
+                      + (" (not in git: a local leftover; move what is still needed to legacy/, inputs/ or exchange/, "
+                         "then delete it)" if local else ""))
 
 
 def _publisher(root: Path, config: dict, in_settings: str | None, rep: Report) -> None:
@@ -382,6 +719,125 @@ def _publisher(root: Path, config: dict, in_settings: str | None, rep: Report) -
                      "publisher stands for this project (ppp settings --publisher-name changes the settings)")
 
 
+def _components(root: Path, config: dict, rep: Report, quick: bool = False) -> list[str]:
+    """components/: one folder per module of project.json; in mode quick without the inventory README."""
+    modules = [m for m in config.get("modules") or [] if m in MODULES]
+    comp = root / "components"
+    if comp.is_dir():
+        for p in sorted(comp.iterdir()):
+            if p.name.startswith("."):
+                continue
+            if p.name not in modules:
+                rep.error(f"S components/{p.name}: not an active module in project.json")
+        for m in modules:
+            folder = comp / m
+            if not quick and not (folder / "README.md").is_file():
+                rep.error(f"S components/{m}/README.md missing (inventory of the module)")
+            parts = MODULE_PARTS.get(m)
+            if parts and folder.is_dir():
+                for p in sorted(folder.iterdir()):
+                    if p.name.startswith(".") or p.name in parts:
+                        continue
+                    if m == "power-automate" and p.is_file() and p.suffix == ".md":
+                        continue  # <flow>.md
+                    rep.error(f"S components/{m}/{p.name}: not part of the module structure")
+                # a custom connector is a component of its own that other projects reuse: one folder each with its
+                # definition, script, test bodies and README (GEN-20261110-MAC-02)
+                loose = [p.name for p in sorted((folder / "connectors").iterdir())
+                         if p.is_file() and not p.name.startswith(".")] if (folder / "connectors").is_dir() else []
+                if loose:
+                    rep.error(f"S components/{m}/connectors/{loose[0]}: a custom connector has its own folder, "
+                              f"components/{m}/connectors/<name>/")
+    return modules
+
+
+def _solution_folders(root: Path, config: dict, rep: Report) -> None:
+    """solution/: one folder per solution of project.json."""
+    names = [s.get("uniqueName") for s in config.get("solutions") or [] if isinstance(s, dict)]
+    sol = root / "solution"
+    if sol.is_dir():
+        for p in sorted(sol.iterdir()):
+            if not p.name.startswith(".") and p.name not in names:
+                rep.error(f"S solution/{p.name}: not a solution in project.json")
+        for n in names:
+            if n and not (sol / n).is_dir():
+                rep.info(f"S solution/{n}: not exported yet")
+
+
+def _git_settings(root: Path, config: dict, modules: list[str], in_git: bool, repo: bool, rep: Report) -> None:
+    """git: settings and no ZIPs, and the storage."""
+    if repo:
+        attrs = (root / ".gitattributes").read_text(encoding="utf-8") if (root / ".gitattributes").is_file() else ""
+        if not re.search(r"^\*\s+-text\s*$", attrs, re.M):
+            rep.error("S .gitattributes needs '* -text' (exported files must stay byte-identical)")
+        ignored = gitutil.git(root, "check-ignore", "exchange/x.zip", check=False).strip()
+        if in_git and ignored:
+            rep.error("S project.json: exchange git, but .gitignore ignores exchange/; ppp storage --exchange git sets "
+                      "its lines")
+        elif not in_git and not ignored:
+            rep.error("S exchange/ must be in .gitignore; when its ZIPs must reach another computer: "
+                      "ppp storage --exchange git")
+        tracked = gitutil.git(root, "ls-files", "-z").decode("utf-8").split("\0")
+        zips = [t for t in tracked if t.lower().endswith(".zip") and not (in_git and t.startswith("exchange/"))]
+        if zips:
+            rep.error(f"S ZIPs in git ({len(zips)}), e.g. {zips[0]}; ZIPs belong in exchange/"
+                      + ("" if in_git else ", which travels through git only with ppp storage --exchange git"))
+        data = [t for t in tracked if t.endswith((".pbi/cache.abf", ".pbi/localSettings.json"))]
+        if data:
+            rep.error(f"S Power BI data files in git ({len(data)}), e.g. {data[0]}; remove them with git rm --cached")
+        probe = "components/power-bi/x.SemanticModel/.pbi/"
+        if "power-bi" in modules and not all(gitutil.git(root, "check-ignore", "--no-index", probe + n, check=False).strip()
+                                             for n in ("cache.abf", "localSettings.json")):
+            rep.error("S .gitignore needs the lines **/.pbi/cache.abf and **/.pbi/localSettings.json "
+                      "(Power BI Desktop keeps the imported data and local settings there)")
+        if config:
+            storage.check(root, config, rep)
+    else:
+        rep.error("S not a git repository (P7)")
+
+
+def _change_file(root: Path, rep: Report) -> None:
+    """CHANGE.md of mode quick: its sections, which the session start reads in this order, and its budget (SM-7)."""
+    path = root / "CHANGE.md"
+    if not path.is_file():
+        return
+    text = path.read_text(encoding="utf-8")
+    headings = re.findall(r"^## (.+?)\s*$", text, re.M)
+    for s in QUICK_SECTIONS:
+        if not any(h.startswith(s) for h in headings):
+            rep.error(f"S CHANGE.md: section '## {s}' missing (keep the headings of the template)")
+    if len(text) > CHANGE_BUDGET:
+        rep.warn(f"S CHANGE.md: {len(text):,} characters, more than {CHANGE_BUDGET:,}: condense the completed changes to a few "
+                 "lines each and leave the rest to git")
+
+
+def _check_quick(root: Path, config: dict, rep: Report, notes) -> Report:
+    """ppp check in mode quick (SM-4): the four core files, the folders of material and tenant, CHANGE.md."""
+    for f in QUICK_FILES:
+        if not (root / f).is_file():
+            rep.error(f"S core file of mode quick missing: {f}")
+    if not (root / "exchange").exists():
+        (root / "exchange").mkdir()
+        rep.info("S exchange/ was missing and is created (not in git)")
+    repo = gitutil.is_repo(root)
+    copies = gitutil.conflict_copies(root) if repo else []
+    for copy, original, missing in copies:
+        rep.warn(f"S {copy}: conflict copy of a sync service (OneDrive, iCloud) beside {original}: compare both, keep the "
+                 f"right content in {original}, delete the copy after a card")
+    _leftovers(root, copies, rep, quick=True)
+    _environments(root, config, rep)
+    modules = _components(root, config, rep, quick=True)
+    _solution_folders(root, config, rep)
+    _change_file(root, rep)
+    _git_settings(root, config, modules, storage.exchange_of(config) == "git", repo, rep)
+    for note in notes:
+        if note:
+            rep.warn(note)
+    if not rep.errors:
+        rep.ok("S structure of mode quick as in SCHNELLMODUS, version " + str(STRUCTURE_VERSION))
+    return rep
+
+
 def check(root: Path, *notes: str | None, settings_publisher: str | None = None) -> Report:
     rep = Report(f"ppp check | {root.name} | structure version {STRUCTURE_VERSION}")
     try:
@@ -394,6 +850,8 @@ def check(root: Path, *notes: str | None, settings_publisher: str | None = None)
         config = {}
     if config:
         _validate_config(config, rep)
+    if config.get("mode") == "quick":
+        return _check_quick(root, config, rep, notes)
 
     for f in CORE_FILES:
         if not (root / f).is_file():
@@ -415,51 +873,14 @@ def check(root: Path, *notes: str | None, settings_publisher: str | None = None)
                       f"the copy, keep the right content in {original}, delete the copy after a card")
         else:
             rep.warn(f"{text}: compare both, keep the right content in {original}, delete the copy after a card")
-    for p, local in _outside(root):
-        if p.name in {c for c, _, _ in copies}:
-            continue
-        empty = _empty_tree(p) if local and p.is_dir() else None
-        if empty is not None:
-            rep.error(f"S not part of the structure: {p.name}/ (not in git: a local leftover without files, {empty} folders; "
-                      "remove it with ppp tidy --leftovers after a card)")
-        else:
-            rep.error(f"S not part of the structure: {p.name}{'/' if p.is_dir() else ''}"
-                      + (" (not in git: a local leftover; move what is still needed to legacy/, inputs/ or exchange/, "
-                         "then delete it)" if local else ""))
+    _leftovers(root, copies, rep)
     for name in OPTIONAL_DIRS:
         if (root / name).exists() and not (root / name).is_dir():
             rep.error(f"S {name} must be a folder")
     if config:
         _environments(root, config, rep)
 
-    # components/
-    modules = [m for m in config.get("modules") or [] if m in MODULES]
-    comp = root / "components"
-    if comp.is_dir():
-        for p in sorted(comp.iterdir()):
-            if p.name.startswith("."):
-                continue
-            if p.name not in modules:
-                rep.error(f"S components/{p.name}: not an active module in project.json")
-        for m in modules:
-            folder = comp / m
-            if not (folder / "README.md").is_file():
-                rep.error(f"S components/{m}/README.md missing (inventory of the module)")
-            parts = MODULE_PARTS.get(m)
-            if parts and folder.is_dir():
-                for p in sorted(folder.iterdir()):
-                    if p.name.startswith(".") or p.name in parts:
-                        continue
-                    if m == "power-automate" and p.is_file() and p.suffix == ".md":
-                        continue  # <flow>.md
-                    rep.error(f"S components/{m}/{p.name}: not part of the module structure")
-                # a custom connector is a component of its own that other projects reuse: one folder each with its
-                # definition, script, test bodies and README (GEN-20261110-MAC-02)
-                loose = [p.name for p in sorted((folder / "connectors").iterdir())
-                         if p.is_file() and not p.name.startswith(".")] if (folder / "connectors").is_dir() else []
-                if loose:
-                    rep.error(f"S components/{m}/connectors/{loose[0]}: a custom connector has its own folder, "
-                              f"components/{m}/connectors/<name>/")
+    modules = _components(root, config, rep)
 
     # changes/, decisions/, specs/
     changes = root / "changes"
@@ -488,16 +909,7 @@ def check(root: Path, *notes: str | None, settings_publisher: str | None = None)
             if not p.name.startswith(".") and not (p.is_file() and p.suffix == ".md"):
                 rep.error(f"S specs/{p.name}: specs/ holds one .md file per capability")
 
-    # solution/
-    names = [s.get("uniqueName") for s in config.get("solutions") or [] if isinstance(s, dict)]
-    sol = root / "solution"
-    if sol.is_dir():
-        for p in sorted(sol.iterdir()):
-            if not p.name.startswith(".") and p.name not in names:
-                rep.error(f"S solution/{p.name}: not a solution in project.json")
-        for n in names:
-            if n and not (sol / n).is_dir():
-                rep.info(f"S solution/{n}: not exported yet")
+    _solution_folders(root, config, rep)
 
     if config:
         _publisher(root, config, settings_publisher, rep)
@@ -539,35 +951,7 @@ def check(root: Path, *notes: str | None, settings_publisher: str | None = None)
     if claude.is_file() and "AGENTS.md" not in claude.read_text(encoding="utf-8"):
         rep.error("S CLAUDE.md must refer to AGENTS.md")
 
-    # git: settings and no ZIPs
-    if repo:
-        attrs = (root / ".gitattributes").read_text(encoding="utf-8") if (root / ".gitattributes").is_file() else ""
-        if not re.search(r"^\*\s+-text\s*$", attrs, re.M):
-            rep.error("S .gitattributes needs '* -text' (exported files must stay byte-identical)")
-        ignored = gitutil.git(root, "check-ignore", "exchange/x.zip", check=False).strip()
-        if in_git and ignored:
-            rep.error("S project.json: exchange git, but .gitignore ignores exchange/; ppp storage --exchange git sets "
-                      "its lines")
-        elif not in_git and not ignored:
-            rep.error("S exchange/ must be in .gitignore; when its ZIPs must reach another computer: "
-                      "ppp storage --exchange git")
-        tracked = gitutil.git(root, "ls-files", "-z").decode("utf-8").split("\0")
-        zips = [t for t in tracked if t.lower().endswith(".zip") and not (in_git and t.startswith("exchange/"))]
-        if zips:
-            rep.error(f"S ZIPs in git ({len(zips)}), e.g. {zips[0]}; ZIPs belong in exchange/"
-                      + ("" if in_git else ", which travels through git only with ppp storage --exchange git"))
-        data = [t for t in tracked if t.endswith((".pbi/cache.abf", ".pbi/localSettings.json"))]
-        if data:
-            rep.error(f"S Power BI data files in git ({len(data)}), e.g. {data[0]}; remove them with git rm --cached")
-        probe = "components/power-bi/x.SemanticModel/.pbi/"
-        if "power-bi" in modules and not all(gitutil.git(root, "check-ignore", "--no-index", probe + n, check=False).strip()
-                                             for n in ("cache.abf", "localSettings.json")):
-            rep.error("S .gitignore needs the lines **/.pbi/cache.abf and **/.pbi/localSettings.json "
-                      "(Power BI Desktop keeps the imported data and local settings there)")
-        if config:
-            storage.check(root, config, rep)
-    else:
-        rep.error("S not a git repository (P7)")
+    _git_settings(root, config, modules, in_git, repo, rep)
     if config:
         catalog.check(root, config, rep)
 

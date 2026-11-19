@@ -1,6 +1,6 @@
 ---
 name: ppp-intake
-description: Intake of a project into ppp. Use when a folder has no project.json yet - a new solution, or an existing solution or app built without ppp that should now be maintained with ppp.
+description: Intake of a project into ppp. Use when a folder has no project.json yet and the work is to be maintained as a project - a new solution, or an existing solution or app built without ppp; a single change to something that exists is ppp-quick.
 ---
 
 # Intake

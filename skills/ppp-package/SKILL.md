@@ -1,6 +1,6 @@
 ---
 name: ppp-package
-description: The package cycle from proposal to archive - build flows, screens and lists offline, check, pack, import and test via cards. Use for every change of a solution, new feature or fix alike, and to continue an active package from STATE.md.
+description: The package cycle from proposal to archive - build flows, screens and lists offline, check, pack, import and test via cards. Use for every change of a solution in a project of mode small, medium or large, new feature or fix alike, and to continue an active package from STATE.md; mode quick is ppp-quick.
 metadata:
   origin: "Fission-AI/OpenSpec@9111a76 (proposal, change folder, spec deltas, archive; files instead of the CLI); MIT; adapted, see THIRD_PARTY.md"
 ---
@@ -13,6 +13,8 @@ One package is one folder `changes/NNN-name/` and one import. Eight steps; the u
 
 ## 1. Proposal
 `ppp new package "<name>"` creates `proposal.md` and `tasks.md` under the number of the planned `ROADMAP.md` row with that name, else under the next free number (GEN-20261102-WIN-01, GEN-20261110-MAC-01). Fill in why, what changes, scope (in and out) and the **critical scenarios**: the few scenarios from `specs/` that must work after this import, with expected values. Changes to the specification go into `changes/NNN-name/specs/<capability>.md` (`ppp new spec-delta "NNN: <capability>"`; sections ADDED, MODIFIED, REMOVED). For a larger package add `design.md` (`ppp new design NNN`); it is optional, so list a package folder before reading it. Mark the package active in `ROADMAP.md` and `STATE.md`. Confirm the proposal with a decision card. After the confirmation say in one line that GPT-6.2 Sol with the small context size (272k) is enough for building from here and how to switch in the model picker, because proposal and design often run on Claude Opus 5.5 (model recommendation A-9).
+
+A **risky** package migrates or deletes data, changes permissions, lists or the setup flow, or rebuilds a flow in productive use. Its confirmation card offers "Audit first" (skill ppp-audit): in mode large as the first option, otherwise as the second.
 
 Notes in `STATE.md` under "Manual changes in the tenant" that touch this package's flows are part of the scope: rebuild them exactly from the note.
 

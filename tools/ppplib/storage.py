@@ -132,7 +132,12 @@ def sync_service(root: Path) -> str | None:
     git_dir = root / ".git"
     if git_dir.is_symlink() and git_dir.resolve().name.endswith(".nosync"):
         return None
-    path = root.resolve()
+    return sync_of(root)
+
+
+def sync_of(folder: Path) -> str | None:
+    """The sync service whose folder holds this path, which need not exist yet (ppp settings --quick-home, SM-3)."""
+    path = folder.expanduser().resolve()
     for key in ("OneDrive", "OneDriveCommercial", "OneDriveConsumer"):
         if os.environ.get(key):
             base = Path(os.environ[key]).resolve()
@@ -342,8 +347,8 @@ def check(root: Path, config: dict, rep: Report, now: datetime | None = None) ->
 
 
 def _reminder(root: Path, config: dict, rep: Report, now: datetime) -> None:
-    if not _head(root):
-        return  # nothing committed, nothing to back up
+    if not _head(root) or config.get("mode") == "quick":
+        return  # nothing committed, nothing to back up; a quick folder has no backup reminder (SCHNELLMODUS SM-14)
     due = timedelta(days=REMIND_DAYS)
     folder = backup_folder(config)
     if folder is not None and not folder.parent.is_dir():
@@ -411,6 +416,13 @@ def switch(root: Path, kind: str | None, remote: str | None) -> list[str]:
         elif not url:
             raise ToolError(f"storage {kind} needs a remote: create the empty repository on {NAMES[kind]}, then "
                             f"ppp storage {kind} --remote <url>.")
+        found = credentials(root)
+        if found:
+            out.append(f"WARNING possible credentials in the history ({len(found)}), the values not shown: " + "; ".join(found[:10])
+                       + (f" and {len(found) - 10} more" if len(found) > 10 else "") + ". Do not push: show these places on a "
+                       "card; each one is removed from the history first or confirmed by the user as no credential.")
+        else:
+            out.append("Checked the whole history for credentials (keys, tokens, passwords, connection strings): none found.")
         out.append(f"Push the whole history after a card with git push -u origin main; from then on the project data "
                    f"lies on {NAMES[kind]}.")
         if kind == "bitbucket":
@@ -421,3 +433,39 @@ def switch(root: Path, kind: str | None, remote: str | None) -> list[str]:
         _write_config(root, config)
         out.append("Commit project.json.")
     return [f"storage {old} -> {kind}" if old != kind else f"storage {kind} (unchanged)"] + out
+
+
+# ------------------------------------------------------------------ credentials in the history (SCHNELLMODUS SM-8)
+# What a first push would put on a server for good. The value is never shown, only kind, file and commit; a hit is a
+# reason for a card, not proof. A value that is an expression or a placeholder (@parameters(…), {{…}}, <…>) is none.
+SECRETS = (
+    ("private key", re.compile(r"-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----")),
+    ("GitHub token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})")),
+    ("AWS key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("storage key", re.compile(r"AccountKey=[A-Za-z0-9+/=]{20,}")),
+    ("signature", re.compile(r"(?:SharedAccessSignature=|[?&]sig=)[A-Za-z0-9%+/=]{20,}")),
+    ("token", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
+    ("password or secret", re.compile(r"(?i)[\"']?\b(?:password|passwd|pwd|client_?secret|api_?key|secret)\b[\"']?\s*[:=]\s*"
+                                      r"[\"']?(?![@$<{*])([^\s\"',;<>{}]{6,})")),
+)
+
+
+def credentials(root: Path) -> list[str]:
+    """Places in the whole history of the repository that look like a credential: '<kind> in <file> (commit <id>)'."""
+    try:
+        log = gitutil.git(root, "log", "--all", "-p", "--no-color", "--no-ext-diff", "--format=commit %h", check=False)
+    except ToolError:
+        return []
+    found, commit, path = [], "", ""
+    for line in log.decode("utf-8", "replace").splitlines():
+        if line.startswith("commit "):
+            commit = line[7:].strip()
+        elif line.startswith("+++ "):
+            path = line[4:].removeprefix("b/")
+        elif line.startswith("+") and not line.startswith("+++"):
+            for kind, pattern in SECRETS:
+                if pattern.search(line):
+                    place = f"{kind} in {path} (commit {commit})"
+                    if place not in found:
+                        found.append(place)
+    return found

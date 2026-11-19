@@ -128,6 +128,40 @@ def sources_regex(sources: str) -> re.Pattern | None:
     return re.compile(r"^\s*'?(" + alt + r")'?\s*$", re.I)
 
 
+# functions whose first argument is a data source (or a collection), and those that name a collection there
+READERS = ("Filter", "LookUp", "Search", "Patch", "Remove", "RemoveIf", "UpdateIf", "SortByColumns", "AddColumns")
+COLLECTORS = ("Collect", "ClearCollect")
+NAME = re.compile(r"\s*('[^']+'|[^\W\d]\w*)\s*")
+
+
+def screen_sources(files: list[Path]) -> list[str]:
+    """The data sources the screens read: the plain first arguments of Filter(, LookUp(, Patch( and the like that no
+    Collect( or ClearCollect( fills, in the order found. Mode quick takes them instead of <prefix>_* (SCHNELLMODUS SM-4)."""
+    read, collections = [], set()
+    for path in files:
+        for _, _, value in parse_yaml(path.read_bytes().decode("utf-8-sig").splitlines())[1]:
+            plain = re.sub(r'"([^"]|"")*"', '""', value)
+            for names, target in ((COLLECTORS, None), (READERS, read)):
+                for m in re.finditer(r"\b(" + "|".join(names) + r")\(", plain):
+                    first = _args(_call(plain, m.end() - 1))[0]
+                    hit = NAME.fullmatch(first)
+                    if not hit:
+                        continue
+                    name = hit.group(1).strip("'")
+                    if target is None:
+                        collections.add(name.casefold())
+                    elif name not in target:
+                        target.append(name)
+    return [n for n in read if n.casefold() not in collections and n not in ("Self", "Parent", "ThisItem")]
+
+
+def names_regex(names: list[str]) -> re.Pattern | None:
+    """Like sources_regex for exact names, which may hold blanks ('My list')."""
+    if not names:
+        return None
+    return re.compile(r"^\s*'?(" + "|".join(re.escape(n) for n in names) + r")'?\s*$", re.I)
+
+
 def allowed_versions(text: str) -> set[str]:
     return {m.group(1).lower() for m in re.finditer(r"([A-Za-z][A-Za-z/]*@\d+(\.\d+)*)", text)}
 

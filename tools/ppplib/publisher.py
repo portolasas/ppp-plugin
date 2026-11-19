@@ -83,7 +83,7 @@ def connect_lines(root: Path, env: dict) -> list[str]:
 def _empty_ok(package: Path, name: str, publisher: dict) -> str | None:
     """The built ZIP itself, not what it was built from (ERWEITERUNGEN A.2, point 6): exactly the three files, the
     manifest of an unmanaged solution `name` 1.0.0.1, no RootComponent, the four values of `publisher`, customizations.xml
-    byte for byte the template's. None when all holds, else what does not."""
+    byte for byte the template's, line endings aside. None when all holds, else what does not."""
     try:
         with zipfile.ZipFile(package) as z:
             names = z.namelist()
@@ -105,7 +105,8 @@ def _empty_ok(package: Path, name: str, publisher: dict) -> str | None:
     different = [f"{f} {_shown(f, packed[f])}, the settings {_shown(f, publisher[f])}" for f in FIELDS if packed[f] != publisher[f]]
     if different:
         return "its publisher has " + "; ".join(different)
-    if custom != (solution.EMPTY_TEMPLATE / "Other" / "Customizations.xml").read_bytes():
+    template = (solution.EMPTY_TEMPLATE / "Other" / "Customizations.xml").read_bytes()
+    if custom.replace(b"\r\n", b"\n") != template.replace(b"\r\n", b"\n"):   # pac on macOS writes LF
         return "customizations.xml is not the one of the template"
     return None
 

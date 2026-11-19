@@ -1,7 +1,7 @@
 """The projects of this computer (entwurf/HOME.md HO-3, HO-4): ~/.ppp/projects.json.
 
 ppp finds a project only from the folder a command runs in. The register notes every project a command or the session
-start saw: path, prefix, name, storage, mode, modules, remote, structure version, team ID and the day it was last seen.
+start saw: path, prefix, name, storage, mode, modules, solutions, remote, structure version, team ID and the day it was last seen.
 It fills by itself (ppp check, ppp init, the SessionStart hook) and never leaves the computer. The key is the resolved
 path; two entries with the same prefix and remote are clones of one project. `note` never raises: the register is a
 convenience, and a check or a hook must not fail on it.
@@ -17,7 +17,7 @@ from pathlib import Path
 from . import agent, gitutil, storage
 from .project import ToolError
 
-FIELDS = ("prefix", "name", "storage", "mode", "modules", "remote", "structureVersion", "teamId")
+FIELDS = ("prefix", "name", "storage", "mode", "modules", "solutions", "remote", "structureVersion", "teamId")
 FRESH = timedelta(days=1)
 
 
@@ -61,6 +61,9 @@ def _config(root: Path) -> dict | None:
 def entry_of(root: Path, config: dict) -> dict:
     entry = {key: config.get(key) for key in FIELDS if config.get(key) is not None}
     entry["storage"] = storage.of(config)
+    # the unique names only: a quick folder looks for every project of its solution (SCHNELLMODUS SM-2)
+    entry["solutions"] = [str(s["uniqueName"]) for s in config.get("solutions") or []
+                          if isinstance(s, dict) and s.get("uniqueName")]
     try:
         remote = storage.remote_url(root)
     except ToolError:
@@ -120,6 +123,34 @@ def scan(home: Path) -> list[str]:
             + (": " + ", ".join(added) if added else ".")]
 
 
+def prefixes(root: Path | None = None) -> set[str]:
+    """The prefixes of the other projects in the register, in lower case; a folder's own entry does not count."""
+    own = str(root.resolve()) if root else None
+    return {str(e["prefix"]).casefold() for key, e in read().items() if key != own and e.get("prefix")}
+
+
+def with_solution(name: str | None, root: Path | None = None) -> list[str]:
+    """Every project of the register that works on this solution, whatever its mode (SM-2), as one line each:
+    prefix, name, mode and folder; a folder that is gone and the folder root itself are left out."""
+    if not name:
+        return []
+    own, wanted = str(root.resolve()) if root else None, name.strip().casefold()
+    return [f"{e.get('prefix', '?')} {e.get('name', '?')} [mode {e.get('mode', '?')}] in {key}"
+            for key, e in sorted(read().items())
+            if key != own and any(str(s).casefold() == wanted for s in e.get("solutions") or [])
+            and (Path(key) / "project.json").is_file()]
+
+
+def solution_lines(name: str) -> list[str]:
+    """ppp projects --solution: the projects of this computer with this solution, the one to offer first."""
+    found = with_solution(name)
+    if not found:
+        return [f"No project of this computer works on the solution {name} ({path()}). ppp projects --scan adds the projects "
+                "of earlier sessions."]
+    return [f"Projects of this computer with the solution {name} ({len(found)}); offer them before a new quick folder:",
+            *("  " + line for line in found)]
+
+
 def clones(projects: dict) -> dict:
     """{path: number of entries with the same prefix and remote} for entries that are clones of one project."""
     groups: dict = {}
@@ -138,14 +169,24 @@ def _active(root: Path) -> str:
     return m.group(1).strip()[:100] if m else "no active package"
 
 
+def _current_change(root: Path) -> str:
+    try:
+        text = (root / "CHANGE.md").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "no CHANGE.md"
+    m = re.search(r"^## Current change:?\s*(.*)$", text, re.M)
+    return m.group(1).strip()[:100] if m and m.group(1).strip() and "<" not in m.group(1) else "no current change"
+
+
 def _live(root: Path) -> str:
     from . import structure
-    parts = ["active: " + _active(root)]
     config = _config(root) or {}
+    quick = config.get("mode") == "quick"
+    parts = ["change: " + _current_change(root)] if quick else ["active: " + _active(root)]
     if gitutil.is_repo(root):
         last = gitutil.git(root, "log", "-1", "--format=%cs %s", check=False).decode("utf-8", "replace").strip()
         parts.append("last commit " + (last[:80] or "none"))
-        if storage.of(config) == "local":
+        if storage.of(config) == "local" and not quick:  # a quick folder has no backup (SM-14)
             try:
                 folder = storage.backup_folder(config)
             except ToolError:
